@@ -1,0 +1,12 @@
+[package]
+name = "zerostash-bin"
+version = "0.1.0"
+authors = ["Peter Parkanyi <me@rhapsodhy.hu>"]
+repository = "https://github.com/rsdy/zerostash"
+license = "GPL-3.0"
+edition= "2018"
+
+[dependencies]
+libzerostash = { path = "../libzerostash" }
+walkdir = "^2.2.7"
+ring = "^0.16"

@@ -1,0 +1,22 @@
+[package]
+name = "zerostash"
+version = "13.37.0"
+edition = "2018"
+
+[profile.release]
+panic = "abort"
+lto = true
+				   
+[dependencies]
+libzerostash = { path = "libzerostash" }
+zerostash-bin = { path = "zerostash-bin" }
+
+[dev-dependencies]
+criterion = "0.3"
+ring = "^0.16"
+
+[workspace]
+members = [
+    "libzerostash",
+    "zerostash-bin",
+]
