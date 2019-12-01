@@ -26,6 +26,40 @@ Zerostash considers the following things to be part of the threat model:
  * Access to only the key and raw data should not be sufficient for
    full data compromise
 
+## How to
+
+The usual Rust incantation will do. A nightly compiler is needed for a
+few dependencies.
+
+    cargo +nightly build --release
+
+At the moment, this is a non-functional demonstration of the object
+format. You can do something like so:
+
+    cargo run --release 4 $(pwd) ../repo ../restore
+
+So the process will use 4 threads to back up the current directory to
+`../repo`, and restore it immediately after to `../restore`.
+
+Some extremely unscientific measurements on my desktop about performance:
+
+```
+ * files: 9917,
+ * chunks: 12490,
+ * data size: 1071.7888813018799
+ * throughput: 356.81619052498746
+ * objects: 161
+ * output size: 644
+ * compression ratio: 0.6008646023811578
+ * meta dump time: 0.088976801
+ * meta object count: 1
+
+read time: 0.193175887
+restore time: 1.5405925969999998
+throughput packed: 371.4452107897469
+throughput unpacked: 618.1845449336705
+```
+
 ## Design
 
 Zerostash is designed to be portable and easy to implement in various
