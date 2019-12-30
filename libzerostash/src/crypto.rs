@@ -22,13 +22,14 @@ pub const CRYPTO_DIGEST_SIZE: usize = 32;
 pub type DigestFn = Blake2s;
 pub type CryptoDigest = [u8; CRYPTO_DIGEST_SIZE];
 pub type Tag = [u8; 16];
+type Nonce = [u8; 12];
 
 pub trait AeadProvider: Clone + Send {
     fn algo() -> &'static aead::Algorithm;
     fn key(&self) -> &[u8];
 
-    fn encrypt_in_place(key: &[u8], nonce: [u8; 12], buffer: &mut [u8]) -> Tag;
-    fn decrypt_in_place(key: &[u8], nonce: [u8; 12], tag: Tag, buffer: &mut [u8]);
+    fn encrypt_in_place(key: &[u8], nonce: Nonce, buffer: &mut [u8]) -> Tag;
+    fn decrypt_in_place(key: &[u8], nonce: Nonce, tag: Tag, buffer: &mut [u8]);
 }
 
 pub trait Random {
@@ -127,7 +128,7 @@ impl AeadProvider for ChaCha20Poly1305 {
         &self.key_bytes
     }
 
-    fn encrypt_in_place(key: &[u8], nonce: [u8; 12], buffer: &mut [u8]) -> Tag {
+    fn encrypt_in_place(key: &[u8], nonce: Nonce, buffer: &mut [u8]) -> Tag {
         let key = aead::UnboundKey::new(Self::algo(), &key).expect("bad key");
         let key = aead::LessSafeKey::new(key);
 
@@ -144,7 +145,7 @@ impl AeadProvider for ChaCha20Poly1305 {
         t
     }
 
-    fn decrypt_in_place(key: &[u8], nonce: [u8; 12], tag: Tag, buffer: &mut [u8]) {
+    fn decrypt_in_place(key: &[u8], nonce: Nonce, tag: Tag, buffer: &mut [u8]) {
         let key = aead::UnboundKey::new(Self::algo(), &key).expect("bad key");
         let key = aead::LessSafeKey::new(key);
 
@@ -248,22 +249,23 @@ fn derive_chunk_key(key_src: &[u8], hash: &CryptoDigest) -> Zeroizing<Vec<u8>> {
 }
 
 #[inline]
-fn get_object_nonce(object_id: &ObjectId) -> [u8; 12] {
-    let mut nonce = [0u8; 12];
-    nonce.copy_from_slice(&object_id.as_ref()[..12]);
+fn get_object_nonce(object_id: &ObjectId) -> Nonce {
+    let mut nonce = Nonce::default();
+    let len = nonce.len();
+    nonce.copy_from_slice(&object_id.as_ref()[..len]);
     nonce
 }
 
 #[inline]
-fn get_chunk_nonce(object_id: &ObjectId, data_size: u32) -> [u8; 12] {
-    let mut nonce = [0u8; 12];
-    nonce.copy_from_slice(&object_id.as_ref()[..12]);
+fn get_chunk_nonce(object_id: &ObjectId, data_size: u32) -> Nonce {
+    let mut nonce = Nonce::default();
+    let len = nonce.len();
+    nonce.copy_from_slice(&object_id.as_ref()[..len]);
 
     let size = data_size.to_le_bytes();
     for i in 0..size.len() {
         nonce[i] ^= size[i];
     }
-    // nonce[8..12].copy_from_slice(&(data.len() as u32).to_le_bytes());
 
     nonce
 }
