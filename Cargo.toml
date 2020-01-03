@@ -12,8 +12,6 @@ libzerostash = { path = "libzerostash" }
 zerostash-bin = { path = "zerostash-bin" }
 
 [dev-dependencies]
-criterion = "0.3"
-ring = "^0.16"
 
 [workspace]
 members = [
