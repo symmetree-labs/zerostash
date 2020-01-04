@@ -2,20 +2,17 @@ use crate::chunks::ChunkPointer;
 use crate::objects::{Object, ObjectId, WriteObject};
 
 use std::convert::TryInto;
-use std::sync::Arc;
 
 use blake2::{Blake2s, Digest};
 use failure::Fail;
+use getrandom::getrandom;
 use libc::c_char;
 use libsodium_sys::{
     crypto_kdf_KEYBYTES, crypto_kdf_derive_from_key, crypto_pwhash, crypto_pwhash_PASSWD_MIN,
     crypto_pwhash_SALTBYTES, crypto_pwhash_alg_default, crypto_pwhash_memlimit_interactive,
     crypto_pwhash_opslimit_interactive,
 };
-use ring::{
-    aead,
-    rand::{SecureRandom, SystemRandom},
-};
+use ring::aead;
 use secrecy::{ExposeSecret, Secret};
 
 pub const CRYPTO_DIGEST_SIZE: usize = 32;
@@ -60,7 +57,6 @@ pub struct KeyError;
 
 pub struct StashKey {
     master_key: Key,
-    random: Arc<SystemRandom>,
 }
 
 impl StashKey {
@@ -74,10 +70,8 @@ impl StashKey {
         hasher.input(username.as_ref());
         let salt = hasher.result();
 
-        derive_argon2(&salt[..saltsize], password.as_ref().as_bytes()).map(|k| StashKey {
-            master_key: k,
-            random: Arc::new(SystemRandom::new()),
-        })
+        derive_argon2(&salt[..saltsize], password.as_ref().as_bytes())
+            .map(|k| StashKey { master_key: k })
     }
 
     pub fn root_object_id(&self) -> Result<ObjectId, KeyError> {
@@ -86,34 +80,28 @@ impl StashKey {
     }
 
     pub fn get_meta_crypto(&self) -> Result<impl CryptoProvider, KeyError> {
-        derive_subkey(&self.master_key, 0, b"_0s_meta")
-            .map(|k| ChaCha20Poly1305::new(k, self.random.clone()))
+        derive_subkey(&self.master_key, 0, b"_0s_meta").map(ChaCha20Poly1305::new)
     }
 
     pub fn get_object_crypto(&self) -> Result<impl CryptoProvider, KeyError> {
-        derive_subkey(&self.master_key, 0, b"_0s_obj_")
-            .map(|k| ChaCha20Poly1305::new(k, self.random.clone()))
+        derive_subkey(&self.master_key, 0, b"_0s_obj_").map(ChaCha20Poly1305::new)
     }
 }
 
 #[derive(Clone)]
 pub struct ChaCha20Poly1305 {
     key_bytes: Key,
-    random: Arc<SystemRandom>,
 }
 
 impl ChaCha20Poly1305 {
-    pub(crate) fn new(key: Key, random: Arc<SystemRandom>) -> Self {
-        ChaCha20Poly1305 {
-            key_bytes: key,
-            random,
-        }
+    pub(crate) fn new(key: Key) -> Self {
+        ChaCha20Poly1305 { key_bytes: key }
     }
 }
 
 impl Random for ChaCha20Poly1305 {
     fn fill(&self, buf: &mut [u8]) {
-        self.random.fill(buf).unwrap()
+        getrandom(buf).unwrap()
     }
 }
 
