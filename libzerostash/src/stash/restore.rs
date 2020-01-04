@@ -119,7 +119,7 @@ fn process_packet_loop(r: Receiver, backend: impl Backend, crypto: impl CryptoPr
             // This loop will extract & decrypt & decompress from the object
             for (i, (start, cp)) in cs.iter().enumerate() {
                 let start = *start as usize;
-                let size = cp.size as usize;
+                let size = cp.size as usize + cp.tag.len();
                 let mut target: &mut [u8] = buffer.as_mut();
 
                 let len = crypto.decrypt_chunk(&mut target[..size], &object, cp);
