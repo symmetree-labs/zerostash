@@ -158,12 +158,13 @@ mod tests {
         use crate::objects::ObjectId;
 
         use ring::rand::SystemRandom;
+        use secrecy::Secret;
         use std::sync::Arc;
 
-        const KEY: &[u8] = b"abcdef1234567890abcdef1234567890";
+        let key = Secret::new(*b"abcdef1234567890abcdef1234567890");
 
         let random = Arc::new(SystemRandom::new());
-        let crypto = crypto::ChaCha20Poly1305::new(KEY.to_vec(), random);
+        let crypto = crypto::ChaCha20Poly1305::new(key, random);
         let storage = backends::InMemoryBackend::default();
         let oid = ObjectId::new(&crypto);
         let mut mw = meta::Writer::new(oid, storage.clone(), crypto.clone()).unwrap();

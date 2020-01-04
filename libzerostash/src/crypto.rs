@@ -16,20 +16,21 @@ use ring::{
     aead,
     rand::{SecureRandom, SystemRandom},
 };
-use zeroize::Zeroizing;
+use secrecy::{ExposeSecret, Secret};
 
 pub const CRYPTO_DIGEST_SIZE: usize = 32;
 pub type DigestFn = Blake2s;
 pub type CryptoDigest = [u8; CRYPTO_DIGEST_SIZE];
 pub type Tag = [u8; 16];
 type Nonce = [u8; 12];
+type Key = Secret<[u8; 32]>;
 
 pub trait AeadProvider: Clone + Send {
     fn algo() -> &'static aead::Algorithm;
-    fn key(&self) -> &[u8];
+    fn key(&self) -> &Key;
 
-    fn encrypt_in_place(key: &[u8], nonce: Nonce, buffer: &mut [u8]) -> Tag;
-    fn decrypt_in_place(key: &[u8], nonce: Nonce, tag: Tag, buffer: &mut [u8]);
+    fn encrypt_in_place(key: &Key, nonce: Nonce, buffer: &mut [u8]) -> Tag;
+    fn decrypt_in_place(key: &Key, nonce: Nonce, tag: Tag, buffer: &mut [u8]);
 }
 
 pub trait Random {
@@ -58,7 +59,7 @@ pub trait CryptoProvider: Random + Clone + Send {
 pub struct KeyError;
 
 pub struct StashKey {
-    master_key: Zeroizing<Vec<u8>>,
+    master_key: Key,
     random: Arc<SystemRandom>,
 }
 
@@ -74,13 +75,14 @@ impl StashKey {
         let salt = hasher.result();
 
         derive_argon2(&salt[..saltsize], password.as_ref().as_bytes()).map(|k| StashKey {
-            master_key: Zeroizing::new(k),
+            master_key: k,
             random: Arc::new(SystemRandom::new()),
         })
     }
 
     pub fn root_object_id(&self) -> Result<ObjectId, KeyError> {
-        derive_subkey(&self.master_key, 0, b"_0s_root").map(ObjectId::from_bytes)
+        derive_subkey(&self.master_key, 0, b"_0s_root")
+            .map(|k| ObjectId::from_bytes(k.expose_secret()))
     }
 
     pub fn get_meta_crypto(&self) -> Result<impl CryptoProvider, KeyError> {
@@ -95,17 +97,15 @@ impl StashKey {
 }
 
 #[derive(Clone)]
-pub(crate) struct ChaCha20Poly1305 {
-    key_bytes: Zeroizing<Vec<u8>>,
+pub struct ChaCha20Poly1305 {
+    key_bytes: Key,
     random: Arc<SystemRandom>,
 }
 
 impl ChaCha20Poly1305 {
-    pub(crate) fn new(key: Vec<u8>, random: Arc<SystemRandom>) -> Self {
-        assert_eq!(key.len(), aead::CHACHA20_POLY1305.key_len());
-
+    pub(crate) fn new(key: Key, random: Arc<SystemRandom>) -> Self {
         ChaCha20Poly1305 {
-            key_bytes: Zeroizing::new(key),
+            key_bytes: key,
             random,
         }
     }
@@ -124,12 +124,12 @@ impl AeadProvider for ChaCha20Poly1305 {
     }
 
     #[inline]
-    fn key(&self) -> &[u8] {
+    fn key(&self) -> &Key {
         &self.key_bytes
     }
 
-    fn encrypt_in_place(key: &[u8], nonce: Nonce, buffer: &mut [u8]) -> Tag {
-        let key = aead::UnboundKey::new(Self::algo(), &key).expect("bad key");
+    fn encrypt_in_place(key: &Key, nonce: Nonce, buffer: &mut [u8]) -> Tag {
+        let key = aead::UnboundKey::new(Self::algo(), key.expose_secret()).expect("bad key");
         let key = aead::LessSafeKey::new(key);
 
         let tag = key
@@ -145,8 +145,8 @@ impl AeadProvider for ChaCha20Poly1305 {
         t
     }
 
-    fn decrypt_in_place(key: &[u8], nonce: Nonce, tag: Tag, buffer: &mut [u8]) {
-        let key = aead::UnboundKey::new(Self::algo(), &key).expect("bad key");
+    fn decrypt_in_place(key: &Key, nonce: Nonce, tag: Tag, buffer: &mut [u8]) {
+        let key = aead::UnboundKey::new(Self::algo(), key.expose_secret()).expect("bad key");
         let key = aead::LessSafeKey::new(key);
 
         let size = buffer.len() - tag.len();
@@ -173,7 +173,7 @@ where
 
     fn encrypt_chunk(&self, object: &WriteObject, hash: &CryptoDigest, data: &mut [u8]) -> Tag {
         debug_assert_eq!(hash.len(), A::algo().key_len());
-        let key = derive_chunk_key(&self.key(), hash);
+        let key = derive_chunk_key(self.key(), hash);
         A::encrypt_in_place(&key, get_chunk_nonce(&object.id, data.len() as u32), data)
     }
 
@@ -181,7 +181,7 @@ where
         let capacity = object.capacity();
 
         let tag = A::encrypt_in_place(
-            &self.key(),
+            self.key(),
             get_object_nonce(&object.id),
             &mut object.buffer.as_mut()[..capacity],
         );
@@ -200,7 +200,7 @@ where
         debug_assert_eq!(chunk.hash.len(), A::algo().key_len());
         assert_eq!(target.len(), size + chunk.tag.len());
 
-        let key = derive_chunk_key(&self.key(), &chunk.hash);
+        let key = derive_chunk_key(self.key(), &chunk.hash);
 
         let start = chunk.offs as usize;
         let end = start + size;
@@ -222,7 +222,7 @@ where
         let mut tag = Tag::default();
         tag.copy_from_slice(&data[data.len() - self.tag_len()..]);
 
-        A::decrypt_in_place(&self.key(), get_object_nonce(&o.id), tag, &mut data);
+        A::decrypt_in_place(self.key(), get_object_nonce(&o.id), tag, &mut data);
         data.truncate(data.len() - self.tag_len());
 
         data
@@ -235,17 +235,17 @@ where
 
         output[..data.len()].copy_from_slice(data);
 
-        A::decrypt_in_place(&self.key(), get_object_nonce(&o.id), tag, output);
+        A::decrypt_in_place(self.key(), get_object_nonce(&o.id), tag, output);
     }
 }
 
 #[inline]
-fn derive_chunk_key(key_src: &[u8], hash: &CryptoDigest) -> Zeroizing<Vec<u8>> {
-    let mut key = key_src.to_vec();
+fn derive_chunk_key(key_src: &Key, hash: &CryptoDigest) -> Key {
+    let mut key = key_src.expose_secret().clone();
     for i in 0..key.len() {
         key[i] ^= hash[i];
     }
-    Zeroizing::new(key)
+    Secret::new(key)
 }
 
 #[inline]
@@ -270,8 +270,8 @@ fn get_chunk_nonce(object_id: &ObjectId, data_size: u32) -> Nonce {
     nonce
 }
 
-fn derive_argon2(salt: &[u8], password: &[u8]) -> Result<Vec<u8>, KeyError> {
-    let mut outbuf = vec![0; crypto_kdf_KEYBYTES as usize];
+fn derive_argon2(salt: &[u8], password: &[u8]) -> Result<Key, KeyError> {
+    let mut outbuf = [0; crypto_kdf_KEYBYTES as usize];
 
     assert!(salt.len() == crypto_pwhash_SALTBYTES as usize);
     assert!(password.len() >= crypto_pwhash_PASSWD_MIN as usize);
@@ -292,13 +292,12 @@ fn derive_argon2(salt: &[u8], password: &[u8]) -> Result<Vec<u8>, KeyError> {
         }
     }
 
-    Ok(outbuf)
+    Ok(Secret::new(outbuf))
 }
 
-fn derive_subkey(key: &[u8], subkey_id: u64, ctx: &[u8]) -> Result<Vec<u8>, KeyError> {
-    let mut outbuf = vec![0; CRYPTO_DIGEST_SIZE];
+fn derive_subkey(key: &Key, subkey_id: u64, ctx: &[u8]) -> Result<Key, KeyError> {
+    let mut outbuf = [0; CRYPTO_DIGEST_SIZE];
 
-    assert!(key.len() == crypto_kdf_KEYBYTES as usize);
     assert!(ctx.len() == 8);
 
     unsafe {
@@ -307,14 +306,14 @@ fn derive_subkey(key: &[u8], subkey_id: u64, ctx: &[u8]) -> Result<Vec<u8>, KeyE
             outbuf.len().try_into().unwrap(),
             subkey_id,
             ctx.as_ptr() as *const c_char,
-            key.as_ptr(),
+            key.expose_secret().as_ptr(),
         ) != 0
         {
             return Err(KeyError);
         }
     }
 
-    Ok(outbuf)
+    Ok(Secret::new(outbuf))
 }
 
 #[cfg(test)]
@@ -322,15 +321,16 @@ mod tests {
     #[test]
     fn test_chacha_primitives() {
         use super::{AeadProvider, ChaCha20Poly1305};
+        use secrecy::Secret;
 
-        let key = b"abcdef1234567890abcdef1234567890";
+        let key = Secret::new(*b"abcdef1234567890abcdef1234567890");
         let nonce = b"1234567890ab";
         let cleartext = "the quick brown fox jumps over the lazy crab";
         let mut buf = cleartext.as_bytes().to_vec();
-        let tag = ChaCha20Poly1305::encrypt_in_place(key, *nonce, &mut buf);
+        let tag = ChaCha20Poly1305::encrypt_in_place(&key, *nonce, &mut buf);
 
         buf.resize(buf.len() + tag.len(), 0);
-        ChaCha20Poly1305::decrypt_in_place(key, *nonce, tag, &mut buf);
+        ChaCha20Poly1305::decrypt_in_place(&key, *nonce, tag, &mut buf);
 
         assert_eq!(&buf[..cleartext.len()], cleartext.as_bytes());
     }
