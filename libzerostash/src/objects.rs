@@ -365,8 +365,6 @@ where
         data: &[u8],
     ) -> Result<Arc<ChunkPointer>, Error> {
         let mut compressed = compress::block(&data)?;
-        compressed.resize(compressed.len() + self.crypto.tag_len(), 0);
-
         let size = compressed.len();
         let mut offs = self.object.position();
         if offs + size > self.capacity {
@@ -374,7 +372,7 @@ where
             offs = self.object.position();
         }
 
-        self.crypto
+        let tag = self.crypto
             .encrypt_chunk(&self.object, hash, &mut compressed);
 
         self.object.write_all(&compressed)?;
@@ -384,6 +382,7 @@ where
             size: size as u32,
             file: self.object.id,
             hash: *hash,
+	    tag
         }))
     }
 

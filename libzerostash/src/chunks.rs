@@ -1,4 +1,4 @@
-use crate::crypto::CryptoDigest;
+use crate::crypto::{CryptoDigest, Tag};
 use crate::meta::{FieldReader, FieldWriter, MetaObjectField};
 use crate::objects::ObjectId;
 
@@ -14,6 +14,7 @@ pub struct ChunkPointer {
     pub size: u32,
     pub file: ObjectId,
     pub hash: CryptoDigest,
+    pub tag: Tag
 }
 
 pub trait ChunkIndex: Clone + Send {
