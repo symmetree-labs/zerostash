@@ -356,11 +356,11 @@ dependencies = [
  "parking_lot 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ring 0.16.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "seahash 3.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "secrecy 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_cbor 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
  "walkdir 2.2.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "zeroize 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -637,6 +637,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "seahash"
 version = "3.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "secrecy"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "zeroize 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "semver"
@@ -1035,6 +1043,7 @@ dependencies = [
 "checksum same-file 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "585e8ddcedc187886a30fa705c47985c3fa88d06624095856b36ca0b82ff4421"
 "checksum scopeguard 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b42e15e59b18a828bbf5c58ea01debb36b9b096346de35d941dcb89009f24a0d"
 "checksum seahash 3.0.6 (registry+https://github.com/rust-lang/crates.io-index)" = "18d6061ff4917fac173fa07b839c8c3f805c0bf3801c52499cc85cdbad8c28df"
+"checksum secrecy 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9182278ed645df3477a9c27bfee0621c621aa16f6972635f7f795dae3d81070f"
 "checksum semver 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1d7eb9ef2c18661902cc47e535f9bc51b78acd254da71d375c2f6720d9a40403"
 "checksum semver-parser 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 "checksum serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)" = "414115f25f818d7dfccec8ee535d76949ae78584fc4f79a6f45a904bf8ab4449"
