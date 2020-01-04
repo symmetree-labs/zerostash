@@ -27,5 +27,6 @@ libsodium-sys-stable = "1.18.2"
 libc = "0.2"
 secrecy = "0.6"
 lru = "0.4"
+getrandom = "0.1"
 
 [dev-dependencies]
