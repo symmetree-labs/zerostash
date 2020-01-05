@@ -1,5 +1,5 @@
 [package]
-name = "zerostash-bin"
+name = "0s-bench"
 version = "0.1.0"
 authors = ["Peter Parkanyi <me@rhapsodhy.hu>"]
 repository = "https://github.com/rsdy/zerostash"
