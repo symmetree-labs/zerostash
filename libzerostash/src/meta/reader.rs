@@ -37,8 +37,7 @@ where
 
         self.inner.reset_cursor();
         self.inner.set_id(*id);
-        self.crypto
-            .decrypt_object_into(self.inner.buffer.as_mut(), &obj);
+        self.crypto.decrypt_object_into(&mut self.inner, &obj);
 
         let mut de = serde_cbor::Deserializer::from_slice(self.inner.as_ref()).into_iter();
         self.header = de.next().ok_or_else(|| format_err!("bad header"))?.ok();

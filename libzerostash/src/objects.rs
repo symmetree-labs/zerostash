@@ -9,6 +9,7 @@ use failure::Error;
 use itertools::Itertools;
 
 use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::mem::size_of;
 use std::string::ToString;
 use std::sync::{Arc, Mutex};
 
@@ -89,6 +90,17 @@ pub struct Object<T> {
 }
 
 impl<T> Object<T> {
+    pub fn new(buffer: T) -> Self {
+        Object {
+            id: ObjectId::default(),
+            cursor: 0,
+            capacity: BLOCK_SIZE,
+            buffer,
+        }
+    }
+}
+
+impl<T> Object<T> {
     #[inline(always)]
     pub fn set_id(&mut self, id: ObjectId) {
         self.id = id;
@@ -108,6 +120,10 @@ impl<T> Object<T> {
     pub fn reset_cursor(&mut self) {
         self.cursor = 0;
     }
+
+    pub fn reserve_tag(&mut self) {
+        self.capacity = BLOCK_SIZE - size_of::<Tag>();
+    }
 }
 
 impl<T> Object<T>
@@ -126,27 +142,6 @@ where
     }
 }
 
-impl<T> Object<T> {
-    pub fn new(buffer: T) -> Self {
-        Object {
-            id: ObjectId::default(),
-            cursor: 0,
-            capacity: BLOCK_SIZE,
-            buffer,
-        }
-    }
-}
-
-impl<T> Object<T>
-where
-    T: AsRef<[u8]>,
-{
-    pub fn reserve_tag(mut self, tag_len: usize) -> Self {
-        self.capacity = self.buffer.as_ref().len() - tag_len;
-        self
-    }
-}
-
 impl<T> Object<T>
 where
     T: AsMut<[u8]>,
@@ -156,6 +151,11 @@ where
         for i in self.buffer.as_mut().iter_mut() {
             *i = 0;
         }
+    }
+
+    #[inline(always)]
+    pub fn write_tag(&mut self, buf: &[u8]) {
+        self.buffer.as_mut()[self.capacity..].copy_from_slice(buf);
     }
 
     #[inline(always)]
@@ -282,7 +282,7 @@ where
 {
     #[inline(always)]
     fn as_ref(&self) -> &[u8] {
-        self.buffer.as_ref()
+        &self.buffer.as_ref()[..self.capacity]
     }
 }
 
@@ -292,7 +292,7 @@ where
 {
     #[inline(always)]
     fn as_mut(&mut self) -> &mut [u8] {
-        self.buffer.as_mut()
+        &mut self.buffer.as_mut()[..self.capacity]
     }
 }
 
@@ -372,7 +372,8 @@ where
             offs = self.object.position();
         }
 
-        let tag = self.crypto
+        let tag = self
+            .crypto
             .encrypt_chunk(&self.object, hash, &mut compressed);
 
         self.object.write_all(&compressed)?;
@@ -382,7 +383,7 @@ where
             size: size as u32,
             file: self.object.id,
             hash: *hash,
-	    tag
+            tag,
         }))
     }
 

@@ -47,7 +47,8 @@ where
     C: CryptoProvider,
 {
     pub fn new(root_object_id: ObjectId, backend: B, crypto: C) -> Result<Writer<B, C>, Error> {
-        let mut object = WriteObject::default().reserve_tag(crypto.tag_len());
+        let mut object = WriteObject::default();
+        object.reserve_tag();
         object.set_id(root_object_id);
         object.seek(SeekFrom::Start(HEADER_SIZE as u64)).unwrap();
 

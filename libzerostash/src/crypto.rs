@@ -22,21 +22,11 @@ pub type Tag = [u8; 16];
 type Nonce = [u8; 12];
 type Key = Secret<[u8; 32]>;
 
-pub trait AeadProvider: Clone + Send {
-    fn algo() -> &'static aead::Algorithm;
-    fn key(&self) -> &Key;
-
-    fn encrypt_in_place(key: &Key, nonce: Nonce, buffer: &mut [u8]) -> Tag;
-    fn decrypt_in_place(key: &Key, nonce: Nonce, tag: Tag, buffer: &mut [u8]);
-}
-
 pub trait Random {
     fn fill(&self, buf: &mut [u8]);
 }
 
 pub trait CryptoProvider: Random + Clone + Send {
-    fn tag_len(&self) -> usize;
-
     fn encrypt_chunk(&self, object_id: &WriteObject, hash: &CryptoDigest, data: &mut [u8]) -> Tag;
     fn encrypt_object(&self, object: &mut WriteObject);
 
@@ -46,9 +36,12 @@ pub trait CryptoProvider: Random + Clone + Send {
         o: &Object<T>,
         chunk: &ChunkPointer,
     ) -> usize;
-    fn decrypt_object<T: AsRef<[u8]>>(&self, object: &Object<T>) -> Vec<u8>;
 
-    fn decrypt_object_into<T: AsRef<[u8]>>(&self, output: &mut [u8], object: &Object<T>);
+    fn decrypt_object_into<I: AsRef<[u8]>, O: AsMut<[u8]>>(
+        &self,
+        output: &mut Object<O>,
+        obj: &Object<I>,
+    );
 }
 
 #[derive(Debug, Fail)]
@@ -80,51 +73,39 @@ impl StashKey {
     }
 
     pub fn get_meta_crypto(&self) -> Result<impl CryptoProvider, KeyError> {
-        derive_subkey(&self.master_key, 0, b"_0s_meta").map(ChaCha20Poly1305::new)
+        derive_subkey(&self.master_key, 0, b"_0s_meta").map(ObjectOperations::new)
     }
 
     pub fn get_object_crypto(&self) -> Result<impl CryptoProvider, KeyError> {
-        derive_subkey(&self.master_key, 0, b"_0s_obj_").map(ChaCha20Poly1305::new)
+        derive_subkey(&self.master_key, 0, b"_0s_obj_").map(ObjectOperations::new)
     }
 }
 
 #[derive(Clone)]
-pub struct ChaCha20Poly1305 {
-    key_bytes: Key,
+pub struct ObjectOperations {
+    key: Key,
 }
 
-impl ChaCha20Poly1305 {
-    pub(crate) fn new(key: Key) -> Self {
-        ChaCha20Poly1305 { key_bytes: key }
+impl ObjectOperations {
+    pub fn new(key: Key) -> ObjectOperations {
+        ObjectOperations { key }
     }
 }
 
-impl Random for ChaCha20Poly1305 {
+impl Random for ObjectOperations {
     fn fill(&self, buf: &mut [u8]) {
         getrandom(buf).unwrap()
     }
 }
 
-impl AeadProvider for ChaCha20Poly1305 {
-    #[inline]
-    fn algo() -> &'static aead::Algorithm {
-        &aead::CHACHA20_POLY1305
-    }
-
-    #[inline]
-    fn key(&self) -> &Key {
-        &self.key_bytes
-    }
-
-    fn encrypt_in_place(key: &Key, nonce: Nonce, buffer: &mut [u8]) -> Tag {
-        let key = aead::UnboundKey::new(Self::algo(), key.expose_secret()).expect("bad key");
-        let key = aead::LessSafeKey::new(key);
-
-        let tag = key
+impl CryptoProvider for ObjectOperations {
+    fn encrypt_chunk(&self, object: &WriteObject, hash: &CryptoDigest, data: &mut [u8]) -> Tag {
+        let aead = get_aead(derive_chunk_key(&self.key, hash));
+        let tag = aead
             .seal_in_place_separate_tag(
-                aead::Nonce::assume_unique_for_key(nonce),
+                get_chunk_nonce(&object.id, data.len() as u32),
                 aead::Aad::empty(),
-                buffer,
+                data,
             )
             .unwrap();
 
@@ -133,103 +114,74 @@ impl AeadProvider for ChaCha20Poly1305 {
         t
     }
 
-    fn decrypt_in_place(key: &Key, nonce: Nonce, tag: Tag, buffer: &mut [u8]) {
-        let key = aead::UnboundKey::new(Self::algo(), key.expose_secret()).expect("bad key");
-        let key = aead::LessSafeKey::new(key);
-
-        let size = buffer.len() - tag.len();
-
-        buffer[size..].copy_from_slice(&tag);
-
-        key.open_in_place(
-            aead::Nonce::assume_unique_for_key(nonce),
-            aead::Aad::empty(),
-            buffer,
-        )
-        .expect("open failed");
-    }
-}
-
-impl<A> CryptoProvider for A
-where
-    A: AeadProvider + Random,
-{
-    #[inline]
-    fn tag_len(&self) -> usize {
-        A::algo().tag_len()
-    }
-
-    fn encrypt_chunk(&self, object: &WriteObject, hash: &CryptoDigest, data: &mut [u8]) -> Tag {
-        debug_assert_eq!(hash.len(), A::algo().key_len());
-        let key = derive_chunk_key(self.key(), hash);
-        A::encrypt_in_place(&key, get_chunk_nonce(&object.id, data.len() as u32), data)
-    }
-
     fn encrypt_object(&self, object: &mut WriteObject) {
-        let capacity = object.capacity();
+        let aead = get_aead(self.key.clone());
 
-        let tag = A::encrypt_in_place(
-            self.key(),
-            get_object_nonce(&object.id),
-            &mut object.buffer.as_mut()[..capacity],
-        );
+        let tag = aead
+            .seal_in_place_separate_tag(
+                get_object_nonce(&object.id),
+                aead::Aad::empty(),
+                object.as_mut(),
+            )
+            .unwrap();
 
-        object.buffer.as_mut()[capacity..].copy_from_slice(&tag);
+        object.write_tag(tag.as_ref());
     }
 
     fn decrypt_chunk<T: AsRef<[u8]>>(
         &self,
-        mut target: &mut [u8],
+        target: &mut [u8],
         o: &Object<T>,
         chunk: &ChunkPointer,
     ) -> usize {
         let size = chunk.size as usize;
+        let cyphertext_size = size + chunk.tag.len();
 
-        debug_assert_eq!(chunk.hash.len(), A::algo().key_len());
-        assert_eq!(target.len(), size + chunk.tag.len());
-
-        let key = derive_chunk_key(self.key(), &chunk.hash);
+        assert!(target.len() >= cyphertext_size);
 
         let start = chunk.offs as usize;
         let end = start + size;
 
         target[..size].copy_from_slice(&o.buffer.as_ref()[start..end]);
+        target[size..cyphertext_size].copy_from_slice(&chunk.tag);
 
-        A::decrypt_in_place(
-            &key,
+        let aead = get_aead(derive_chunk_key(&self.key, &chunk.hash));
+        aead.open_in_place(
             get_chunk_nonce(&o.id, chunk.size),
-            chunk.tag,
-            &mut target,
-        );
+            aead::Aad::empty(),
+            &mut target[..cyphertext_size],
+        )
+        .unwrap();
 
         size
     }
 
-    fn decrypt_object<T: AsRef<[u8]>>(&self, o: &Object<T>) -> Vec<u8> {
-        let mut data = o.buffer.as_ref().to_vec();
-        let mut tag = Tag::default();
-        tag.copy_from_slice(&data[data.len() - self.tag_len()..]);
+    fn decrypt_object_into<I: AsRef<[u8]>, O: AsMut<[u8]>>(
+        &self,
+        output: &mut Object<O>,
+        obj: &Object<I>,
+    ) {
+        let buf: &mut [u8] = output.buffer.as_mut();
+        buf.copy_from_slice(&obj.buffer.as_ref());
 
-        A::decrypt_in_place(self.key(), get_object_nonce(&o.id), tag, &mut data);
-        data.truncate(data.len() - self.tag_len());
+        let aead = get_aead(self.key.clone());
+        aead.open_in_place(get_object_nonce(&obj.id), aead::Aad::empty(), buf)
+            .unwrap();
 
-        data
-    }
-
-    fn decrypt_object_into<T: AsRef<[u8]>>(&self, output: &mut [u8], o: &Object<T>) {
-        let data = o.buffer.as_ref();
-        let mut tag = Tag::default();
-        tag.copy_from_slice(&data[data.len() - self.tag_len()..]);
-
-        output[..data.len()].copy_from_slice(data);
-
-        A::decrypt_in_place(self.key(), get_object_nonce(&o.id), tag, output);
+        output.reserve_tag();
     }
 }
 
 #[inline]
+fn get_aead(key: Key) -> aead::LessSafeKey {
+    let key =
+        aead::UnboundKey::new(&aead::CHACHA20_POLY1305, key.expose_secret()).expect("bad key");
+    aead::LessSafeKey::new(key)
+}
+
+#[inline]
 fn derive_chunk_key(key_src: &Key, hash: &CryptoDigest) -> Key {
-    let mut key = key_src.expose_secret().clone();
+    let mut key = *key_src.expose_secret();
     for i in 0..key.len() {
         key[i] ^= hash[i];
     }
@@ -237,15 +189,16 @@ fn derive_chunk_key(key_src: &Key, hash: &CryptoDigest) -> Key {
 }
 
 #[inline]
-fn get_object_nonce(object_id: &ObjectId) -> Nonce {
+fn get_object_nonce(object_id: &ObjectId) -> aead::Nonce {
     let mut nonce = Nonce::default();
     let len = nonce.len();
+
     nonce.copy_from_slice(&object_id.as_ref()[..len]);
-    nonce
+    aead::Nonce::assume_unique_for_key(nonce)
 }
 
 #[inline]
-fn get_chunk_nonce(object_id: &ObjectId, data_size: u32) -> Nonce {
+fn get_chunk_nonce(object_id: &ObjectId, data_size: u32) -> aead::Nonce {
     let mut nonce = Nonce::default();
     let len = nonce.len();
     nonce.copy_from_slice(&object_id.as_ref()[..len]);
@@ -255,7 +208,7 @@ fn get_chunk_nonce(object_id: &ObjectId, data_size: u32) -> Nonce {
         nonce[i] ^= size[i];
     }
 
-    nonce
+    aead::Nonce::assume_unique_for_key(nonce)
 }
 
 fn derive_argon2(salt: &[u8], password: &[u8]) -> Result<Key, KeyError> {
@@ -307,19 +260,61 @@ fn derive_subkey(key: &Key, subkey_id: u64, ctx: &[u8]) -> Result<Key, KeyError>
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test_chacha_primitives() {
-        use super::{AeadProvider, ChaCha20Poly1305};
+    fn test_object_encryption() {
+        use super::{CryptoProvider, ObjectOperations};
+        use crate::objects::WriteObject;
         use secrecy::Secret;
 
         let key = Secret::new(*b"abcdef1234567890abcdef1234567890");
-        let nonce = b"1234567890ab";
-        let cleartext = "the quick brown fox jumps over the lazy crab";
-        let mut buf = cleartext.as_bytes().to_vec();
-        let tag = ChaCha20Poly1305::encrypt_in_place(&key, *nonce, &mut buf);
+        let cleartext = b"the quick brown fox jumps over the lazy crab";
+        let len = cleartext.len();
 
-        buf.resize(buf.len() + tag.len(), 0);
-        ChaCha20Poly1305::decrypt_in_place(&key, *nonce, tag, &mut buf);
+        let crypto = ObjectOperations::new(key);
+        let mut obj = WriteObject::default();
+        obj.reserve_tag();
 
-        assert_eq!(&buf[..cleartext.len()], cleartext.as_bytes());
+        let slice: &mut [u8] = obj.as_mut();
+        slice[..len].copy_from_slice(cleartext);
+
+        crypto.encrypt_object(&mut obj);
+
+        let mut decrypted = WriteObject::default();
+        crypto.decrypt_object_into(&mut decrypted, &obj);
+
+        // do it again, because reusing target buffers is fair game
+        crypto.decrypt_object_into(&mut decrypted, &obj);
+
+        assert_eq!(&decrypted.buffer.as_ref()[..len], cleartext.as_ref());
+    }
+
+    #[test]
+    fn test_chunk_encryption() {
+        use super::{ChunkPointer, CryptoProvider, ObjectOperations};
+        use crate::objects::WriteObject;
+        use secrecy::Secret;
+        use std::io::Write;
+
+        let key = Secret::new(*b"abcdef1234567890abcdef1234567890");
+        let hash = b"1234567890abcdef1234567890abcdef";
+        let cleartext = b"the quick brown fox jumps ";
+        let size = cleartext.len();
+        let crypto = ObjectOperations::new(key);
+        let mut obj = WriteObject::default();
+
+        let mut encrypted = cleartext.clone();
+        let tag = crypto.encrypt_chunk(&obj, hash, &mut encrypted);
+        let cp = ChunkPointer {
+            offs: 0,
+            size: size as u32,
+            hash: *hash,
+            tag,
+            ..ChunkPointer::default()
+        };
+        obj.write(&encrypted).unwrap();
+
+        let mut decrypted = vec![0; size + tag.len()];
+        crypto.decrypt_chunk(&mut decrypted, &obj, &cp);
+
+        assert_eq!(&decrypted[..size], cleartext.as_ref());
     }
 }
