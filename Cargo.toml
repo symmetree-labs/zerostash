@@ -4,6 +4,7 @@ lto = true
 				   
 [workspace]
 members = [
-    "libzerostash",
     "bench",
+    "libzerostash",
+    "zerostash",
 ]
