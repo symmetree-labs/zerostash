@@ -162,7 +162,7 @@ mod tests {
 
         let key = Secret::new(*b"abcdef1234567890abcdef1234567890");
 
-        let crypto = crypto::ChaCha20Poly1305::new(key);
+        let crypto = crypto::ObjectOperations::new(key);
         let storage = backends::InMemoryBackend::default();
         let oid = ObjectId::new(&crypto);
         let mut mw = meta::Writer::new(oid, storage.clone(), crypto.clone()).unwrap();

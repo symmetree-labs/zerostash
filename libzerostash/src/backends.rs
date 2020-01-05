@@ -62,7 +62,7 @@ impl Backend for Directory {
 
         {
             let mut mmap = unsafe { MmapOptions::new().len(size).map_mut(&file)? };
-            mmap.copy_from_slice(object.as_ref());
+            mmap.copy_from_slice(object.buffer.as_ref());
         }
 
         file.flush()?;
