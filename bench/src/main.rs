@@ -34,7 +34,9 @@ pub fn main() {
 
     let key = "abcdef1234567890abcdef1234567890";
 
-    let (store_time, commit_time, ol, fl, cl, creuse, ssize, tlen, tsize) = {
+    // i am really, truly sorry for this. there must be a better way,
+    // but i can't be bothered to find it
+    let (store_time, commit_time, ol, fl, cl, creuse_sum, creuse_cnt, ssize, tlen, tsize) = {
         let key = StashKey::open_stash(&key, &key).unwrap();
         let mut repo = Stash::new(backends::Directory::new(&output), key);
 
@@ -54,15 +56,18 @@ pub fn main() {
         let ol = objects.len();
         let fl = repo.file_index().len();
         let cl = repo.chunk_index().len();
-        let creuse = {
+        let (creuse_sum, creuse_cnt) = {
             let mut chunk_reuse = HashMap::new();
             repo.file_index().for_each(|f| {
                 f.chunks
                     .iter()
-                    .for_each(|(_, c)| *chunk_reuse.entry(c.hash).or_insert(0u32) = c.size)
+                    .for_each(|(_, c)| *chunk_reuse.entry(c.hash).or_insert(0u32) += 1)
             });
 
-            chunk_reuse.values().sum::<u32>() as f64 / chunk_reuse.len() as f64
+            (
+                chunk_reuse.values().sum::<u32>() as f64,
+                chunk_reuse.len() as f64,
+            )
         };
 
         let ssize = {
@@ -79,7 +84,8 @@ pub fn main() {
             ol,
             fl,
             cl,
-            creuse,
+            creuse_sum,
+            creuse_cnt,
             ssize,
             tlen,
             tsize,
@@ -99,7 +105,7 @@ pub fn main() {
  * compression ratio: {}
  * meta dump time: {}
  * meta object count: {}
- * chunk reuse: {}
+ * chunk reuse: {}/{} = {}
 "#,
         // * storage for chunks: {}
         path,
@@ -113,7 +119,9 @@ pub fn main() {
         tsize as f64 / ssize,
         commit_time.as_secs_f64(),
         ol,
-        creuse
+        creuse_sum,
+        creuse_cnt,
+        creuse_sum / creuse_cnt
     );
 
     {
