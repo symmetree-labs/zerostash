@@ -7,7 +7,6 @@ use libzerostash::{backends, chunks::ChunkIndex, files::FileIndex, objects};
 use std::collections::{HashMap, HashSet};
 use std::env::args;
 use std::fs::metadata;
-use std::sync::Arc;
 use std::time::Instant;
 
 fn mb(m: f64) -> f64 {
