@@ -9,4 +9,3 @@ edition= "2018"
 [dependencies]
 libzerostash = { path = "../libzerostash" }
 walkdir = "^2.2.7"
-ring = "^0.16"
