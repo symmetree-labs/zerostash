@@ -10,10 +10,19 @@
 //! See the `impl Configurable` below for how to specify the path to the
 //! application's configuration file.
 
-mod start;
+mod alias_add;
+mod alias_del;
+mod alias_list;
+mod checkout;
+mod commit;
+mod ls;
 mod version;
+mod wipe;
 
-use self::{start::StartCmd, version::VersionCmd};
+use self::{
+    alias_add::AliasAdd, alias_del::AliasDel, alias_list::AliasList, checkout::Checkout,
+    commit::Commit, ls::Ls, version::VersionCmd, wipe::Wipe,
+};
 use crate::config::ZerostashConfig;
 use abscissa_core::{
     config::Override, Command, Configurable, FrameworkError, Help, Options, Runnable,
@@ -30,13 +39,37 @@ pub enum ZerostashCmd {
     #[options(help = "get usage information")]
     Help(Help<Self>),
 
-    /// The `start` subcommand
-    #[options(help = "start the application")]
-    Start(StartCmd),
-
     /// The `version` subcommand
     #[options(help = "display version information")]
     Version(VersionCmd),
+
+    /// The `start` subcommand
+    #[options(help = "add new alias for a stash URI/path")]
+    AliasAdd(AliasAdd),
+
+    /// The `start` subcommand
+    #[options(help = "delete a stash alias")]
+    AliasDel(AliasDel),
+
+    /// The `start` subcommand
+    #[options(help = "list existing stash shorthands")]
+    AliasList(AliasList),
+
+    /// The `start` subcommand
+    #[options(help = "check out files")]
+    Checkout(Checkout),
+
+    /// The `start` subcommand
+    #[options(help = "add files to a stash")]
+    Commit(Commit),
+
+    /// The `start` subcommand
+    #[options(help = "list files in a stash")]
+    Ls(Ls),
+
+    /// The `start` subcommand
+    #[options(help = "delete all data of a stash")]
+    Wipe(Wipe),
 }
 
 /// This trait allows you to define how application configuration is loaded.
@@ -60,13 +93,7 @@ impl Configurable<ZerostashConfig> for ZerostashCmd {
     ///
     /// This can be safely deleted if you don't want to override config
     /// settings from command-line options.
-    fn process_config(
-        &self,
-        config: ZerostashConfig,
-    ) -> Result<ZerostashConfig, FrameworkError> {
-        match self {
-            ZerostashCmd::Start(cmd) => cmd.override_config(config),
-            _ => Ok(config),
-        }
+    fn process_config(&self, config: ZerostashConfig) -> Result<ZerostashConfig, FrameworkError> {
+        Ok(config)
     }
 }
