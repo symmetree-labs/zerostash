@@ -1,5 +1,5 @@
 [package]
-name = "0s"
+name = "zerostash"
 authors = ["Peter Parkanyi <me@rhapsodhy.hu>"]
 repository = "https://github.com/rsdy/zerostash"
 license = "GPL-3.0"
@@ -8,7 +8,10 @@ edition = "2018"
 
 [dependencies]
 gumdrop = "0.7"
+xdg = "2.2"
 serde = { version = "1", features = ["serde_derive"] }
+libzerostash = { path = "../libzerostash" }
+toml = "0.5"
 
 [dependencies.abscissa_core]
 version = "0.5.0"
