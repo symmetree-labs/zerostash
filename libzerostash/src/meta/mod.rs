@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn can_deserialize_fields() {
         use crate::backends;
-        use crate::chunks::{self, ChunkIndex, ChunkPointer};
+        use crate::chunks::{self, ChunkPointer};
         use crate::crypto::{self, CryptoDigest};
         use crate::meta;
         use crate::objects::ObjectId;
@@ -167,7 +167,7 @@ mod tests {
         let oid = ObjectId::new(&crypto);
         let mut mw = meta::Writer::new(oid, storage.clone(), crypto.clone()).unwrap();
 
-        let chunks = chunks::RwLockIndex::new();
+        let chunks = chunks::ChunkStore::default();
         chunks
             .push(CryptoDigest::default(), || {
                 Ok(Arc::new(ChunkPointer::default()))
@@ -185,10 +185,10 @@ mod tests {
             mr.open(&id).unwrap();
         }
 
-        let mut chunks_restore = chunks::RwLockIndex::new();
+        let mut chunks_restore = chunks::ChunkStore::default();
         mr.read_into(meta::Field::Chunks, &mut chunks_restore)
             .unwrap();
 
-        assert_eq!(chunks_restore.len(), 1);
+        assert_eq!(chunks_restore.index().len(), 1);
     }
 }

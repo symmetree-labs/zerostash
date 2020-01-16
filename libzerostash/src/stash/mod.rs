@@ -1,8 +1,4 @@
-use crate::{
-    backends::Backend,
-    chunks::{self, ChunkIndex},
-    files, meta, objects,
-};
+use crate::{backends::Backend, chunks, files, meta, objects};
 pub use crate::{crypto::StashKey, meta::ObjectIndex};
 
 use failure::Error;
@@ -14,8 +10,8 @@ pub(crate) mod store;
 
 pub struct Stash<B> {
     backend: B,
-    chunks: chunks::RwLockIndex,
-    files: files::HashMapFileIndex,
+    chunks: chunks::ChunkStore,
+    files: files::FileStore,
     master_key: StashKey,
 }
 
@@ -24,8 +20,8 @@ where
     B: Backend,
 {
     pub fn new(backend: B, master_key: StashKey) -> Stash<B> {
-        let chunks = chunks::RwLockIndex::new();
-        let files = files::HashMapFileIndex::default();
+        let chunks = chunks::ChunkStore::default();
+        let files = files::FileStore::default();
 
         Stash {
             backend,
@@ -66,7 +62,7 @@ where
         restore::from_glob(
             pattern.as_ref(),
             threads,
-            &self.files,
+            self.files.index(),
             &self.backend,
             self.master_key.get_object_crypto()?,
             target,
@@ -100,11 +96,11 @@ where
         Ok(mw.objects().clone())
     }
 
-    pub fn file_index(&self) -> &impl files::FileIndex {
-        &self.files
+    pub fn file_index(&self) -> &files::FileIndex {
+        self.files.index()
     }
 
-    pub fn chunk_index(&self) -> &impl chunks::ChunkIndex {
-        &self.chunks
+    pub fn chunk_index(&self) -> &chunks::ChunkIndex {
+        self.chunks.index()
     }
 }

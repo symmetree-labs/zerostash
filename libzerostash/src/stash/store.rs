@@ -1,5 +1,5 @@
-use crate::chunks::ChunkIndex;
-use crate::files::{self, FileIndex};
+use crate::chunks::ChunkStore;
+use crate::files::{self, FileStore};
 use crate::objects::*;
 use crate::rollsum::SeaSplit;
 use crate::splitter::FileSplitter;
@@ -18,8 +18,8 @@ type Receiver = crossbeam_channel::Receiver<DirEntry>;
 #[allow(unused)]
 pub fn recursive(
     num_threads: usize,
-    chunkindex: &mut (impl ChunkIndex),
-    fileindex: &mut (impl FileIndex),
+    chunkindex: &mut ChunkStore,
+    fileindex: &mut FileStore,
     objectstore: &mut (impl ObjectStore),
     path: impl AsRef<Path>,
 ) -> Result<(), Error> {
@@ -45,8 +45,8 @@ pub fn recursive(
 
 fn process_file_loop(
     receiver: Receiver,
-    chunkindex: impl ChunkIndex,
-    mut fileindex: impl FileIndex,
+    chunkindex: ChunkStore,
+    mut fileindex: FileStore,
     mut objectstore: impl ObjectStore,
 ) {
     for file in receiver.iter() {
@@ -111,7 +111,6 @@ fn process_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
 mod tests {
     extern crate test;
 
-    use crate::chunks::*;
     const PATH_100: &str = "tests/data/100_random_1k";
 
     #[test]
@@ -121,24 +120,26 @@ mod tests {
         use crate::objects::*;
         use crate::stash::store;
 
-        let mut cs = RwLockIndex::new();
-        let mut fs = HashMapFileIndex::default();
+        let mut cs = ChunkStore::default();
+        let mut fs = FileStore::default();
         let mut s = NullStorage::default();
 
         let _files = store::recursive(4, &mut cs, &mut fs, &mut s, PATH_100).unwrap();
 
-        assert_eq!(100, fs.len());
-        assert_eq!(1_024_000u64, fs.to_vec().iter().map(|f| f.size).sum());
+        assert_eq!(100, fs.index().len());
+        assert_eq!(1_024_000u64, fs.index().iter().map(|f| f.key().size).sum());
     }
 
-    fn bench_chunk_saturated_e2e<CS: ChunkIndex + 'static>(b: &mut test::Bencher) {
+    #[bench]
+    fn bench_chunk_saturated_e2e(b: &mut test::Bencher) {
+        use crate::chunks::*;
         use crate::files::*;
         use crate::objects::*;
         use crate::stash::store;
 
-        let mut cs = CS::new();
+        let mut cs = ChunkStore::default();
         let mut os = NullStorage::default();
-        let mut fs = HashMapFileIndex::default();
+        let mut fs = FileStore::default();
 
         // first build up the file index
         store::recursive(4, &mut cs, &mut fs, &mut os, PATH_100).unwrap();
@@ -148,7 +149,9 @@ mod tests {
         })
     }
 
-    fn bench_chunk_e2e<CS: ChunkIndex + 'static>(b: &mut test::Bencher) {
+    #[bench]
+    fn bench_chunk_e2e(b: &mut test::Bencher) {
+        use crate::chunks::*;
         use crate::files::*;
         use crate::objects::*;
         use crate::stash::store;
@@ -156,22 +159,12 @@ mod tests {
         b.iter(|| {
             store::recursive(
                 4,
-                &mut CS::new(),
-                &mut HashMapFileIndex::default(),
+                &mut ChunkStore::default(),
+                &mut FileStore::default(),
                 &mut NullStorage::default(),
                 PATH_100,
             )
             .unwrap()
         })
-    }
-
-    #[bench]
-    fn bench_chunk_e2e_saturated_rwlock(b: &mut test::Bencher) {
-        bench_chunk_saturated_e2e::<RwLockIndex>(b);
-    }
-
-    #[bench]
-    fn bench_chunk_e2e_rwlock(b: &mut test::Bencher) {
-        bench_chunk_e2e::<RwLockIndex>(b);
     }
 }

@@ -1,14 +1,15 @@
 use crate::chunks::ChunkPointer;
 use crate::meta::{FieldReader, FieldWriter, MetaObjectField};
 
+use dashmap::DashMap;
 use failure::Error;
-use parking_lot::RwLock;
 
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
+
+type DashSet<T> = DashMap<T, ()>;
 
 #[derive(Hash, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
@@ -76,52 +77,37 @@ fn to_unix_mtime(m: &fs::Metadata) -> Result<(u64, u32), Error> {
     Ok((mtime.as_secs(), mtime.subsec_nanos()))
 }
 
-pub trait FileIndex: Clone + Send {
-    fn len(&self) -> usize;
-    fn for_each(&self, iter: impl FnMut(Arc<Entry>));
-    fn to_vec(self) -> Vec<Arc<Entry>>;
-    fn has_changed(&self, file: &Entry) -> bool;
-    fn push(&mut self, file: Entry);
-}
+pub type FileIndex = DashSet<Arc<Entry>>;
 
 #[derive(Clone, Default)]
-pub struct HashMapFileIndex(Arc<RwLock<HashSet<Arc<Entry>>>>);
+pub struct FileStore(Arc<FileIndex>);
 
-impl MetaObjectField for HashMapFileIndex {
+impl FileStore {
+    pub fn index(&self) -> &FileIndex {
+        &self.0
+    }
+
+    pub fn has_changed(&self, file: &Entry) -> bool {
+        !self.0.contains_key(file)
+    }
+
+    pub fn push(&mut self, file: Entry) {
+        self.0.insert(Arc::new(file), ());
+    }
+}
+
+impl MetaObjectField for FileStore {
     type Item = Entry;
 
     fn serialize(&self, mw: &mut impl FieldWriter) {
-        self.for_each(|f| mw.write_next(f));
+        for f in self.0.into_iter() {
+            mw.write_next(f.key());
+        }
     }
 
     fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
-        let mut map = self.0.write();
         while let Ok(file) = mw.read_next() {
-            map.insert(Arc::new(file));
+            self.0.insert(Arc::new(file), ());
         }
-    }
-}
-
-impl FileIndex for HashMapFileIndex {
-    fn for_each(&self, mut iter: impl FnMut(Arc<Entry>)) {
-        for f in self.0.read().iter() {
-            iter(f.clone());
-        }
-    }
-
-    fn has_changed(&self, file: &Entry) -> bool {
-        !self.0.read().contains(file)
-    }
-
-    fn push(&mut self, file: Entry) {
-        self.0.write().insert(Arc::new(file));
-    }
-
-    fn len(&self) -> usize {
-        self.0.read().len()
-    }
-
-    fn to_vec(self) -> Vec<Arc<Entry>> {
-        self.0.write().drain().collect()
     }
 }

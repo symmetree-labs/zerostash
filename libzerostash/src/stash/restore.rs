@@ -27,27 +27,15 @@ type Receiver = crossbeam_channel::Receiver<ThreadWork>;
 pub fn from_glob(
     pattern: &str,
     num_threads: usize,
-    fileindex: &(impl FileIndex),
+    fileindex: &FileIndex,
     backend: &(impl Backend),
     crypto: impl CryptoProvider,
     target: impl AsRef<Path>,
 ) -> Result<(), Error> {
     let matcher = glob::Pattern::new(pattern)?;
-    let file_list = {
-        let mut l = vec![];
-
-        fileindex.for_each(|md| {
-            if matcher.matches_with(&md.name, glob::MatchOptions::new()) {
-                l.push(md);
-            }
-        });
-
-        l
-    };
-
     thread::scope(move |s| {
         // need to set up threads here and stuff
-        let (sender, receiver) = crossbeam_channel::bounded::<ThreadWork>(16 * num_threads);
+        let (sender, receiver) = crossbeam_channel::bounded::<ThreadWork>(2 * num_threads);
 
         for range in 0..(num_threads - 1) {
             let backend = backend.clone();
@@ -57,7 +45,12 @@ pub fn from_glob(
             s.spawn(move |_| process_packet_loop(receiver, backend, crypto));
         }
 
-        for md in file_list.iter() {
+        for f in fileindex.into_iter() {
+            let md = f.key();
+            if !matcher.matches_with(&md.name, glob::MatchOptions::new()) {
+                continue;
+            }
+
             let path = get_path(&md.name);
 
             // if there's no parent, then the entire thing is root.
