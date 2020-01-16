@@ -2,7 +2,7 @@
 #![feature(test)]
 
 use libzerostash::stash::{Stash, StashKey};
-use libzerostash::{backends, chunks::ChunkIndex, files::FileIndex, objects};
+use libzerostash::{backends, objects};
 
 use std::collections::{HashMap, HashSet};
 use std::env::args;
@@ -57,11 +57,12 @@ pub fn main() {
         let cl = repo.chunk_index().len();
         let (creuse_sum, creuse_cnt) = {
             let mut chunk_reuse = HashMap::new();
-            repo.file_index().for_each(|f| {
+            for f in repo.file_index().into_iter() {
+                let f = f.key();
                 f.chunks
                     .iter()
                     .for_each(|(_, c)| *chunk_reuse.entry(c.hash).or_insert(0u32) += 1)
-            });
+            }
 
             (
                 chunk_reuse.values().sum::<u32>() as f64,
@@ -71,7 +72,10 @@ pub fn main() {
 
         let ssize = {
             let mut data_size = 0.0f64;
-            repo.file_index().for_each(|f| data_size += f.size as f64);
+            for f in repo.file_index().into_iter() {
+                let f = f.key();
+                data_size += f.size as f64
+            }
             data_size
         };
 
