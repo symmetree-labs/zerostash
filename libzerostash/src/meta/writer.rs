@@ -33,11 +33,17 @@ where
         let capacity = writer.capacity();
         let position = writer.position();
 
+        let record = serialize_to_vec(&obj).unwrap();
+
         if capacity - position < STREAM_BLOCK_SIZE {
             self.seal_and_store();
         }
 
-        serialize_to_writer(self.encoder.start().unwrap(), &obj).unwrap();
+        if record.len() + position > capacity - 64 {
+            self.seal_and_store();
+        }
+
+        self.encoder.start().unwrap().write(&record).unwrap();
     }
 }
 
