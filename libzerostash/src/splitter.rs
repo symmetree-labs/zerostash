@@ -1,14 +1,12 @@
-use crate::crypto::{CryptoDigest, DigestFn};
+use crate::crypto::{chunk_hash, CryptoDigest};
 use crate::rollsum::Rollsum;
 
-use blake2::Digest;
 use failure::Error;
 
 use std::marker::PhantomData;
 
 pub struct FileSplitter<'file, RS> {
     data: &'file [u8],
-    hasher: DigestFn,
     cur: usize,
     _rs: PhantomData<RS>,
 }
@@ -20,7 +18,6 @@ where
     pub fn new(data: &'file [u8]) -> Result<FileSplitter<'file, RS>, Error> {
         Ok(FileSplitter {
             data,
-            hasher: DigestFn::default(),
             _rs: PhantomData,
             cur: 0,
         })
@@ -43,12 +40,7 @@ where
         let data = &self.data[start..start + end];
         self.cur += end;
 
-        self.hasher.input(data);
-
-        let mut digest = CryptoDigest::default();
-        digest.clone_from_slice(self.hasher.result_reset().as_slice());
-
-        Some((start as u64, digest, data))
+        Some((start as u64, chunk_hash(data), data))
     }
 }
 
