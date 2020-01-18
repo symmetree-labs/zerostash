@@ -1,26 +1,31 @@
 use crate::chunks::ChunkPointer;
 use crate::objects::{Object, ObjectId, WriteObject};
 
-use std::convert::TryInto;
-
-use blake2::{Blake2s, Digest};
+use blake2b_simd::blake2bp::Params as Blake2;
 use failure::Fail;
 use getrandom::getrandom;
-use libc::c_char;
-use libsodium_sys::{
-    crypto_kdf_KEYBYTES, crypto_kdf_derive_from_key, crypto_pwhash, crypto_pwhash_PASSWD_MIN,
-    crypto_pwhash_SALTBYTES, crypto_pwhash_alg_default, crypto_pwhash_memlimit_interactive,
-    crypto_pwhash_opslimit_interactive,
-};
 use ring::aead;
 use secrecy::{ExposeSecret, Secret};
+use zeroize::Zeroize;
 
 pub const CRYPTO_DIGEST_SIZE: usize = 32;
-pub type DigestFn = Blake2s;
 pub type CryptoDigest = [u8; CRYPTO_DIGEST_SIZE];
 pub type Tag = [u8; 16];
 type Nonce = [u8; 12];
-type Key = Secret<[u8; 32]>;
+type Key = Secret<[u8; CRYPTO_DIGEST_SIZE]>;
+
+pub fn chunk_hash(content: &[u8]) -> CryptoDigest {
+    let mut output = CryptoDigest::default();
+
+    output.copy_from_slice(
+        Blake2::new()
+            .hash_length(CRYPTO_DIGEST_SIZE)
+            .hash(content)
+            .as_bytes(),
+    );
+
+    output
+}
 
 pub trait Random {
     fn fill(&self, buf: &mut [u8]);
@@ -57,27 +62,21 @@ impl StashKey {
         username: impl AsRef<str>,
         password: impl AsRef<str>,
     ) -> Result<StashKey, KeyError> {
-        let saltsize = crypto_pwhash_SALTBYTES.try_into().unwrap();
-
-        let mut hasher = DigestFn::new();
-        hasher.input(username.as_ref());
-        let salt = hasher.result();
-
-        derive_argon2(&salt[..saltsize], password.as_ref().as_bytes())
+        derive_argon2(username.as_ref().as_bytes(), password.as_ref().as_bytes())
             .map(|k| StashKey { master_key: k })
     }
 
     pub fn root_object_id(&self) -> Result<ObjectId, KeyError> {
-        derive_subkey(&self.master_key, 0, b"_0s_root")
+        derive_subkey(&self.master_key, b"_0s_root")
             .map(|k| ObjectId::from_bytes(k.expose_secret()))
     }
 
     pub fn get_meta_crypto(&self) -> Result<impl CryptoProvider, KeyError> {
-        derive_subkey(&self.master_key, 0, b"_0s_meta").map(ObjectOperations::new)
+        derive_subkey(&self.master_key, b"_0s_meta").map(ObjectOperations::new)
     }
 
     pub fn get_object_crypto(&self) -> Result<impl CryptoProvider, KeyError> {
-        derive_subkey(&self.master_key, 0, b"_0s_obj_").map(ObjectOperations::new)
+        derive_subkey(&self.master_key, b"_0s_obj_").map(ObjectOperations::new)
     }
 }
 
@@ -211,48 +210,38 @@ fn get_chunk_nonce(object_id: &ObjectId, data_size: u32) -> aead::Nonce {
     aead::Nonce::assume_unique_for_key(nonce)
 }
 
-fn derive_argon2(salt: &[u8], password: &[u8]) -> Result<Key, KeyError> {
-    let mut outbuf = [0; crypto_kdf_KEYBYTES as usize];
+fn derive_argon2(salt_raw: &[u8], password: &[u8]) -> Result<Key, KeyError> {
+    let salt = Blake2::new().hash_length(16).hash(salt_raw);
 
-    assert!(salt.len() == crypto_pwhash_SALTBYTES as usize);
-    assert!(password.len() >= crypto_pwhash_PASSWD_MIN as usize);
+    let mut result = argon2::hash_raw(
+        salt.as_bytes(),
+        password,
+        &argon2::Config {
+            hash_length: CRYPTO_DIGEST_SIZE as u32,
+            variant: argon2::Variant::Argon2id,
+            ..argon2::Config::default()
+        },
+    )
+    .map_err(|_| KeyError)?;
 
-    unsafe {
-        if crypto_pwhash(
-            outbuf.as_mut_ptr(),
-            outbuf.len().try_into().unwrap(),
-            password.as_ptr() as *const c_char,
-            password.len().try_into().unwrap(),
-            salt.as_ptr(),
-            crypto_pwhash_opslimit_interactive().try_into().unwrap(),
-            crypto_pwhash_memlimit_interactive(),
-            crypto_pwhash_alg_default(),
-        ) != 0
-        {
-            return Err(KeyError);
-        }
-    }
+    let mut outbuf = [0; CRYPTO_DIGEST_SIZE];
+    outbuf.copy_from_slice(&result);
+    result.zeroize();
 
     Ok(Secret::new(outbuf))
 }
 
-fn derive_subkey(key: &Key, subkey_id: u64, ctx: &[u8]) -> Result<Key, KeyError> {
+fn derive_subkey(key: &Key, ctx: &[u8]) -> Result<Key, KeyError> {
+    assert!(ctx.len() < 16);
+
     let mut outbuf = [0; CRYPTO_DIGEST_SIZE];
-
-    assert!(ctx.len() == 8);
-
-    unsafe {
-        if crypto_kdf_derive_from_key(
-            outbuf.as_mut_ptr(),
-            outbuf.len().try_into().unwrap(),
-            subkey_id,
-            ctx.as_ptr() as *const c_char,
-            key.expose_secret().as_ptr(),
-        ) != 0
-        {
-            return Err(KeyError);
-        }
-    }
+    outbuf.copy_from_slice(
+        Blake2::new()
+            .hash_length(CRYPTO_DIGEST_SIZE)
+            .key(&ctx)
+            .hash(key.expose_secret())
+            .as_bytes(),
+    );
 
     Ok(Secret::new(outbuf))
 }

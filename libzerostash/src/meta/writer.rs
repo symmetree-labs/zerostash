@@ -9,7 +9,7 @@ use crate::objects::{ObjectId, WriteObject};
 
 use failure::Error;
 use serde::Serialize;
-use serde_cbor::{ser::to_vec as serialize_to_vec, ser::to_writer as serialize_to_writer};
+use serde_cbor::ser::to_vec as serialize_to_vec;
 
 use std::collections::HashMap;
 use std::io::{self, Seek, SeekFrom, Write};
