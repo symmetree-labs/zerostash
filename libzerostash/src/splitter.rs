@@ -1,8 +1,6 @@
 use crate::crypto::{chunk_hash, CryptoDigest};
 use crate::rollsum::Rollsum;
 
-use failure::Error;
-
 use std::marker::PhantomData;
 
 pub struct FileSplitter<'file, RS> {
@@ -15,12 +13,12 @@ impl<'file, RS> FileSplitter<'file, RS>
 where
     RS: Rollsum,
 {
-    pub fn new(data: &'file [u8]) -> Result<FileSplitter<'file, RS>, Error> {
-        Ok(FileSplitter {
+    pub fn new(data: &'file [u8]) -> FileSplitter<'file, RS> {
+        FileSplitter {
             data,
             _rs: PhantomData,
             cur: 0,
-        })
+        }
     }
 }
 
@@ -47,7 +45,7 @@ where
 #[cfg(test)]
 mod tests {
     extern crate test;
-    const PATH: &'static str = "tests/data/10k_random_blob";
+    const PATH: &str = "tests/data/10k_random_blob";
 
     #[bench]
     fn bench_chunk_iter(b: &mut test::Bencher) {
@@ -61,7 +59,6 @@ mod tests {
 
         b.iter(|| {
             FileSplitter::<SeaSplit>::new(&mmap)
-                .unwrap()
                 .map(|(_, _, c)| c.len())
                 .sum::<usize>()
         });
@@ -81,7 +78,6 @@ mod tests {
         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
         let size: usize = FileSplitter::<SeaSplit>::new(&mmap)
-            .unwrap()
             .map(|(_, _, c)| c.len())
             .sum();
         assert_eq!(size as u64, metadata.len());

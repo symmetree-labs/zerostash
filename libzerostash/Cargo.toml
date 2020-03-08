@@ -8,26 +8,26 @@ build = "build.rs"
 edition= "2018"
 
 [dependencies]
-glob = { version = "0.3" }
-serde = { version = "1.0", features = ["rc"] }
-serde_derive = "1.0"
-serde_cbor = "^0.10.1"
-walkdir = "^2.2.7"
-dashmap = "3.1"
+blake2b_simd = "0.5"
 crossbeam-channel = "^0.3"
 crossbeam-utils = "^0.6.6"
-memmap = "0.7"
-failure = "0.1"
-lz4 = "^1.23.1"
-ring = "0.16"
+dashmap = "3.1"
+getrandom = "0.1"
+glob = { version = "0.3" }
 itertools = "0.8"
-seahash = "3.0"
-rust-argon2 = "0.6"
-blake2b_simd = "0.5"
 libc = "0.2"
 lru = "0.4"
-getrandom = "0.1"
+lz4 = "^1.23.1"
+memmap = "0.7"
+ring = "0.16"
+rust-argon2 = "0.8"
+seahash = "3.0"
 secrecy = "0.6"
+serde = { version = "1.0", features = ["rc"] }
+serde_cbor = "^0.10.1"
+serde_derive = "1.0"
+thiserror = "1.0"
+walkdir = "^2.2.7"
 zeroize = "1.1"
 
 [dev-dependencies]

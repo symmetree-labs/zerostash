@@ -1,11 +1,10 @@
 use crate::chunks::ChunkStore;
 use crate::files::{self, FileStore};
-use crate::objects::*;
+use crate::objects::ObjectStore;
 use crate::rollsum::SeaSplit;
 use crate::splitter::FileSplitter;
 
 use crossbeam_utils::thread;
-use failure::Error;
 use memmap::MmapOptions;
 use walkdir::{DirEntry, WalkDir};
 
@@ -22,7 +21,7 @@ pub fn recursive(
     fileindex: &mut FileStore,
     objectstore: &mut (impl ObjectStore),
     path: impl AsRef<Path>,
-) -> Result<(), Error> {
+) {
     thread::scope(|s| {
         let (sender, r) = crossbeam_channel::bounded::<DirEntry>(16 * num_threads);
 
@@ -39,8 +38,7 @@ pub fn recursive(
         // otherwise the channels never close
         process_path(num_threads, sender, path);
     })
-    .map(|_| ())
-    .map_err(|e| format_err!("threads: {:?}", e))
+    .unwrap()
 }
 
 fn process_file_loop(
@@ -82,7 +80,7 @@ fn process_file_loop(
                 .unwrap()
         };
 
-        for (start, hash, data) in FileSplitter::<SeaSplit>::new(&mmap).unwrap() {
+        for (start, hash, data) in FileSplitter::<SeaSplit>::new(&mmap) {
             let chunkptr = chunkindex
                 .push(hash, || objectstore.store_chunk(&hash, data))
                 .unwrap();
@@ -124,7 +122,7 @@ mod tests {
         let mut fs = FileStore::default();
         let mut s = NullStorage::default();
 
-        let _files = store::recursive(4, &mut cs, &mut fs, &mut s, PATH_100).unwrap();
+        store::recursive(4, &mut cs, &mut fs, &mut s, PATH_100);
 
         assert_eq!(100, fs.index().len());
         assert_eq!(1_024_000u64, fs.index().iter().map(|f| f.key().size).sum());
@@ -142,10 +140,10 @@ mod tests {
         let mut fs = FileStore::default();
 
         // first build up the file index
-        store::recursive(4, &mut cs, &mut fs, &mut os, PATH_100).unwrap();
+        store::recursive(4, &mut cs, &mut fs, &mut os, PATH_100);
 
         b.iter(|| {
-            store::recursive(4, &mut cs, &mut fs, &mut os, PATH_100).unwrap();
+            store::recursive(4, &mut cs, &mut fs, &mut os, PATH_100);
         })
     }
 
@@ -164,7 +162,6 @@ mod tests {
                 &mut NullStorage::default(),
                 PATH_100,
             )
-            .unwrap()
         })
     }
 }

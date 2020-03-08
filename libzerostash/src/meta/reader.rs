@@ -4,10 +4,31 @@ use crate::crypto::CryptoProvider;
 use crate::meta::{Field, MetaObjectField, MetaObjectHeader, ObjectIndex};
 use crate::objects::{BlockBuffer, Object, ObjectId};
 
-use failure::Error;
+use thiserror::Error;
 
 use std::borrow::Borrow;
-use std::io::Cursor;
+use std::io::{self, Cursor};
+
+#[derive(Error, Debug)]
+pub enum ReadError {
+    #[error("IO error")]
+    Io {
+        #[from]
+        source: io::Error,
+    },
+    #[error("Backend error")]
+    Backend {
+        #[from]
+        source: BackendError,
+    },
+    #[error("Failed to decode header")]
+    InvalidHeader,
+    #[error("No field found in header")]
+    NoField,
+    #[error("No header found in object")]
+    NoHeader,
+}
+pub type Result<T> = std::result::Result<T, ReadError>;
 
 pub struct Reader<B, C> {
     inner: Object<BlockBuffer>,
@@ -32,7 +53,7 @@ where
         }
     }
 
-    pub fn open(&mut self, id: &ObjectId) -> Result<MetaObjectHeader, Error> {
+    pub fn open(&mut self, id: &ObjectId) -> Result<MetaObjectHeader> {
         let obj = self.backend.read_object(id)?;
 
         self.inner.reset_cursor();
@@ -40,25 +61,24 @@ where
         self.crypto.decrypt_object_into(&mut self.inner, &obj);
 
         let mut de = serde_cbor::Deserializer::from_slice(self.inner.as_ref()).into_iter();
-        self.header = de.next().ok_or_else(|| format_err!("bad header"))?.ok();
+        self.header = de.next().ok_or_else(|| ReadError::InvalidHeader)?.ok();
 
-        self.header.clone().ok_or_else(|| format_err!("no header"))
+        self.header.clone().ok_or_else(|| ReadError::NoHeader)
     }
 
     pub fn read_into(
         &mut self,
         field: impl Borrow<Field>,
         store: &mut impl MetaObjectField,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let field = field.borrow();
 
         match self.header {
-            None => bail!("no header"),
+            None => Err(ReadError::NoHeader),
             Some(ref header) => {
                 let frame_start = header
                     .get_offset(&field)
-                    .ok_or_else(|| format_err!("no field"))?
-                    as usize;
+                    .ok_or_else(|| ReadError::NoField)? as usize;
 
                 let buffer: &[u8] = self.inner.as_ref();
                 let decompress =

@@ -2,8 +2,8 @@ use crate::chunks::ChunkPointer;
 use crate::meta::{FieldReader, FieldWriter, MetaObjectField};
 
 use dashmap::DashMap;
-use failure::Error;
 
+use std::error::Error;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -28,7 +28,7 @@ pub struct Entry {
 
 impl Entry {
     #[cfg(windows)]
-    pub fn from_file(file: &fs::File, path: impl AsRef<Path>) -> Result<Entry, Error> {
+    pub fn from_file(file: &fs::File, path: impl AsRef<Path>) -> Result<Entry, Box<dyn Error>> {
         let path = path.as_ref();
         let metadata = file.metadata()?;
         let (unix_secs, unix_nanos) = to_unix_mtime(&metadata)?;
@@ -49,7 +49,7 @@ impl Entry {
     }
 
     #[cfg(unix)]
-    pub fn from_file(file: &fs::File, path: impl AsRef<Path>) -> Result<Entry, Error> {
+    pub fn from_file(file: &fs::File, path: impl AsRef<Path>) -> Result<Entry, Box<dyn Error>> {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
         let metadata = file.metadata()?;
@@ -72,7 +72,7 @@ impl Entry {
     }
 }
 
-fn to_unix_mtime(m: &fs::Metadata) -> Result<(u64, u32), Error> {
+fn to_unix_mtime(m: &fs::Metadata) -> Result<(u64, u32), Box<dyn Error>> {
     let mtime = m.modified()?.duration_since(UNIX_EPOCH)?;
     Ok((mtime.as_secs(), mtime.subsec_nanos()))
 }
@@ -100,7 +100,7 @@ impl MetaObjectField for FileStore {
     type Item = Entry;
 
     fn serialize(&self, mw: &mut impl FieldWriter) {
-        for f in self.0.into_iter() {
+        for f in self.0.iter() {
             mw.write_next(f.key());
         }
     }

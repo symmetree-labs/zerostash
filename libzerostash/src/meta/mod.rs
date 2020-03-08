@@ -1,10 +1,10 @@
 use crate::compress;
 use crate::objects::{ObjectId, WriteObject};
 
-use failure::Error;
 use serde::{de::DeserializeOwned, Serialize};
 
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
 use std::io::Cursor;
 
 type Encoder = compress::Encoder<WriteObject>;
@@ -91,14 +91,14 @@ pub trait FieldWriter {
 }
 
 pub trait FieldReader<T> {
-    fn read_next(&mut self) -> Result<T, Error>;
+    fn read_next(&mut self) -> Result<T, Box<dyn Error>>;
 }
 
 impl<'b, T> FieldReader<T> for Decoder<'b>
 where
     T: DeserializeOwned,
 {
-    fn read_next(&mut self) -> Result<T, Error> {
+    fn read_next(&mut self) -> Result<T, Box<dyn Error>> {
         Ok(T::deserialize(self)?)
     }
 }
