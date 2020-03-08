@@ -1,27 +1,43 @@
-use crate::backends::*;
+use crate::backends::{Backend, BackendError};
 use crate::chunks::ChunkPointer;
 
 use crate::compress;
 use crate::crypto::*;
 use crate::BLOCK_SIZE;
 
-use failure::Error;
 use itertools::Itertools;
+use thiserror::Error;
 
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::string::ToString;
 use std::sync::{Arc, Mutex};
 
+#[derive(Error, Debug)]
+pub enum ObjectError {
+    #[error("IO error")]
+    Io {
+        #[from]
+        source: io::Error,
+    },
+    #[error("Backend error")]
+    Backend {
+        #[from]
+        source: BackendError,
+    },
+}
+
+pub type Result<T> = std::result::Result<T, ObjectError>;
+
 pub trait ObjectStore: Clone + Send {
-    fn store_chunk(&mut self, hash: &CryptoDigest, data: &[u8])
-        -> Result<Arc<ChunkPointer>, Error>;
-    fn flush(&mut self) -> Result<(), Error>;
+    fn store_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>>;
+    fn flush(&mut self) -> Result<()>;
 }
 
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObjectId(CryptoDigest);
 pub type WriteObject = Object<BlockBuffer>;
+pub type ReadObject = Object<ReadBuffer>;
 
 impl ObjectId {
     #[inline(always)]
@@ -60,6 +76,35 @@ impl ToString for ObjectId {
 
 #[derive(Clone)]
 pub struct BlockBuffer(Box<[u8]>);
+pub struct ReadBuffer(ReadBufferInner);
+pub type ReadBufferInner = Box<dyn AsRef<[u8]> + Send + Sync + 'static>;
+
+impl<WO> From<WO> for ReadObject
+where
+    WO: AsRef<WriteObject>,
+{
+    fn from(rwr: WO) -> ReadObject {
+        let rw = rwr.as_ref();
+
+        Object::with_id(
+            rw.id,
+            ReadBuffer(Box::new(rw.buffer.clone()) as ReadBufferInner),
+        )
+    }
+}
+
+impl ReadBuffer {
+    pub fn new(buf: impl AsRef<[u8]> + Send + Sync + 'static) -> ReadBuffer {
+        ReadBuffer(Box::new(buf) as ReadBufferInner)
+    }
+}
+
+impl AsRef<[u8]> for ReadBuffer {
+    #[inline(always)]
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref().as_ref()
+    }
+}
 
 impl Default for BlockBuffer {
     #[inline]
@@ -359,11 +404,7 @@ where
     B: Backend + Send,
     C: CryptoProvider + Send,
 {
-    fn store_chunk(
-        &mut self,
-        hash: &CryptoDigest,
-        data: &[u8],
-    ) -> Result<Arc<ChunkPointer>, Error> {
+    fn store_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>> {
         let mut compressed = compress::block(&data)?;
         let size = compressed.len();
         let mut offs = self.object.position();
@@ -387,7 +428,7 @@ where
         }))
     }
 
-    fn flush(&mut self) -> Result<(), Error> {
+    fn flush(&mut self) -> Result<()> {
         self.object.finalize(&self.crypto);
         self.backend.write_object(&self.object)?;
 
@@ -402,16 +443,12 @@ where
 pub struct NullStorage(pub Arc<Mutex<usize>>);
 
 impl ObjectStore for NullStorage {
-    fn store_chunk(
-        &mut self,
-        _hash: &CryptoDigest,
-        data: &[u8],
-    ) -> Result<Arc<ChunkPointer>, Error> {
+    fn store_chunk(&mut self, _hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>> {
         *self.0.lock().unwrap() += data.len();
         Ok(Arc::default())
     }
 
-    fn flush(&mut self) -> Result<(), Error> {
+    fn flush(&mut self) -> Result<()> {
         Ok(())
     }
 }

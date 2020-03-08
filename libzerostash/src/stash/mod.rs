@@ -1,12 +1,12 @@
 use crate::{backends::Backend, chunks, files, meta, objects};
 pub use crate::{crypto::StashKey, meta::ObjectIndex};
 
-use failure::Error;
-
 use std::path::Path;
 
 pub(crate) mod restore;
 pub(crate) mod store;
+
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub struct Stash<B> {
     backend: B,
@@ -31,7 +31,7 @@ where
         }
     }
 
-    pub fn read(&mut self) -> Result<&Self, Error> {
+    pub fn read(&mut self) -> Result<&Self> {
         let mut metareader =
             meta::Reader::new(self.backend.clone(), self.master_key.get_meta_crypto()?);
         let mut next_object = Some(self.master_key.root_object_id()?);
@@ -53,23 +53,34 @@ where
         Ok(self)
     }
 
+    pub fn list<'a>(&'a self, glob: impl AsRef<str>) -> restore::FileIterator<'a> {
+        let matcher = glob::Pattern::new(glob.as_ref()).unwrap();
+        Box::new(
+            self.file_index()
+                .into_iter()
+                .map(|r| r.key().clone())
+                .filter(move |f| matcher.matches_with(&f.name, glob::MatchOptions::new())),
+        )
+    }
+
     pub fn restore_by_glob(
         &mut self,
         threads: usize,
         pattern: impl AsRef<str>,
         target: impl AsRef<Path>,
-    ) -> Result<(), Error> {
-        restore::from_glob(
-            pattern.as_ref(),
+    ) -> Result<()> {
+        restore::from_iter(
             threads,
-            self.files.index(),
+            self.list(pattern),
             &self.backend,
             self.master_key.get_object_crypto()?,
             target,
-        )
+        );
+
+        Ok(())
     }
 
-    pub fn add_recursive(&mut self, threads: usize, path: impl AsRef<Path>) -> Result<(), Error> {
+    pub fn add_recursive(&mut self, threads: usize, path: impl AsRef<Path>) -> Result<()> {
         let mut objstore =
             objects::Storage::new(self.backend.clone(), self.master_key.get_object_crypto()?);
 
@@ -79,10 +90,12 @@ where
             &mut self.files,
             &mut objstore,
             path,
-        )
+        );
+
+        Ok(())
     }
 
-    pub fn commit(&mut self) -> Result<ObjectIndex, Error> {
+    pub fn commit(&mut self) -> Result<ObjectIndex> {
         let mut mw = meta::Writer::new(
             self.master_key.root_object_id()?,
             self.backend.clone(),

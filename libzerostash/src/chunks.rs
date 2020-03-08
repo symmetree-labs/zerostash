@@ -1,9 +1,8 @@
 use crate::crypto::{CryptoDigest, Tag};
 use crate::meta::{FieldReader, FieldWriter, MetaObjectField};
-use crate::objects::ObjectId;
+use crate::objects::{ObjectError, ObjectId};
 
 use dashmap::{mapref::entry::Entry, DashMap};
-use failure::Error;
 
 use std::sync::Arc;
 
@@ -28,8 +27,8 @@ impl ChunkStore {
     pub fn push(
         &self,
         digest: CryptoDigest,
-        mut store: impl FnMut() -> Result<Arc<ChunkPointer>, Error>,
-    ) -> Result<Arc<ChunkPointer>, Error> {
+        mut store: impl FnMut() -> Result<Arc<ChunkPointer>, ObjectError>,
+    ) -> Result<Arc<ChunkPointer>, ObjectError> {
         // do a simple check to ensure we don't write-lock straight away
         if let Some(ptr) = self.0.get(&digest) {
             return Ok(ptr.clone());
@@ -53,7 +52,7 @@ impl MetaObjectField for ChunkStore {
     type Item = (CryptoDigest, Arc<ChunkPointer>);
 
     fn serialize(&self, mw: &mut impl FieldWriter) {
-        for f in self.0.into_iter() {
+        for f in self.0.iter() {
             mw.write_next((f.key(), f.value()));
         }
     }

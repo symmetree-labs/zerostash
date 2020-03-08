@@ -2,10 +2,10 @@ use crate::chunks::ChunkPointer;
 use crate::objects::{Object, ObjectId, WriteObject};
 
 use blake2b_simd::blake2bp::Params as Blake2;
-use failure::Fail;
 use getrandom::getrandom;
 use ring::aead;
 use secrecy::{ExposeSecret, Secret};
+use thiserror::Error;
 use zeroize::Zeroize;
 
 pub const CRYPTO_DIGEST_SIZE: usize = 32;
@@ -13,6 +13,16 @@ pub type CryptoDigest = [u8; CRYPTO_DIGEST_SIZE];
 pub type Tag = [u8; 16];
 type Nonce = [u8; 12];
 type Key = Secret<[u8; CRYPTO_DIGEST_SIZE]>;
+
+#[derive(Error, Debug)]
+pub enum CryptoError {
+    #[error("Bad key operation")]
+    KeyError {
+        #[from]
+        source: argon2::Error,
+    },
+}
+pub type Result<T> = std::result::Result<T, CryptoError>;
 
 pub fn chunk_hash(content: &[u8]) -> CryptoDigest {
     let mut output = CryptoDigest::default();
@@ -49,33 +59,26 @@ pub trait CryptoProvider: Random + Clone + Send {
     );
 }
 
-#[derive(Debug, Fail)]
-#[fail(display = "Key error")]
-pub struct KeyError;
-
 pub struct StashKey {
     master_key: Key,
 }
 
 impl StashKey {
-    pub fn open_stash(
-        username: impl AsRef<str>,
-        password: impl AsRef<str>,
-    ) -> Result<StashKey, KeyError> {
+    pub fn open_stash(username: impl AsRef<str>, password: impl AsRef<str>) -> Result<StashKey> {
         derive_argon2(username.as_ref().as_bytes(), password.as_ref().as_bytes())
             .map(|k| StashKey { master_key: k })
     }
 
-    pub fn root_object_id(&self) -> Result<ObjectId, KeyError> {
+    pub fn root_object_id(&self) -> Result<ObjectId> {
         derive_subkey(&self.master_key, b"_0s_root")
             .map(|k| ObjectId::from_bytes(k.expose_secret()))
     }
 
-    pub fn get_meta_crypto(&self) -> Result<impl CryptoProvider, KeyError> {
+    pub fn get_meta_crypto(&self) -> Result<impl CryptoProvider> {
         derive_subkey(&self.master_key, b"_0s_meta").map(ObjectOperations::new)
     }
 
-    pub fn get_object_crypto(&self) -> Result<impl CryptoProvider, KeyError> {
+    pub fn get_object_crypto(&self) -> Result<impl CryptoProvider> {
         derive_subkey(&self.master_key, b"_0s_obj_").map(ObjectOperations::new)
     }
 }
@@ -210,7 +213,7 @@ fn get_chunk_nonce(object_id: &ObjectId, data_size: u32) -> aead::Nonce {
     aead::Nonce::assume_unique_for_key(nonce)
 }
 
-fn derive_argon2(salt_raw: &[u8], password: &[u8]) -> Result<Key, KeyError> {
+fn derive_argon2(salt_raw: &[u8], password: &[u8]) -> Result<Key> {
     let salt = Blake2::new().hash_length(16).hash(salt_raw);
 
     let mut result = argon2::hash_raw(
@@ -221,8 +224,7 @@ fn derive_argon2(salt_raw: &[u8], password: &[u8]) -> Result<Key, KeyError> {
             variant: argon2::Variant::Argon2id,
             ..argon2::Config::default()
         },
-    )
-    .map_err(|_| KeyError)?;
+    )?;
 
     let mut outbuf = [0; CRYPTO_DIGEST_SIZE];
     outbuf.copy_from_slice(&result);
@@ -231,7 +233,7 @@ fn derive_argon2(salt_raw: &[u8], password: &[u8]) -> Result<Key, KeyError> {
     Ok(Secret::new(outbuf))
 }
 
-fn derive_subkey(key: &Key, ctx: &[u8]) -> Result<Key, KeyError> {
+fn derive_subkey(key: &Key, ctx: &[u8]) -> Result<Key> {
     assert!(ctx.len() < 16);
 
     let mut outbuf = [0; CRYPTO_DIGEST_SIZE];

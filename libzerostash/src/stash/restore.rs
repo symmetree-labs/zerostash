@@ -8,12 +8,12 @@ use crate::files::{self, FileIndex};
 use crate::objects::*;
 
 use crossbeam_utils::thread;
-use failure::Error;
 use itertools::Itertools;
 use memmap::MmapOptions;
 
 use std::collections::HashMap;
 use std::env;
+use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -24,15 +24,15 @@ type ThreadWork = (PathBuf, Arc<files::Entry>);
 type Sender = crossbeam_channel::Sender<ThreadWork>;
 type Receiver = crossbeam_channel::Receiver<ThreadWork>;
 
-pub fn from_glob(
-    pattern: &str,
+pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + 'a)>;
+
+pub fn from_iter(
     num_threads: usize,
-    fileindex: &FileIndex,
+    iter: FileIterator,
     backend: &(impl Backend),
     crypto: impl CryptoProvider,
     target: impl AsRef<Path>,
-) -> Result<(), Error> {
-    let matcher = glob::Pattern::new(pattern)?;
+) {
     thread::scope(move |s| {
         // need to set up threads here and stuff
         let (sender, receiver) = crossbeam_channel::bounded::<ThreadWork>(2 * num_threads);
@@ -45,12 +45,7 @@ pub fn from_glob(
             s.spawn(move |_| process_packet_loop(receiver, backend, crypto));
         }
 
-        for f in fileindex.into_iter() {
-            let md = f.key();
-            if !matcher.matches_with(&md.name, glob::MatchOptions::new()) {
-                continue;
-            }
-
+        for md in iter {
             let path = get_path(&md.name);
 
             // if there's no parent, then the entire thing is root.
@@ -66,8 +61,7 @@ pub fn from_glob(
             sender.send((filename, md.clone()));
         }
     })
-    .map(|_| ())
-    .map_err(|e| format_err!("threads: {:?}", e))
+    .unwrap();
 }
 
 fn process_packet_loop(r: Receiver, backend: impl Backend, crypto: impl CryptoProvider) {

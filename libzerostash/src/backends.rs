@@ -1,20 +1,33 @@
-use crate::objects::{BlockBuffer, Object, ObjectId, WriteObject};
+use crate::objects::{Object, ObjectId, ReadBuffer, ReadObject, WriteObject};
 
-use failure::Error;
 use lru::LruCache;
 use memmap::{Mmap, MmapOptions};
+use thiserror::Error;
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-pub trait Backend: Clone + Send {
-    type Buffer: AsRef<[u8]>;
+#[derive(Error, Debug)]
+pub enum BackendError {
+    #[error("IO error")]
+    Io {
+        #[from]
+        source: io::Error,
+    },
+    #[error("No object found")]
+    NoObjectFound,
+    #[error("Can't create object")]
+    Create,
+}
 
-    fn write_object(&self, object: &WriteObject) -> Result<(), Error>;
-    fn read_object(&self, id: &ObjectId) -> Result<Arc<Object<Self::Buffer>>, Error>;
+pub type Result<T> = std::result::Result<T, BackendError>;
+
+pub trait Backend: Clone + Send {
+    fn write_object(&self, object: &WriteObject) -> Result<()>;
+    fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>>;
 }
 
 pub struct MmappedFile {
@@ -31,7 +44,7 @@ impl AsRef<[u8]> for MmappedFile {
 #[derive(Clone)]
 pub struct Directory {
     target: Arc<PathBuf>,
-    read_lru: Arc<Mutex<LruCache<ObjectId, Arc<Object<MmappedFile>>>>>,
+    read_lru: Arc<Mutex<LruCache<ObjectId, Arc<ReadObject>>>>,
 }
 
 impl Directory {
@@ -45,9 +58,7 @@ impl Directory {
 }
 
 impl Backend for Directory {
-    type Buffer = MmappedFile;
-
-    fn write_object(&self, object: &WriteObject) -> Result<(), Error> {
+    fn write_object(&self, object: &WriteObject) -> Result<()> {
         let size = object.buffer.as_ref().len();
 
         let filename = self.target.join(object.id.to_string());
@@ -69,7 +80,7 @@ impl Backend for Directory {
         Ok(())
     }
 
-    fn read_object(&self, id: &ObjectId) -> Result<Arc<Object<Self::Buffer>>, Error> {
+    fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
         let mut lru = self.read_lru.lock().unwrap();
 
         match lru.get(id) {
@@ -79,7 +90,10 @@ impl Backend for Directory {
                 let file = fs::OpenOptions::new().read(true).open(filename)?;
                 let mmap = unsafe { MmapOptions::new().map(&file)? };
 
-                let obj = Arc::new(Object::with_id(*id, MmappedFile { _file: file, mmap }));
+                let obj = Arc::new(Object::with_id(
+                    *id,
+                    ReadBuffer::new(MmappedFile { _file: file, mmap }),
+                ));
                 lru.put(*id, obj.clone());
 
                 Ok(obj)
@@ -89,24 +103,24 @@ impl Backend for Directory {
 }
 
 #[derive(Clone, Default)]
-pub struct InMemoryBackend(Arc<Mutex<HashMap<ObjectId, WriteObject>>>);
+pub struct InMemoryBackend(Arc<Mutex<HashMap<ObjectId, Arc<ReadObject>>>>);
 
 impl Backend for InMemoryBackend {
-    type Buffer = BlockBuffer;
-
-    fn write_object(&self, object: &WriteObject) -> Result<(), Error> {
-        self.0.lock().unwrap().insert(object.id, object.clone());
+    fn write_object(&self, object: &WriteObject) -> Result<()> {
+        self.0
+            .lock()
+            .unwrap()
+            .insert(object.id, Arc::new(object.into()));
         Ok(())
     }
 
-    fn read_object(&self, id: &ObjectId) -> Result<Arc<Object<Self::Buffer>>, Error> {
+    fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
         self.0
             .lock()
             .unwrap()
             .get(id)
-            .ok_or_else(|| format_err!("invalid"))
-            .map(Object::clone)
-            .map(Arc::new)
+            .ok_or_else(|| BackendError::NoObjectFound)
+            .map(Arc::clone)
     }
 }
 
@@ -120,14 +134,12 @@ impl NullBackend {
 }
 
 impl Backend for NullBackend {
-    type Buffer = Vec<u8>;
-
-    fn write_object(&self, _object: &WriteObject) -> Result<(), Error> {
+    fn write_object(&self, _object: &WriteObject) -> Result<()> {
         *self.0.lock().unwrap() += 1;
         Ok(())
     }
 
-    fn read_object(&self, _id: &ObjectId) -> Result<Arc<Object<Self::Buffer>>, Error> {
+    fn read_object(&self, _id: &ObjectId) -> Result<Arc<ReadObject>> {
         unimplemented!();
     }
 }

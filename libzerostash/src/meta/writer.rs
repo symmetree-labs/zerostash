@@ -7,12 +7,13 @@ use crate::meta::{
 };
 use crate::objects::{ObjectId, WriteObject};
 
-use failure::Error;
 use serde::Serialize;
 use serde_cbor::ser::to_vec as serialize_to_vec;
 
 use std::collections::HashMap;
 use std::io::{self, Seek, SeekFrom, Write};
+
+pub type Result<T> = std::result::Result<T, io::Error>;
 
 pub struct Writer<B, C> {
     objects: ObjectIndex,
@@ -52,11 +53,11 @@ where
     B: Backend,
     C: CryptoProvider,
 {
-    pub fn new(root_object_id: ObjectId, backend: B, crypto: C) -> Result<Writer<B, C>, Error> {
+    pub fn new(root_object_id: ObjectId, backend: B, crypto: C) -> Result<Writer<B, C>> {
         let mut object = WriteObject::default();
         object.reserve_tag();
         object.set_id(root_object_id);
-        object.seek(SeekFrom::Start(HEADER_SIZE as u64)).unwrap();
+        object.seek(SeekFrom::Start(HEADER_SIZE as u64))?;
 
         Ok(Writer {
             encoder: WriteState::Parked(object),
@@ -148,11 +149,11 @@ enum WriteState {
 }
 
 impl WriteState {
-    fn start(&mut self) -> Result<&mut Self, Error> {
+    fn start(&mut self) -> Result<&mut Self> {
         use WriteState::*;
 
         match self {
-            Idle => Err(format_err!("Uninitialized")),
+            Idle => unreachable!(),
             Parked(_) => {
                 let mut tmp = WriteState::Idle;
                 std::mem::swap(&mut tmp, self);
@@ -169,14 +170,14 @@ impl WriteState {
         }
     }
 
-    fn finish(&mut self) -> Result<WriteObject, Error> {
+    fn finish(&mut self) -> Result<WriteObject> {
         use WriteState::*;
 
         let mut encoder = WriteState::Idle;
         std::mem::swap(self, &mut encoder);
 
         match encoder {
-            Idle => Err(format_err!("Uninitialized")),
+            Idle => unreachable!(),
             Parked(w) => Ok(w),
             Encoding(e) => {
                 let (object, err) = e.finish();
@@ -187,10 +188,10 @@ impl WriteState {
         }
     }
 
-    fn writer(&self) -> Result<&WriteObject, Error> {
+    fn writer(&self) -> Result<&WriteObject> {
         use WriteState::*;
         match self {
-            Idle => Err(format_err!("Uninitialized")),
+            Idle => unreachable!(),
             Parked(w) => Ok(w),
             Encoding(e) => Ok(e.writer()),
         }
