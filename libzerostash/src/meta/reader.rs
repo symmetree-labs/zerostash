@@ -1,4 +1,4 @@
-use crate::backends::*;
+use crate::backends::{Backend, BackendError};
 use crate::compress;
 use crate::crypto::CryptoProvider;
 use crate::meta::{Field, MetaObjectField, MetaObjectHeader, ObjectIndex};
@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use std::borrow::Borrow;
 use std::io::{self, Cursor};
+use std::sync::Arc;
 
 #[derive(Error, Debug)]
 pub enum ReadError {
@@ -30,20 +31,19 @@ pub enum ReadError {
 }
 pub type Result<T> = std::result::Result<T, ReadError>;
 
-pub struct Reader<B, C> {
+pub struct Reader<C> {
     inner: Object<BlockBuffer>,
     header: Option<MetaObjectHeader>,
     objects: ObjectIndex,
-    backend: B,
+    backend: Arc<dyn Backend>,
     crypto: C,
 }
 
-impl<B, C> Reader<B, C>
+impl<C> Reader<C>
 where
-    B: Backend,
     C: CryptoProvider,
 {
-    pub fn new(backend: B, crypto: C) -> Reader<B, C> {
+    pub fn new(backend: Arc<dyn Backend>, crypto: C) -> Reader<C> {
         Reader {
             inner: Object::default(),
             objects: ObjectIndex::default(),
