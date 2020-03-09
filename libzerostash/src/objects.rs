@@ -355,19 +355,18 @@ impl<T> AsRef<Object<T>> for Object<T> {
     }
 }
 
-pub struct Storage<B, C> {
-    backend: B,
+pub struct Storage<C> {
+    backend: Arc<dyn Backend>,
     crypto: C,
     object: WriteObject,
     capacity: usize,
 }
 
-impl<B, C> Clone for Storage<B, C>
+impl<C> Clone for Storage<C>
 where
-    B: Clone,
     C: Random + Clone,
 {
-    fn clone(&self) -> Storage<B, C> {
+    fn clone(&self) -> Storage<C> {
         let mut object = self.object.clone();
         object.id.reset(&self.crypto);
 
@@ -380,12 +379,11 @@ where
     }
 }
 
-impl<B, C> Storage<B, C>
+impl<C> Storage<C>
 where
-    B: Backend + Send,
-    C: CryptoProvider + Send,
+    C: CryptoProvider,
 {
-    pub fn new(backend: B, crypto: C) -> Storage<B, C> {
+    pub fn new(backend: Arc<dyn Backend>, crypto: C) -> Storage<C> {
         let mut object = WriteObject::default();
         object.id.reset(&crypto);
 
@@ -399,10 +397,9 @@ where
     }
 }
 
-impl<B, C> ObjectStore for Storage<B, C>
+impl<C> ObjectStore for Storage<C>
 where
-    B: Backend + Send,
-    C: CryptoProvider + Send,
+    C: CryptoProvider,
 {
     fn store_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>> {
         let mut compressed = compress::block(&data)?;

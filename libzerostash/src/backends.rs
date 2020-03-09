@@ -25,7 +25,7 @@ pub enum BackendError {
 
 pub type Result<T> = std::result::Result<T, BackendError>;
 
-pub trait Backend: Clone + Send {
+pub trait Backend: Send + Sync {
     fn write_object(&self, object: &WriteObject) -> Result<()>;
     fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>>;
 }

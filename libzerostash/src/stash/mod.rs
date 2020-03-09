@@ -2,24 +2,22 @@ use crate::{backends::Backend, chunks, files, meta, objects};
 pub use crate::{crypto::StashKey, meta::ObjectIndex};
 
 use std::path::Path;
+use std::sync::Arc;
 
 pub(crate) mod restore;
 pub(crate) mod store;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-pub struct Stash<B> {
-    backend: B,
+pub struct Stash {
+    backend: Arc<dyn Backend>,
     chunks: chunks::ChunkStore,
     files: files::FileStore,
     master_key: StashKey,
 }
 
-impl<B> Stash<B>
-where
-    B: Backend,
-{
-    pub fn new(backend: B, master_key: StashKey) -> Stash<B> {
+impl Stash {
+    pub fn new(backend: Arc<dyn Backend>, master_key: StashKey) -> Stash {
         let chunks = chunks::ChunkStore::default();
         let files = files::FileStore::default();
 
@@ -72,7 +70,7 @@ where
         restore::from_iter(
             threads,
             self.list(pattern),
-            &self.backend,
+            self.backend.clone(),
             self.master_key.get_object_crypto()?,
             target,
         );

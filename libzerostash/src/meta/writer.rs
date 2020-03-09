@@ -1,4 +1,4 @@
-use crate::backends::*;
+use crate::backends::Backend;
 use crate::compress::{self, STREAM_BLOCK_SIZE};
 use crate::crypto::CryptoProvider;
 use crate::meta::{
@@ -12,21 +12,21 @@ use serde_cbor::ser::to_vec as serialize_to_vec;
 
 use std::collections::HashMap;
 use std::io::{self, Seek, SeekFrom, Write};
+use std::sync::Arc;
 
 pub type Result<T> = std::result::Result<T, io::Error>;
 
-pub struct Writer<B, C> {
+pub struct Writer<C> {
     objects: ObjectIndex,
     offsets: Vec<FieldOffset>,
     encoder: WriteState,
     current_field: Option<Field>,
-    backend: B,
+    backend: Arc<dyn Backend>,
     crypto: C,
 }
 
-impl<B, C> FieldWriter for Writer<B, C>
+impl<C> FieldWriter for Writer<C>
 where
-    B: Backend,
     C: CryptoProvider,
 {
     fn write_next(&mut self, obj: impl Serialize) {
@@ -44,16 +44,19 @@ where
             self.seal_and_store();
         }
 
-        self.encoder.start().unwrap().write(&record).unwrap();
+        self.encoder.start().unwrap().write_all(&record).unwrap();
     }
 }
 
-impl<B, C> Writer<B, C>
+impl<C> Writer<C>
 where
-    B: Backend,
     C: CryptoProvider,
 {
-    pub fn new(root_object_id: ObjectId, backend: B, crypto: C) -> Result<Writer<B, C>> {
+    pub fn new(
+        root_object_id: ObjectId,
+        backend: Arc<dyn Backend>,
+        crypto: C,
+    ) -> Result<Writer<C>> {
         let mut object = WriteObject::default();
         object.reserve_tag();
         object.set_id(root_object_id);
@@ -90,10 +93,16 @@ where
         self.current_field = None;
 
         // skip to next multiple of STREAM_BLOCK_SIZE
-        let mut object = self.encoder.finish().unwrap();
+        let object = self.encoder.writer().unwrap();
         let skip = STREAM_BLOCK_SIZE - (object.position() - HEADER_SIZE) % STREAM_BLOCK_SIZE;
-        object.seek(SeekFrom::Current(skip as i64)).unwrap();
-        self.encoder = WriteState::Parked(object);
+
+        if skip + object.position() < object.capacity() {
+            let mut object = self.encoder.finish().unwrap();
+            object.seek(SeekFrom::Current(skip as i64)).unwrap();
+            self.encoder = WriteState::Parked(object);
+        } else {
+            self.seal_and_store();
+        }
     }
 
     pub fn seal_and_store(&mut self) {

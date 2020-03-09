@@ -29,7 +29,7 @@ pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + 'a)>;
 pub fn from_iter(
     num_threads: usize,
     iter: FileIterator,
-    backend: &(impl Backend),
+    backend: Arc<dyn Backend>,
     crypto: impl CryptoProvider,
     target: impl AsRef<Path>,
 ) {
@@ -64,7 +64,7 @@ pub fn from_iter(
     .unwrap();
 }
 
-fn process_packet_loop(r: Receiver, backend: impl Backend, crypto: impl CryptoProvider) {
+fn process_packet_loop(r: Receiver, backend: Arc<dyn Backend>, crypto: impl CryptoProvider) {
     // Since resources here are all managed by RAII, and they all
     // implement Drop, we can simply go through the Arc<_>s,
     // mmap them, open the corresponding objects to extract details,
