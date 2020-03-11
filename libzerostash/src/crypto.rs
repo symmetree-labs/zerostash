@@ -217,8 +217,8 @@ fn derive_argon2(salt_raw: &[u8], password: &[u8]) -> Result<Key> {
     let salt = Blake2::new().hash_length(16).hash(salt_raw);
 
     let mut result = argon2::hash_raw(
-        salt.as_bytes(),
         password,
+        salt.as_bytes(),
         &argon2::Config {
             hash_length: CRYPTO_DIGEST_SIZE as u32,
             variant: argon2::Variant::Argon2id,
