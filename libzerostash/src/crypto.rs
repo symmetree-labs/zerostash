@@ -16,7 +16,7 @@ type Key = Secret<[u8; CRYPTO_DIGEST_SIZE]>;
 
 #[derive(Error, Debug)]
 pub enum CryptoError {
-    #[error("Bad key operation")]
+    #[error("Key error: {source}")]
     KeyError {
         #[from]
         source: argon2::Error,
@@ -69,16 +69,16 @@ impl StashKey {
             .map(|k| StashKey { master_key: k })
     }
 
-    pub fn root_object_id(&self) -> Result<ObjectId> {
+    pub(crate) fn root_object_id(&self) -> Result<ObjectId> {
         derive_subkey(&self.master_key, b"_0s_root")
             .map(|k| ObjectId::from_bytes(k.expose_secret()))
     }
 
-    pub fn get_meta_crypto(&self) -> Result<impl CryptoProvider> {
+    pub(crate) fn get_meta_crypto(&self) -> Result<impl CryptoProvider> {
         derive_subkey(&self.master_key, b"_0s_meta").map(ObjectOperations::new)
     }
 
-    pub fn get_object_crypto(&self) -> Result<impl CryptoProvider> {
+    pub(crate) fn get_object_crypto(&self) -> Result<impl CryptoProvider> {
         derive_subkey(&self.master_key, b"_0s_obj_").map(ObjectOperations::new)
     }
 }

@@ -38,7 +38,7 @@ pub fn main() {
     // but i can't be bothered to find it
     let (store_time, commit_time, ol, fl, cl, creuse_sum, creuse_cnt, ssize, tlen, tsize) = {
         let key = StashKey::open_stash(&key, &key).unwrap();
-        let mut repo = Stash::new(Arc::new(backends::Directory::new(&output)), key);
+        let mut repo = Stash::new(Arc::new(backends::Directory::new(&output).unwrap()), key);
 
         let store_start = Instant::now();
         repo.add_recursive(threads.parse().unwrap(), &path).unwrap();
@@ -130,7 +130,7 @@ pub fn main() {
 
     {
         let key = StashKey::open_stash(&key, &key).unwrap();
-        let mut repo = Stash::new(Arc::new(backends::Directory::new(&output)), key);
+        let mut repo = Stash::new(Arc::new(backends::Directory::new(&output).unwrap()), key);
 
         let read_start = Instant::now();
         repo.read().unwrap();

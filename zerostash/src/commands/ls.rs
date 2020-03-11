@@ -1,6 +1,9 @@
 //! `ls` subcommand
 
+use crate::application::app_reader;
 use abscissa_core::{Command, Options, Runnable};
+use anyhow::{format_err, Error};
+use std::process;
 
 /// `ls` subcommand
 ///
@@ -11,22 +14,21 @@ use abscissa_core::{Command, Options, Runnable};
 /// <https://docs.rs/gumdrop/>
 #[derive(Command, Debug, Options)]
 pub struct Ls {
-    // Example `--foobar` (with short `-f` argument)
-    // #[options(short = "f", help = "foobar path"]
-    // foobar: Option<PathBuf>
+    #[options(free)]
+    stash: String,
 
-    // Example `--baz` argument with no short version
-    // #[options(no_short, help = "baz path")]
-    // baz: Options<PathBuf>
-
-    // "free" arguments don't have an associated flag
-    // #[options(free)]
-    // free_args: Vec<String>,
+    #[options(free)]
+    paths: Vec<String>,
 }
 
 impl Runnable for Ls {
     /// Start the application.
     fn run(&self) {
-        // Your code goes here
+        let app = &*app_reader();
+        let stash = app.open_stash(&self.stash);
+
+        for file in stash.list(&self.paths) {
+            println!("{}: {}", self.stash, file.name);
+        }
     }
 }

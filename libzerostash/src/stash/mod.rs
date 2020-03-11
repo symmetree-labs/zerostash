@@ -51,14 +51,16 @@ impl Stash {
         Ok(self)
     }
 
-    pub fn list<'a>(&'a self, glob: impl AsRef<str>) -> restore::FileIterator<'a> {
-        let matcher = glob::Pattern::new(glob.as_ref()).unwrap();
-        Box::new(
-            self.file_index()
-                .into_iter()
-                .map(|r| r.key().clone())
-                .filter(move |f| matcher.matches_with(&f.name, glob::MatchOptions::new())),
-        )
+    pub fn list<'a>(&'a self, glob: &'a [impl AsRef<str>]) -> restore::FileIterator<'a> {
+        let mut matchers = glob.iter().map(|g| glob::Pattern::new(g.as_ref()).unwrap());
+        let base_iter = self.file_index().into_iter().map(|r| r.key().clone());
+
+        match glob.len() {
+            i if i == 0 => Box::new(base_iter),
+            _ => Box::new(base_iter.filter(move |f| {
+                matchers.any(|m| m.matches_with(&f.name, glob::MatchOptions::new()))
+            })),
+        }
     }
 
     pub fn restore_by_glob(
@@ -69,7 +71,7 @@ impl Stash {
     ) -> Result<()> {
         restore::from_iter(
             threads,
-            self.list(pattern),
+            self.list(&[pattern]),
             self.backend.clone(),
             self.master_key.get_object_crypto()?,
             target,

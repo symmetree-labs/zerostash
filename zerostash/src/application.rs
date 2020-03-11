@@ -1,10 +1,17 @@
 //! Zerostash Abscissa Application
 
-use crate::{commands::ZerostashCmd, config::ZerostashConfig};
+use crate::{
+    commands::ZerostashCmd,
+    config::{ask_credentials, ZerostashConfig},
+};
 use abscissa_core::{
     application::{self, AppCell},
-    config, trace, Application, EntryPoint, FrameworkError, StandardPaths,
+    config, status_err, trace, Application, EntryPoint, FrameworkError, StandardPaths,
 };
+use anyhow::{format_err, Error};
+use libzerostash::Stash;
+
+use std::{process, sync::Arc};
 
 /// Application state
 pub static APPLICATION: AppCell<ZerostashApp> = AppCell::new();
@@ -47,6 +54,31 @@ impl Default for ZerostashApp {
         Self {
             config: None,
             state: application::State::default(),
+        }
+    }
+}
+
+impl ZerostashApp {
+    /// Open a stash or produce an error
+    ///
+    /// # Arguments
+    ///
+    /// * `pathy` - Can be a path or an alias stored in the config
+    pub(crate) fn open_stash(&self, pathy: impl AsRef<str>) -> Stash {
+        let config = &*app_config();
+
+        match config.resolve_stash(&pathy) {
+            None => {
+                let path = pathy.as_ref();
+                let key = ask_credentials().unwrap_or_else(|e| fatal_error(e));
+                let backend = Arc::new(
+                    libzerostash::backends::Directory::new(path)
+                        .unwrap_or_else(|e| fatal_error(e.into())),
+                );
+
+                Stash::new(backend, key)
+            }
+            Some(cfg) => cfg.try_open().unwrap_or_else(|e| fatal_error(e)),
         }
     }
 }
@@ -106,4 +138,9 @@ impl Application for ZerostashApp {
             trace::Config::default()
         }
     }
+}
+
+pub fn fatal_error(err: Error) -> ! {
+    status_err!("{} fatal error: {}", (&*app_reader()).name(), err);
+    process::exit(1)
 }
