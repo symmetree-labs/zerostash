@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Error, Debug)]
 pub enum BackendError {
-    #[error("IO error")]
+    #[error("IO error: {source}")]
     Io {
         #[from]
         source: io::Error,
@@ -48,12 +48,12 @@ pub struct Directory {
 }
 
 impl Directory {
-    pub fn new(target: impl AsRef<Path>) -> Directory {
-        fs::create_dir_all(&target).expect("dir");
-        Directory {
+    pub fn new(target: impl AsRef<Path>) -> Result<Directory> {
+        fs::create_dir_all(&target)?;
+        Ok(Directory {
             target: Arc::new(target.as_ref().into()),
             read_lru: Arc::new(Mutex::new(LruCache::new(100))),
-        }
+        })
     }
 }
 

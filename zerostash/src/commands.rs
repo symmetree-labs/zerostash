@@ -29,9 +29,6 @@ use abscissa_core::{
 };
 use std::path::PathBuf;
 
-/// Zerostash Configuration Filename
-pub const CONFIG_FILE: &str = "zerostash.toml";
-
 /// Zerostash Subcommands
 #[derive(Command, Debug, Options, Runnable)]
 pub enum ZerostashCmd {
@@ -76,10 +73,7 @@ pub enum ZerostashCmd {
 impl Configurable<ZerostashConfig> for ZerostashCmd {
     /// Location of the configuration file
     fn config_path(&self) -> Option<PathBuf> {
-        // Check if the config file exists, and if it does not, ignore it.
-        // If you'd like for a missing configuration file to be a hard error
-        // instead, always return `Some(CONFIG_FILE)` here.
-        let filename = PathBuf::from(CONFIG_FILE);
+        let filename = PathBuf::from(ZerostashConfig::path());
 
         if filename.exists() {
             Some(filename)

@@ -16,6 +16,7 @@ pub mod stash;
 pub mod rollsum;
 pub mod splitter;
 
+pub use crypto::StashKey;
 pub use stash::Stash;
 
 // Use block size of 4MiB for now
