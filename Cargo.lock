@@ -449,7 +449,7 @@ version = "0.1.0"
 dependencies = [
  "blake2b_simd 0.5.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "crossbeam-channel 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "crossbeam-utils 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "crossbeam-utils 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "dashmap 3.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "getrandom 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
