@@ -30,7 +30,7 @@ impl Default for ZerostashConfig {
 #[serde(deny_unknown_fields)]
 pub struct Stash {
     key: Key,
-    backend: Backend,
+    pub(crate) backend: Backend,
 }
 
 impl Stash {
