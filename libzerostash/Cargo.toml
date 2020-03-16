@@ -14,7 +14,7 @@ crossbeam-utils = "^0.6.6"
 dashmap = "3.7"
 getrandom = "0.1"
 glob = { version = "0.3" }
-itertools = "0.8"
+itertools = "0.9"
 libc = "0.2"
 lru = "0.4"
 lz4 = "^1.23.1"
