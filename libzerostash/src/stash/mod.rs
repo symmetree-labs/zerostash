@@ -52,14 +52,15 @@ impl Stash {
     }
 
     pub fn list<'a>(&'a self, glob: &'a [impl AsRef<str>]) -> restore::FileIterator<'a> {
-        let mut matchers = glob.iter().map(|g| glob::Pattern::new(g.as_ref()).unwrap());
+        let matchers = glob
+            .iter()
+            .map(|g| glob::Pattern::new(g.as_ref()).unwrap())
+            .collect::<Vec<glob::Pattern>>();
         let base_iter = self.file_index().into_iter().map(|r| r.key().clone());
 
         match glob.len() {
             i if i == 0 => Box::new(base_iter),
-            _ => Box::new(base_iter.filter(move |f| {
-                matchers.any(|m| m.matches_with(&f.name, glob::MatchOptions::new()))
-            })),
+            _ => Box::new(base_iter.filter(move |f| matchers.iter().any(|m| m.matches(&f.name)))),
         }
     }
 
