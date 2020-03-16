@@ -137,7 +137,7 @@ pub fn main() {
         let read_time = read_start.elapsed();
 
         let restore_start = Instant::now();
-        repo.restore_by_glob(threads.parse().unwrap(), "*", restore_to)
+        repo.restore_by_glob(threads.parse().unwrap(), &["*"], restore_to)
             .unwrap();
         let restore_time = restore_start.elapsed();
 

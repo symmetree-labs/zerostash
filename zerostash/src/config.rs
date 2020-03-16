@@ -68,10 +68,8 @@ pub fn ask_credentials() -> Result<libzerostash::StashKey> {
 #[serde(tag = "source")]
 pub enum Key {
     #[serde(rename = "plaintext")]
-    Plaintext {
-        user: String,
-        password: String,
-    },
+    Plaintext { user: String, password: String },
+    #[serde(rename = "ask")]
     None,
 }
 
@@ -110,6 +108,10 @@ mod tests {
             r#"
 [stash.first]
 key = { source = "plaintext", user = "123", password = "123"}
+backend = { type = "fs", path = "/path/to/stash" }
+
+[stash.second]
+key = { source = "ask"}
 backend = { type = "fs", path = "/path/to/stash" }
 "#,
         )

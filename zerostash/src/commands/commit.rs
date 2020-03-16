@@ -1,5 +1,6 @@
 //! `commit` subcommand
 
+use crate::application::app_reader;
 use abscissa_core::{Command, Options, Runnable};
 
 /// `commit` subcommand
@@ -11,22 +12,25 @@ use abscissa_core::{Command, Options, Runnable};
 /// <https://docs.rs/gumdrop/>
 #[derive(Command, Debug, Options)]
 pub struct Commit {
-    // Example `--foobar` (with short `-f` argument)
-    // #[options(short = "f", help = "foobar path"]
-    // foobar: Option<PathBuf>
+    #[options(free)]
+    stash: String,
 
-    // Example `--baz` argument with no short version
-    // #[options(no_short, help = "baz path")]
-    // baz: Options<PathBuf>
-
-    // "free" arguments don't have an associated flag
-    // #[options(free)]
-    // free_args: Vec<String>,
+    #[options(free)]
+    paths: Vec<String>,
 }
 
 impl Runnable for Commit {
     /// Start the application.
     fn run(&self) {
-        // Your code goes here
+        let app = &*app_reader();
+        let mut stash = app.open_stash(&self.stash);
+
+        for path in self.paths.iter() {
+            stash
+                .add_recursive(app.get_worker_threads(), path)
+                .expect("Failed to add path");
+        }
+
+        stash.commit().expect("Failed to write metadata");
     }
 }

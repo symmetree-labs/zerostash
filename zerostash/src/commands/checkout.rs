@@ -1,5 +1,6 @@
 //! `checkout` subcommand
 
+use crate::application::{app_reader, fatal_error};
 use abscissa_core::{Command, Options, Runnable};
 
 /// `checkout` subcommand
@@ -11,22 +12,24 @@ use abscissa_core::{Command, Options, Runnable};
 /// <https://docs.rs/gumdrop/>
 #[derive(Command, Debug, Options)]
 pub struct Checkout {
-    // Example `--foobar` (with short `-f` argument)
-    // #[options(short = "f", help = "foobar path"]
-    // foobar: Option<PathBuf>
+    #[options(free)]
+    stash: String,
 
-    // Example `--baz` argument with no short version
-    // #[options(no_short, help = "baz path")]
-    // baz: Options<PathBuf>
+    #[options(free)]
+    target: String,
 
-    // "free" arguments don't have an associated flag
-    // #[options(free)]
-    // free_args: Vec<String>,
+    #[options(free)]
+    paths: Vec<String>,
 }
 
 impl Runnable for Checkout {
     /// Start the application.
     fn run(&self) {
-        // Your code goes here
+        let app = &*app_reader();
+        let mut stash = app.stash_exists(&self.stash);
+
+        stash
+            .restore_by_glob(app.get_worker_threads(), &self.paths, &self.target)
+            .expect("Error extracting data");
     }
 }
