@@ -67,12 +67,12 @@ impl Stash {
     pub fn restore_by_glob(
         &mut self,
         threads: usize,
-        pattern: impl AsRef<str>,
+        pattern: &[impl AsRef<str>],
         target: impl AsRef<Path>,
     ) -> Result<()> {
         restore::from_iter(
             threads,
-            self.list(&[pattern]),
+            self.list(pattern),
             self.backend.clone(),
             self.master_key.get_object_crypto()?,
             target,

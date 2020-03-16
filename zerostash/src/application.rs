@@ -6,9 +6,9 @@ use crate::{
 };
 use abscissa_core::{
     application::{self, AppCell},
-    config, status_err, trace, Application, EntryPoint, FrameworkError, StandardPaths,
+    config, status_err, status_warn, trace, Application, EntryPoint, FrameworkError, StandardPaths,
 };
-use anyhow::{format_err, Error};
+use anyhow::{format_err, Error, Result};
 use libzerostash::Stash;
 
 use std::{process, sync::Arc};
@@ -67,7 +67,7 @@ impl ZerostashApp {
     pub(crate) fn open_stash(&self, pathy: impl AsRef<str>) -> Stash {
         let config = &*app_config();
 
-        match config.resolve_stash(&pathy) {
+        let mut stash = match config.resolve_stash(&pathy) {
             None => {
                 let path = pathy.as_ref();
                 let key = ask_credentials().unwrap_or_else(|e| fatal_error(e));
@@ -79,7 +79,21 @@ impl ZerostashApp {
                 Stash::new(backend, key)
             }
             Some(cfg) => cfg.try_open().unwrap_or_else(|e| fatal_error(e)),
+        };
+
+        stash
+    }
+
+    pub(crate) fn stash_exists(&self, pathy: impl AsRef<str>) -> Stash {
+        let mut stash = self.open_stash(pathy);
+        match stash.read() {
+            Ok(_) => stash,
+            Err(e) => fatal_error2(e),
         }
+    }
+
+    pub(crate) fn get_worker_threads(&self) -> usize {
+        num_cpus::get() + 1
     }
 }
 
@@ -140,6 +154,10 @@ impl Application for ZerostashApp {
     }
 }
 
+pub fn fatal_error2(err: Box<dyn std::error::Error>) -> ! {
+    status_err!("{} fatal error: {}", (&*app_reader()).name(), err);
+    process::exit(1)
+}
 pub fn fatal_error(err: Error) -> ! {
     status_err!("{} fatal error: {}", (&*app_reader()).name(), err);
     process::exit(1)

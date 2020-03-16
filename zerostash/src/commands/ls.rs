@@ -25,10 +25,10 @@ impl Runnable for Ls {
     /// Start the application.
     fn run(&self) {
         let app = &*app_reader();
-        let stash = app.open_stash(&self.stash);
+        let mut stash = app.stash_exists(&self.stash);
 
         for file in stash.list(&self.paths) {
-            println!("{}: {}", self.stash, file.name);
+            println!("{}", file.name);
         }
     }
 }
