@@ -1,5 +1,6 @@
 //! `wipe` subcommand
 
+use crate::application::app_config;
 use abscissa_core::{Command, Options, Runnable};
 
 /// `wipe` subcommand
@@ -11,22 +12,23 @@ use abscissa_core::{Command, Options, Runnable};
 /// <https://docs.rs/gumdrop/>
 #[derive(Command, Debug, Options)]
 pub struct Wipe {
-    // Example `--foobar` (with short `-f` argument)
-    // #[options(short = "f", help = "foobar path"]
-    // foobar: Option<PathBuf>
-
-    // Example `--baz` argument with no short version
-    // #[options(no_short, help = "baz path")]
-    // baz: Options<PathBuf>
-
-    // "free" arguments don't have an associated flag
-    // #[options(free)]
-    // free_args: Vec<String>,
+    #[options(free)]
+    stash: String,
 }
 
 impl Runnable for Wipe {
     /// Start the application.
     fn run(&self) {
-        // Your code goes here
+        use crate::config::Backend::*;
+
+        let config = &*app_config();
+        let path = match config.resolve_stash(&self.stash) {
+            None => self.stash.clone(),
+            Some(stash) => match &stash.backend {
+                Filesystem { path } => path.clone(),
+            },
+        };
+
+        std::fs::remove_dir_all(path).expect("Error while wiping stash...");
     }
 }
