@@ -117,6 +117,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn bupsplit_selftest() {
         let buf = setup();
 
