@@ -38,7 +38,7 @@ few dependencies.
 At the moment, this is a non-functional demonstration of the object
 format. You can do something like so:
 
-    cargo run --release 4 $(pwd) ../repo ../restore
+    cargo run --release --bin 0s-bench 4 $(pwd) ../repo ../restore
 
 So the process will use 4 threads to back up the current directory to
 `../repo`, and restore it immediately after to `../restore`.
