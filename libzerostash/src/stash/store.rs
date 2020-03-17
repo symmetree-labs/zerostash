@@ -125,7 +125,10 @@ mod tests {
         store::recursive(4, &mut cs, &mut fs, &mut s, PATH_100);
 
         assert_eq!(100, fs.index().len());
-        assert_eq!(1_024_000u64, fs.index().iter().map(|f| f.key().size).sum());
+        assert_eq!(
+            1_024_000u64,
+            fs.index().iter().map(|f| f.key().size).sum::<u64>()
+        );
     }
 
     #[bench]
