@@ -93,7 +93,8 @@ impl ZerostashApp {
     }
 
     pub(crate) fn get_worker_threads(&self) -> usize {
-        num_cpus::get() + 1
+        use std::cmp;
+        cmp::min(num_cpus::get() + 1, 5)
     }
 }
 
