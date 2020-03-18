@@ -1,4 +1,4 @@
-name: Rust
+name: Quick check crates
 
 on:
   push:
@@ -16,6 +16,9 @@ jobs:
     - name: Install nightly
       run: rustup toolchain add nightly
     - name: Build
-      run: cargo +nightly build --verbose
+      run: |
+        cargo +nightly build --bin 0s-bench
+        cargo +stable build --lib
+        cargo +stable build --bin 0s
     - name: Run tests
       run: cargo +nightly test --verbose
