@@ -49,7 +49,7 @@ pub struct BupSplit {
 
 impl BupSplit {
     #[inline]
-    fn add(&mut self, drop: u8, add: u8) {
+    pub fn add(&mut self, drop: u8, add: u8) {
         self.s1 = self.s1.wrapping_add(u32::from(add.wrapping_sub(drop)));
         self.s2 = self.s2.wrapping_add(
             self.s1
@@ -58,14 +58,14 @@ impl BupSplit {
     }
 
     #[inline]
-    fn roll(&mut self, ch: u8) {
+    pub fn roll(&mut self, ch: u8) {
         self.add(self.window[self.wofs], ch);
         self.window[self.wofs] = ch;
         self.wofs = (self.wofs + 1) % (WINDOWSIZE as usize);
     }
 
     #[inline]
-    fn digest(&self) -> u32 {
+    pub fn digest(&self) -> u32 {
         (self.s1 << 16) | (self.s2 & 0xffff)
     }
 }
@@ -94,8 +94,7 @@ impl Rollsum for BupSplit {
 
 #[cfg(test)]
 mod tests {
-    extern crate test;
-    const SELFTEST_SIZE: usize = 100000;
+    const SELFTEST_SIZE: usize = 100_000;
     use super::WINDOWSIZE;
     use ring::rand::*;
 
@@ -135,16 +134,5 @@ mod tests {
         assert_ne!(sum1a, sum1b);
         assert_ne!(sum2a, sum2b);
         assert_ne!(sum3a, sum3b);
-    }
-
-    #[bench]
-    fn bench_rollsum(b: &mut test::Bencher) {
-        let mut buf = [0; SELFTEST_SIZE];
-        let rand = SystemRandom::new();
-        rand.fill(&mut buf);
-
-        b.iter(|| {
-            rollsum_sum(&buf, 0, SELFTEST_SIZE);
-        });
     }
 }

@@ -31,3 +31,4 @@ walkdir = "^2.2.7"
 zeroize = "1.1"
 
 [dev-dependencies]
+criterion = "0.3"

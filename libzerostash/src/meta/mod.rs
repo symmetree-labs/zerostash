@@ -147,8 +147,6 @@ impl Field {
 
 #[cfg(test)]
 mod tests {
-    extern crate test;
-
     #[test]
     fn can_deserialize_fields() {
         use crate::backends;

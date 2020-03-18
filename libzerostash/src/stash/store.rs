@@ -107,8 +107,6 @@ fn process_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
 
 #[cfg(test)]
 mod tests {
-    extern crate test;
-
     const PATH_100: &str = "tests/data/100_random_1k";
 
     #[test]
@@ -129,42 +127,5 @@ mod tests {
             1_024_000u64,
             fs.index().iter().map(|f| f.key().size).sum::<u64>()
         );
-    }
-
-    #[bench]
-    fn bench_chunk_saturated_e2e(b: &mut test::Bencher) {
-        use crate::chunks::*;
-        use crate::files::*;
-        use crate::objects::*;
-        use crate::stash::store;
-
-        let mut cs = ChunkStore::default();
-        let mut os = NullStorage::default();
-        let mut fs = FileStore::default();
-
-        // first build up the file index
-        store::recursive(4, &mut cs, &mut fs, &mut os, PATH_100);
-
-        b.iter(|| {
-            store::recursive(4, &mut cs, &mut fs, &mut os, PATH_100);
-        })
-    }
-
-    #[bench]
-    fn bench_chunk_e2e(b: &mut test::Bencher) {
-        use crate::chunks::*;
-        use crate::files::*;
-        use crate::objects::*;
-        use crate::stash::store;
-
-        b.iter(|| {
-            store::recursive(
-                4,
-                &mut ChunkStore::default(),
-                &mut FileStore::default(),
-                &mut NullStorage::default(),
-                PATH_100,
-            )
-        })
     }
 }
