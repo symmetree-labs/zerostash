@@ -44,27 +44,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    extern crate test;
     const PATH: &str = "tests/data/10k_random_blob";
-
-    #[bench]
-    fn bench_chunk_iter(b: &mut test::Bencher) {
-        use super::FileSplitter;
-        use crate::rollsum::SeaSplit;
-        use memmap::MmapOptions;
-        use std::fs::File;
-
-        let file = File::open(PATH).unwrap();
-        let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
-
-        b.iter(|| {
-            FileSplitter::<SeaSplit>::new(&mmap)
-                .map(|(_, _, c)| c.len())
-                .sum::<usize>()
-        });
-
-        println!("asdf");
-    }
 
     #[test]
     fn check_chunk_iterator_sum() {

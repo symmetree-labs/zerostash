@@ -1,5 +1,4 @@
 #![deny(clippy::all)]
-#![feature(test)]
 
 #[macro_use]
 extern crate serde_derive;

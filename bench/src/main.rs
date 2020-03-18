@@ -156,3 +156,81 @@ throughput unpacked: {}
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate test;
+    const PATH: &str = "tests/data/10k_random_blob";
+    const PATH_100: &str = "tests/data/100_random_1k";
+    const SELFTEST_SIZE: usize = 100_000;
+    use ring::rand::*;
+
+    fn rollsum_sum(buf: &[u8], ofs: usize, len: usize) -> u32 {
+        use libzerostash::rollsum::{BupSplit, Rollsum};
+        let mut r = BupSplit::new();
+        for count in ofs..len {
+            r.roll(buf[count]);
+        }
+        r.digest()
+    }
+
+    #[bench]
+    fn bup_rollsum(b: &mut test::Bencher) {
+        let mut buf = [0; SELFTEST_SIZE];
+        let rand = SystemRandom::new();
+        rand.fill(&mut buf);
+
+        b.iter(|| {
+            rollsum_sum(&buf, 0, SELFTEST_SIZE);
+        });
+    }
+
+    #[bench]
+    fn chunk_saturated_e2e(b: &mut test::Bencher) {
+        use libzerostash::{backends::*, Stash, StashKey};
+        use std::{env::set_current_dir, sync::Arc};
+        let key = "abcdef1234567890abcdef1234567890";
+        let key = StashKey::open_stash(&key, &key).unwrap();
+        let mut repo = Stash::new(Arc::new(NullBackend::default()), key);
+
+        set_current_dir("../libzerostash").unwrap();
+        // first build up the file index
+        repo.add_recursive(4, PATH_100).unwrap();
+
+        b.iter(|| {
+            repo.add_recursive(4, PATH_100).unwrap();
+        })
+    }
+
+    #[bench]
+    fn chunk_e2e(b: &mut test::Bencher) {
+        use libzerostash::{backends::*, Stash, StashKey};
+        use std::{env::set_current_dir, sync::Arc};
+        let key = "abcdef1234567890abcdef1234567890";
+        let key = StashKey::open_stash(&key, &key).unwrap();
+        let mut repo = Stash::new(Arc::new(NullBackend::default()), key);
+
+        set_current_dir("../libzerostash").unwrap();
+        b.iter(|| {
+            repo.add_recursive(4, PATH_100).unwrap();
+        })
+    }
+
+    #[bench]
+    fn split_file(b: &mut test::Bencher) {
+        use libzerostash::{rollsum::SeaSplit, splitter::FileSplitter};
+        use memmap::MmapOptions;
+        use std::fs::File;
+
+        let file = File::open(PATH).unwrap();
+        let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
+
+        b.iter(|| {
+            FileSplitter::<SeaSplit>::new(&mmap)
+                .map(|(_, _, c)| c.len())
+                .sum::<usize>()
+        });
+
+        println!("asdf");
+    }
+}
