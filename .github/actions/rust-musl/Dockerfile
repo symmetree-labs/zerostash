@@ -27,8 +27,9 @@ RUN apt-get update \
 
 RUN curl https://sh.rustup.rs -sSf > rustup.sh \
     && sh rustup.sh -y \
-          --default-toolchain nightly \
+          --default-toolchain stable \
           --no-modify-path \
+    && rustup toolchain add nightly \
     && rustup target add $BUILD_TARGET \
     && rustup --version \
     && cargo --version \
