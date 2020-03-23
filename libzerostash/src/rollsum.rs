@@ -26,7 +26,7 @@ impl Rollsum for SeaSplit {
         let mut hasher = SeaHasher::default();
 
         let mut last = 0;
-        for limit in (0..buf.len()).step_by(16) {
+        for limit in (0..buf.len()).step_by(64) {
             hasher.write(&buf[last..limit]);
             let output = hasher.finish();
 
