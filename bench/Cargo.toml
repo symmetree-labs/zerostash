@@ -1,5 +1,5 @@
 [package]
-name = "0s-bench"
+name = "zerostash-bench"
 version = "0.1.0"
 authors = ["Peter Parkanyi <me@rhapsodhy.hu>"]
 repository = "https://github.com/rsdy/zerostash"
@@ -13,3 +13,7 @@ walkdir = "^2.2.7"
 [dev-dependencies]
 ring = "*"
 memmap = "*"
+
+[[bin]]
+path = "src/main.rs"
+name = "0s-bench"
