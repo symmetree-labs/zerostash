@@ -55,11 +55,17 @@ fn process_file_loop(
             .components()
             .any(|c| c == std::path::Component::ParentDir)
         {
-            println!("skipping because contains parent {:?}", path);
+            println!("skipping because contains parent {:?}", path.to_string_lossy());
             continue;
         }
 
-        let osfile = fs::File::open(path).unwrap();
+        let osfile = fs::File::open(path);
+	if osfile.is_err() {
+	    println!("skipping {}: {}", path.display(), osfile.unwrap_err());
+	    continue;
+	}
+
+	let osfile = osfile.unwrap();
         let mut entry = files::Entry::from_file(&osfile, path).unwrap();
 
         if !fileindex.has_changed(&entry) {
