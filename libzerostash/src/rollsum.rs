@@ -26,7 +26,10 @@ impl Rollsum for SeaSplit {
         let mut hasher = SeaHasher::default();
 
         let mut last = 0;
-        for limit in (0..buf.len()).step_by(64) {
+
+	// On occasion a too high value for step size can produce
+	// chunks larger than a single object
+        for limit in (0..buf.len()).step_by(32) {
             hasher.write(&buf[last..limit]);
             let output = hasher.finish();
 
