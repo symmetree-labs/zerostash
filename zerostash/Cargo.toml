@@ -10,7 +10,7 @@ edition = "2018"
 anyhow = "1.0"
 gumdrop = "0.7"
 libzerostash = { path = "../libzerostash" }
-num_cpus = "1.12.0"
+num_cpus = "1.13.0"
 rpassword = "4.0.5"
 rprompt = "1.0.5"
 serde = { version = "1", features = ["serde_derive"] }
