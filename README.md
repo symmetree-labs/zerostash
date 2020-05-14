@@ -30,10 +30,33 @@ Zerostash considers the following things to be part of the threat model:
 
 ## How to
 
-The usual Rust incantation will do. A nightly compiler is needed for a
-few dependencies.
+You can also download a static Linux binary from the [GitHub Releases](https://github.com/rsdy/zerostash/releases) page. Place it in your `$PATH`, and then run:
+
+    0s help
+    
+An example config file can be found [here](https://gist.github.com/rsdy/6c4b00d42e008f6cdeba5f3640d39f72).
+Place it in `$XDG_CONFIG_HOME/zerostash/config.toml`, and edit as needed. On most systems, you will need to place the file at `~/.config/zerostash/config.toml`
+
+Using a configuration file is optional.
+    
+The usual Rust incantation will also do to build the binary yourself.
+A nightly compiler is needed for a few dependencies.
 
     cargo +nightly build --release
+    
+To get help on usage, try:
+
+    cargo +nightly run --release --bin 0s help
+
+**Expect some commands to be useless**. This is highly experimental software, and functionality is missing.
+At least the following commands **will** work:
+
+ * `wipe`
+ * `ls`
+ * `commit`
+ * `checkout`
+    
+## Benchmarks
 
 At the moment, this is a non-functional demonstration of the object
 format. You can do something like so:
