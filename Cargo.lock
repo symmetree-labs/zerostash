@@ -74,7 +74,7 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.30"
+version = "1.0.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -1308,7 +1308,7 @@ name = "zerostash"
 version = "0.1.0"
 dependencies = [
  "abscissa_core 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "anyhow 1.0.30 (registry+https://github.com/rust-lang/crates.io-index)",
+ "anyhow 1.0.31 (registry+https://github.com/rust-lang/crates.io-index)",
  "gumdrop 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libzerostash 0.1.0",
  "num_cpus 1.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1337,7 +1337,7 @@ dependencies = [
 "checksum ahash 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "0989268a37e128d4d7a8028f1c60099430113fdbc70419010601ce51a228e4fe"
 "checksum aho-corasick 0.7.10 (registry+https://github.com/rust-lang/crates.io-index)" = "8716408b8bc624ed7f65d223ddb9ac2d044c0547b6fa4b0d554f3a9540496ada"
 "checksum ansi_term 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ee49baf6cb617b853aa8d93bf420db2383fab46d314482ca2803b40d5fde979b"
-"checksum anyhow 1.0.30 (registry+https://github.com/rust-lang/crates.io-index)" = "2494382e9ba43995f3c56359e518641f450f5c36feeb4632a75cde2ec297c867"
+"checksum anyhow 1.0.31 (registry+https://github.com/rust-lang/crates.io-index)" = "85bb70cc08ec97ca5450e6eba421deeea5f172c0fc61f78b5357b2a8e8be195f"
 "checksum arc-swap 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)" = "d663a8e9a99154b5fb793032533f6328da35e23aac63d5c152279aa8ba356825"
 "checksum arrayref 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)" = "a4c527152e37cf757a3f78aae5a06fbeefdb07ccc535c980a3208ee3060dd544"
 "checksum arrayvec 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "cff77d8686867eceff3105329d4698d96c2391c176d5d03adc90c7389162b5b8"
