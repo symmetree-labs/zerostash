@@ -17,7 +17,7 @@ glob = { version = "0.3" }
 itertools = "0.9"
 libc = "0.2"
 lru = "0.5"
-lz4 = "^1.23.1"
+lz4 = "^1.23.2"
 memmap = "0.7"
 ring = "0.16"
 rust-argon2 = "0.8"
