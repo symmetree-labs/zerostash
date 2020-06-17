@@ -522,7 +522,7 @@ dependencies = [
  "lru 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lz4 1.23.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "memmap 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ring 0.16.14 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ring 0.16.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "rust-argon2 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "seahash 4.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "secrecy 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -738,7 +738,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "ring"
-version = "0.16.14"
+version = "0.16.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cc 1.0.52 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1211,7 +1211,7 @@ version = "0.1.0"
 dependencies = [
  "libzerostash 0.1.0",
  "memmap 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ring 0.16.14 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ring 0.16.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "walkdir 2.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1301,7 +1301,7 @@ dependencies = [
 "checksum regex 1.3.5 (registry+https://github.com/rust-lang/crates.io-index)" = "8900ebc1363efa7ea1c399ccc32daed870b4002651e0bed86e72d501ebbe0048"
 "checksum regex-automata 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "ae1ded71d66a4a97f5e961fd0cb25a5f366a42a41570d16a763a69c092c26ae4"
 "checksum regex-syntax 0.6.17 (registry+https://github.com/rust-lang/crates.io-index)" = "7fe5bd57d1d7414c6b5ed48563a2c855d995ff777729dcd91c369ec7fea395ae"
-"checksum ring 0.16.14 (registry+https://github.com/rust-lang/crates.io-index)" = "06b3fefa4f12272808f809a0af618501fdaba41a58963c5fb72238ab0be09603"
+"checksum ring 0.16.15 (registry+https://github.com/rust-lang/crates.io-index)" = "952cd6b98c85bbc30efa1ba5783b8abf12fec8b3287ffa52605b9432313e34e4"
 "checksum rpassword 4.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "99371657d3c8e4d816fb6221db98fa408242b0b53bac08f8676a41f8554fe99f"
 "checksum rprompt 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "b386f4748bdae2aefc96857f5fda07647f851d089420e577831e2a14b45230f8"
 "checksum rust-argon2 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)" = "9dab61250775933275e84053ac235621dfb739556d5c54a2f2e9313b7cf43a19"
