@@ -519,7 +519,7 @@ dependencies = [
  "glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.71 (registry+https://github.com/rust-lang/crates.io-index)",
- "lru 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lru 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "lz4 1.23.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "memmap 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ring 0.16.15 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -544,7 +544,7 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "hashbrown 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1277,7 +1277,7 @@ dependencies = [
 "checksum lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 "checksum libc 0.2.71 (registry+https://github.com/rust-lang/crates.io-index)" = "9457b06509d27052635f90d6466700c65095fdf75409b3fbdd903e988b886f49"
 "checksum log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)" = "14b6052be84e6b71ab17edffc2eeabf5c2c3ae1fdb464aae35ac50c67a44e1f7"
-"checksum lru 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "28e0c685219cd60e49a2796bba7e4fe6523e10daca4fd721e84e7f905093d60c"
+"checksum lru 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "297efb9401445cf7b6986a583d7ac194023334b46b294ff7da0d36662c1251c2"
 "checksum lz4 1.23.2 (registry+https://github.com/rust-lang/crates.io-index)" = "aac20ed6991e01bf6a2e68cc73df2b389707403662a8ba89f68511fb340f724c"
 "checksum lz4-sys 1.9.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dca79aa95d8b3226213ad454d328369853be3a1382d89532a854f4d69640acae"
 "checksum matchers 0.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f099785f7595cc4b4553a174ce30dd7589ef93391ff414dbb67f62392b9e0ce1"
