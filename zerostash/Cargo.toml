@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0"
-gumdrop = "0.7"
+gumdrop = "0.8"
 libzerostash = { path = "../libzerostash" }
 num_cpus = "1.13.0"
 rpassword = "4.0.5"
