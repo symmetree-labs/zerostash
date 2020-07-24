@@ -51,6 +51,10 @@ impl ChunkStore {
 impl MetaObjectField for ChunkStore {
     type Item = (CryptoDigest, Arc<ChunkPointer>);
 
+    fn key() -> String {
+        "chunks".to_string()
+    }
+
     fn serialize(&self, mw: &mut impl FieldWriter) {
         for f in self.0.iter() {
             mw.write_next((f.key(), f.value()));
