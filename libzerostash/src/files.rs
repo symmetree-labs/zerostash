@@ -99,6 +99,10 @@ impl FileStore {
 impl MetaObjectField for FileStore {
     type Item = Entry;
 
+    fn key() -> String {
+        "files".to_string()
+    }
+
     fn serialize(&self, mw: &mut impl FieldWriter) {
         for f in self.0.iter() {
             mw.write_next(f.key());

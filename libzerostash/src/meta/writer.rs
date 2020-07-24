@@ -14,7 +14,8 @@ use std::collections::HashMap;
 use std::io::{self, Seek, SeekFrom, Write};
 use std::sync::Arc;
 
-pub type Result<T> = std::result::Result<T, io::Error>;
+pub type WriteError = io::Error;
+pub type Result<T> = std::result::Result<T, WriteError>;
 
 pub struct Writer<C> {
     objects: ObjectIndex,
@@ -76,19 +77,20 @@ where
         &self.objects
     }
 
-    pub fn write_field(&mut self, f: Field, obj: &impl MetaObjectField) {
+    pub fn write_field<F: MetaObjectField>(&mut self, obj: &F) {
         // book keeping
         self.offsets
-            .push(f.as_offset(self.encoder.writer().unwrap().position() as u32));
+            .push(obj.as_offset(self.encoder.writer().unwrap().position() as u32));
+
         self.objects
-            .entry(f.clone())
+            .entry(F::key())
             .or_default()
             .insert(self.encoder.writer().unwrap().id);
 
         self.encoder.start().unwrap();
 
         // clean up
-        self.current_field = Some(f);
+        self.current_field = Some(F::key());
         obj.serialize(self);
         self.current_field = None;
 
@@ -146,7 +148,8 @@ where
 
         // make sure we register the currently written field in the new object
         if let Some(f) = &self.current_field {
-            self.offsets.push(f.as_offset(HEADER_SIZE as u32));
+            self.offsets
+                .push(FieldOffset::new(HEADER_SIZE as u32, f.to_owned()));
         }
     }
 }
@@ -172,7 +175,7 @@ impl WriteState {
                     _ => unreachable!(),
                 };
 
-                std::mem::replace(self, WriteState::Encoding(encoder));
+                let _ = std::mem::replace(self, WriteState::Encoding(encoder));
                 Ok(self)
             }
             Encoding(_) => Ok(self),

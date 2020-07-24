@@ -1,4 +1,9 @@
-use crate::{backends::Backend, chunks, files, meta, objects};
+use crate::{
+    backends::Backend,
+    chunks, files,
+    meta::{self, ReadError},
+    objects,
+};
 pub use crate::{crypto::StashKey, meta::ObjectIndex};
 
 use std::path::Path;
@@ -39,13 +44,16 @@ impl Stash {
             None => None,
         } {
             next_object = header.next_object();
-            for field in header.fields().iter() {
-                use self::meta::Field::*;
-                match field {
-                    Chunks => metareader.read_into(field, &mut self.chunks)?,
-                    Files => metareader.read_into(field, &mut self.files)?,
-                };
-            }
+
+            match metareader.read_into(&mut self.files) {
+                Ok(_) | Err(ReadError::NoField) => (),
+                Err(e) => return Err(e.into()),
+            };
+
+            match metareader.read_into(&mut self.files) {
+                Ok(_) | Err(ReadError::NoField) => (),
+                Err(e) => return Err(e.into()),
+            };
         }
 
         Ok(self)
@@ -103,8 +111,8 @@ impl Stash {
             self.master_key.get_meta_crypto()?,
         )?;
 
-        mw.write_field(meta::Field::Files, &self.files);
-        mw.write_field(meta::Field::Chunks, &self.chunks);
+        mw.write_field(&self.files);
+        mw.write_field(&self.chunks);
         mw.seal_and_store();
 
         Ok(mw.objects().clone())

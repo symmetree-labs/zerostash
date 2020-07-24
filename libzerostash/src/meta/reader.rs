@@ -1,12 +1,11 @@
 use crate::backends::{Backend, BackendError};
 use crate::compress;
 use crate::crypto::CryptoProvider;
-use crate::meta::{Field, MetaObjectField, MetaObjectHeader, ObjectIndex};
+use crate::meta::{MetaObjectField, MetaObjectHeader, ObjectIndex};
 use crate::objects::{BlockBuffer, Object, ObjectId};
 
 use thiserror::Error;
 
-use std::borrow::Borrow;
 use std::io::{self, Cursor};
 use std::sync::Arc;
 
@@ -66,18 +65,12 @@ where
         self.header.clone().ok_or_else(|| ReadError::NoHeader)
     }
 
-    pub fn read_into(
-        &mut self,
-        field: impl Borrow<Field>,
-        store: &mut impl MetaObjectField,
-    ) -> Result<()> {
-        let field = field.borrow();
-
+    pub fn read_into<F: MetaObjectField>(&mut self, store: &mut F) -> Result<()> {
         match self.header {
             None => Err(ReadError::NoHeader),
             Some(ref header) => {
                 let frame_start = header
-                    .get_offset(&field)
+                    .get_offset(&F::key())
                     .ok_or_else(|| ReadError::NoField)? as usize;
 
                 let buffer: &[u8] = self.inner.as_ref();

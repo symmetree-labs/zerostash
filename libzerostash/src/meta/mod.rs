@@ -18,8 +18,8 @@ const HEADER_SIZE: usize = 512;
 mod reader;
 mod writer;
 
-pub use reader::Reader;
-pub use writer::Writer;
+pub use reader::{ReadError, Reader};
+pub use writer::{WriteError, Writer};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum MetaObjectHeader {
@@ -82,8 +82,13 @@ impl MetaObjectHeader {
 pub trait MetaObjectField {
     type Item: DeserializeOwned;
 
+    fn key() -> String;
     fn serialize(&self, mw: &mut impl FieldWriter);
     fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>);
+
+    fn as_offset(&self, offs: u32) -> FieldOffset {
+        FieldOffset(offs, Self::key())
+    }
 }
 
 pub trait FieldWriter {
@@ -103,45 +108,23 @@ where
     }
 }
 
+pub type Field = String;
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum FieldOffset {
-    Chunks(u32),
-    Files(u32),
-}
+pub struct FieldOffset(u32, String);
 
 impl From<&FieldOffset> for u32 {
     fn from(fo: &FieldOffset) -> u32 {
-        use FieldOffset::*;
-        *match fo {
-            Chunks(o) => o,
-            Files(o) => o,
-        }
+        fo.0
     }
 }
 
 impl FieldOffset {
-    fn as_field(&self) -> Field {
-        use FieldOffset::*;
-        match *self {
-            Chunks(_) => Field::Chunks,
-            Files(_) => Field::Files,
-        }
+    pub fn new(offs: u32, f: Field) -> Self {
+        FieldOffset(offs, f)
     }
-}
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub enum Field {
-    Chunks,
-    Files,
-}
-
-impl Field {
-    fn as_offset(&self, offs: u32) -> FieldOffset {
-        use Field::*;
-        match *self {
-            Chunks => FieldOffset::Chunks(offs),
-            Files => FieldOffset::Files(offs),
-        }
+    fn as_field(&self) -> Field {
+        self.1.to_owned()
     }
 }
 
@@ -172,11 +155,11 @@ mod tests {
             })
             .unwrap();
 
-        mw.write_field(meta::Field::Chunks, &chunks);
+        mw.write_field(&chunks);
         mw.seal_and_store();
 
         let mut mr = meta::Reader::new(storage, crypto);
-        let objects = mw.objects().get(&meta::Field::Chunks).unwrap();
+        let objects = mw.objects().get(ChunkStore::key()).unwrap();
         assert_eq!(objects.len(), 1);
 
         for id in objects.iter() {
@@ -184,8 +167,7 @@ mod tests {
         }
 
         let mut chunks_restore = chunks::ChunkStore::default();
-        mr.read_into(meta::Field::Chunks, &mut chunks_restore)
-            .unwrap();
+        mr.read_into(&mut chunks_restore).unwrap();
 
         assert_eq!(chunks_restore.index().len(), 1);
     }
