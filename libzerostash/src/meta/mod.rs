@@ -135,7 +135,7 @@ mod tests {
         use crate::backends;
         use crate::chunks::{self, ChunkPointer};
         use crate::crypto::{self, CryptoDigest};
-        use crate::meta;
+        use crate::meta::{self, MetaObjectField};
         use crate::objects::ObjectId;
 
         use secrecy::Secret;
@@ -159,7 +159,7 @@ mod tests {
         mw.seal_and_store();
 
         let mut mr = meta::Reader::new(storage, crypto);
-        let objects = mw.objects().get(ChunkStore::key()).unwrap();
+        let objects = mw.objects().get(&chunks::ChunkStore::key()).unwrap();
         assert_eq!(objects.len(), 1);
 
         for id in objects.iter() {
