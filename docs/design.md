@@ -1,7 +1,5 @@
 # Zerostash
 
-![master](https://github.com/rsdy/zerostash/workflows/Rust/badge.svg?branch=master)
-
 ## Wat dis
 
 Zerostash is a deduplicated, encrypted data store that provides native
