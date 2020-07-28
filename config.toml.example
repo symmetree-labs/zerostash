@@ -1,0 +1,7 @@
+[stash.first]
+key = { source = "plaintext", user = "username@email-not-enforced.com", password = "example passphrase"}
+backend = { type = "fs", path = "/Users/user/0s/first" }
+
+[stash.second]
+key = { source = "ask"}
+backend = { type = "fs", path = "/Users/user/0s/first" }
