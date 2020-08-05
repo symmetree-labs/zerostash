@@ -34,7 +34,7 @@ You can download a static Linux binary from the [GitHub Releases](https://github
 Place it in your `$PATH`, and then run:
 
     0s help
-    
+
 An example config file can be found [here](./config.toml.example).
 Place it in `$XDG_CONFIG_HOME/zerostash/config.toml`, and edit as needed.
 On most systems, this will be at `~/.config/zerostash/config.toml`
@@ -50,15 +50,14 @@ At least the following commands **will** work:
  * `checkout`: restore files
 
 ## Build
-	
-The usual Rust incantation will also do to build the binary yourself.
-A nightly compiler is needed for a few dependencies.
 
-    cargo +nightly build --release
-    
+The usual Rust incantation will also do to build the binary yourself.
+
+    cargo build --release
+
 To get help on usage, try:
 
-    cargo +nightly run --release --bin 0s help
+    cargo run --release --bin 0s help
 
 ## Benchmarks
 
