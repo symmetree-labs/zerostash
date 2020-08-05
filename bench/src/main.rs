@@ -1,4 +1,5 @@
 #![deny(clippy::all)]
+#![cfg_attr(test, feature(test))]
 
 use libzerostash::stash::{Stash, StashKey};
 use libzerostash::{backends, objects};
