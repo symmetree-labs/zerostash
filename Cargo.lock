@@ -756,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "rpassword"
-version = "4.0.5"
+version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.2.74 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1210,7 +1210,7 @@ dependencies = [
  "libzerostash 0.1.0",
  "num_cpus 1.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "once_cell 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rpassword 4.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rpassword 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rprompt 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.114 (registry+https://github.com/rust-lang/crates.io-index)",
  "toml 0.5.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1315,7 +1315,7 @@ dependencies = [
 "checksum regex-automata 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "ae1ded71d66a4a97f5e961fd0cb25a5f366a42a41570d16a763a69c092c26ae4"
 "checksum regex-syntax 0.6.18 (registry+https://github.com/rust-lang/crates.io-index)" = "26412eb97c6b088a6997e05f69403a802a92d520de2f8e63c2b65f9e0f47c4e8"
 "checksum ring 0.16.15 (registry+https://github.com/rust-lang/crates.io-index)" = "952cd6b98c85bbc30efa1ba5783b8abf12fec8b3287ffa52605b9432313e34e4"
-"checksum rpassword 4.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "99371657d3c8e4d816fb6221db98fa408242b0b53bac08f8676a41f8554fe99f"
+"checksum rpassword 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d755237fc0f99d98641540e66abac8bc46a0652f19148ac9e21de2da06b326c9"
 "checksum rprompt 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "b386f4748bdae2aefc96857f5fda07647f851d089420e577831e2a14b45230f8"
 "checksum rust-argon2 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)" = "9dab61250775933275e84053ac235621dfb739556d5c54a2f2e9313b7cf43a19"
 "checksum rustc-demangle 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)" = "4c691c0e608126e00913e33f0ccf3727d5fc84573623b8d65b2df340b5201783"
