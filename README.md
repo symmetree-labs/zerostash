@@ -28,7 +28,7 @@ Zerostash considers the following things to be part of the threat model:
  * Access to only the key and raw data should not be sufficient for
    full data compromise
 
-## How to
+## Getting started
 
 You can download a static Linux binary from the [GitHub Releases](https://github.com/rsdy/zerostash/releases) page.
 Place it in your `$PATH`, and then run:
@@ -40,6 +40,55 @@ Place it in `$XDG_CONFIG_HOME/zerostash/config.toml`, and edit as needed.
 On most systems, this will be at `~/.config/zerostash/config.toml`
 
 Using a configuration file is optional, but can make managing stashes easier.
+
+### Creating a backup without config file
+
+Let's assume one wanted to backup directory `/path/to/movies` to `/archive`
+
+The command to launch would be:
+
+`0s commit /archive /path/to/movies`
+
+At this point `/archive` contains a number of files (depending on the content of `/path/to/movies`) of 4MB each
+
+
+### Restore existing backup 
+
+To restore the backup just created, one can type:
+
+`cd /path/to/movies`
+
+`0s checkout /archive`
+(this will restore to the same `/path/to/movies`) or
+
+`0s checkout /archive /new/path`
+(this will restore to `/new/path/movies`)
+
+
+### Creating a backup with config file
+
+In a config file one can provide different backup destinations (remote or local). 
+The equivalent of the example above with a config file is explained below.
+
+Create config file `~/.config/zerostash/config.toml` 
+
+```
+[mystash]
+key = { source = "ask"}
+backend = { type = "fs", path = "/archive" }
+```
+
+**Create backup**
+
+`0s commit mystash /path/to/movies` to restore in the original 
+
+**Restore backup** 
+
+`cd /path/to/movies`
+
+`0s checkout mystash`
+
+
 
 **Expect some commands to be useless**. This is highly experimental software, and functionality is missing.
 At least the following commands **will** work:
