@@ -9,7 +9,7 @@ edition= "2018"
 
 [dependencies]
 blake2b_simd = "0.5"
-crossbeam-channel = "^0.4"
+crossbeam-channel = "^0.5"
 crossbeam-utils = "^0.7.2"
 dashmap = "3.11"
 getrandom = "0.2"
