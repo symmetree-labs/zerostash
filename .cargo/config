@@ -1,2 +1,2 @@
 [build]
-rustflags = ["-Ctarget-feature=+aes,+ssse3"]
+rustflags = ["-Ctarget-cpu=native"]
