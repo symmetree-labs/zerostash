@@ -5,8 +5,8 @@ use crate::rollsum::SeaSplit;
 use crate::splitter::FileSplitter;
 
 use crossbeam_utils::thread;
+use ignore::{DirEntry, WalkBuilder};
 use memmap::MmapOptions;
-use walkdir::{DirEntry, WalkDir};
 
 use std::fs;
 use std::path::Path;
@@ -55,17 +55,20 @@ fn process_file_loop(
             .components()
             .any(|c| c == std::path::Component::ParentDir)
         {
-            println!("skipping because contains parent {:?}", path.to_string_lossy());
+            println!(
+                "skipping because contains parent {:?}",
+                path.to_string_lossy()
+            );
             continue;
         }
 
         let osfile = fs::File::open(path);
-	if osfile.is_err() {
-	    println!("skipping {}: {}", path.display(), osfile.unwrap_err());
-	    continue;
-	}
+        if osfile.is_err() {
+            println!("skipping {}: {}", path.display(), osfile.unwrap_err());
+            continue;
+        }
 
-	let osfile = osfile.unwrap();
+        let osfile = osfile.unwrap();
         let mut entry = files::Entry::from_file(&osfile, path).unwrap();
 
         if !fileindex.has_changed(&entry) {
@@ -101,14 +104,28 @@ fn process_file_loop(
 }
 
 fn process_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
-    for entry in WalkDir::new(path.as_ref())
-        .max_open(threads)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|e| e.path().is_file())
-    {
-        sender.send(entry).unwrap();
-    }
+    let walker = WalkBuilder::new(path)
+        .threads(threads)
+        .standard_filters(false)
+        .build_parallel();
+    walker.run(|| {
+        let tx = sender.clone();
+        Box::new(move |result| {
+            use ignore::WalkState::*;
+
+            if result.is_err() {
+                return Continue;
+            }
+
+            let entry = result.unwrap();
+            if !entry.path().is_file() {
+                return Continue;
+            }
+
+            tx.send(entry).unwrap();
+            Continue
+        })
+    });
 }
 
 #[cfg(test)]
