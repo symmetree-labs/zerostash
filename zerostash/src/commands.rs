@@ -16,61 +16,65 @@ mod alias_list;
 mod checkout;
 mod commit;
 mod ls;
-mod version;
 mod wipe;
 
 use self::{
     alias_add::AliasAdd, alias_del::AliasDel, alias_list::AliasList, checkout::Checkout,
-    commit::Commit, ls::Ls, version::VersionCmd, wipe::Wipe,
+    commit::Commit, ls::Ls, wipe::Wipe,
 };
 use crate::config::ZerostashConfig;
-use abscissa_core::{
-    config::Override, Command, Configurable, FrameworkError, Help, Options, Runnable,
-};
+use abscissa_core::{Clap, Command, Configurable, FrameworkError, Runnable};
 use std::path::PathBuf;
 
 /// Zerostash Subcommands
-#[derive(Command, Debug, Options, Runnable)]
+#[derive(Command, Debug, Clap, Runnable)]
 pub enum ZerostashCmd {
-    /// The `help` subcommand
-    #[options(help = "get usage information")]
-    Help(Help<Self>),
-
-    /// The `version` subcommand
-    #[options(help = "display version information")]
-    Version(VersionCmd),
-
-    /// The `start` subcommand
-    #[options(help = "add new alias for a stash URI/path")]
+    /// add new alias for a stash URI/path
     AliasAdd(AliasAdd),
 
-    /// The `start` subcommand
-    #[options(help = "delete a stash alias")]
+    /// delete a stash alias
     AliasDel(AliasDel),
 
-    /// The `start` subcommand
-    #[options(help = "list existing stash shorthands")]
+    /// list existing stash shorthands
     AliasList(AliasList),
 
-    /// The `start` subcommand
-    #[options(help = "check out files")]
+    /// check out files
     Checkout(Checkout),
 
-    /// The `start` subcommand
-    #[options(help = "add files to a stash")]
+    /// add files to a stash
     Commit(Commit),
 
-    /// The `start` subcommand
-    #[options(help = "list files in a stash")]
+    /// list files in a stash
     Ls(Ls),
 
-    /// The `start` subcommand
-    #[options(help = "delete all data of a stash")]
+    /// delete all data of a stash
     Wipe(Wipe),
 }
 
+/// Entry point for the application. It needs to be a struct to allow using subcommands!
+#[derive(Command, Debug, Clap)]
+#[clap(author, about, version)]
+pub struct EntryPoint {
+    #[clap(subcommand)]
+    cmd: ZerostashCmd,
+
+    /// Enable verbose logging
+    #[clap(short, long)]
+    pub verbose: bool,
+
+    /// Use the specified config file
+    #[clap(short, long)]
+    pub config: Option<String>,
+}
+
+impl Runnable for EntryPoint {
+    fn run(&self) {
+        self.cmd.run()
+    }
+}
+
 /// This trait allows you to define how application configuration is loaded.
-impl Configurable<ZerostashConfig> for ZerostashCmd {
+impl Configurable<ZerostashConfig> for EntryPoint {
     /// Location of the configuration file
     fn config_path(&self) -> Option<PathBuf> {
         let filename = PathBuf::from(ZerostashConfig::path());

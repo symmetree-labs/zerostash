@@ -1,48 +1,31 @@
 //! Zerostash Abscissa Application
 
 use crate::{
-    commands::ZerostashCmd,
+    commands::EntryPoint,
     config::{ask_credentials, ZerostashConfig},
 };
 use abscissa_core::{
     application::{self, AppCell},
-    config, status_err, status_warn, trace, Application, EntryPoint, FrameworkError, StandardPaths,
+    config::{self, CfgCell},
+    status_err, trace, Application, FrameworkError, StandardPaths,
 };
-use anyhow::{format_err, Error, Result};
+
+use anyhow::{Error, Result};
 use libzerostash::Stash;
 
 use std::{process, sync::Arc};
 
 /// Application state
-pub static APPLICATION: AppCell<ZerostashApp> = AppCell::new();
-
-/// Obtain a read-only (multi-reader) lock on the application state.
-///
-/// Panics if the application state has not been initialized.
-pub fn app_reader() -> application::lock::Reader<ZerostashApp> {
-    APPLICATION.read()
-}
-
-/// Obtain an exclusive mutable lock on the application state.
-pub fn app_writer() -> application::lock::Writer<ZerostashApp> {
-    APPLICATION.write()
-}
-
-/// Obtain a read-only (multi-reader) lock on the application configuration.
-///
-/// Panics if the application configuration has not been loaded.
-pub fn app_config() -> config::Reader<ZerostashApp> {
-    config::Reader::new(&APPLICATION)
-}
+pub static APP: AppCell<ZerostashApp> = AppCell::new();
 
 /// Zerostash Application
 #[derive(Debug)]
 pub struct ZerostashApp {
     /// Application configuration.
-    config: Option<ZerostashConfig>,
+    pub config: CfgCell<ZerostashConfig>,
 
     /// Application state.
-    state: application::State<Self>,
+    pub state: application::State<Self>,
 }
 
 /// Initialize a new application instance.
@@ -52,7 +35,7 @@ pub struct ZerostashApp {
 impl Default for ZerostashApp {
     fn default() -> Self {
         Self {
-            config: None,
+            config: CfgCell::default(),
             state: application::State::default(),
         }
     }
@@ -65,7 +48,7 @@ impl ZerostashApp {
     ///
     /// * `pathy` - Can be a path or an alias stored in the config
     pub(crate) fn open_stash(&self, pathy: impl AsRef<str>) -> Stash {
-        let config = &*app_config();
+        let config = self.config.read();
 
         let mut stash = match config.resolve_stash(&pathy) {
             None => {
@@ -100,7 +83,7 @@ impl ZerostashApp {
 
 impl Application for ZerostashApp {
     /// Entrypoint command for this application.
-    type Cmd = EntryPoint<ZerostashCmd>;
+    type Cmd = EntryPoint;
 
     /// Application configuration.
     type Cfg = ZerostashConfig;
@@ -109,18 +92,13 @@ impl Application for ZerostashApp {
     type Paths = StandardPaths;
 
     /// Accessor for application configuration.
-    fn config(&self) -> &ZerostashConfig {
-        self.config.as_ref().expect("config not loaded")
+    fn config(&self) -> config::Reader<ZerostashConfig> {
+        self.config.read()
     }
 
     /// Borrow the application state immutably.
     fn state(&self) -> &application::State<Self> {
         &self.state
-    }
-
-    /// Borrow the application state mutably.
-    fn state_mut(&mut self) -> &mut application::State<Self> {
-        &mut self.state
     }
 
     /// Register all components used by this application.
@@ -129,8 +107,9 @@ impl Application for ZerostashApp {
     /// beyond the default ones provided by the framework, this is the place
     /// to do so.
     fn register_components(&mut self, command: &Self::Cmd) -> Result<(), FrameworkError> {
-        let components = self.framework_components(command)?;
-        self.state.components.register(components)
+        let framework_components = self.framework_components(command)?;
+        let mut app_components = self.state.components_mut();
+        app_components.register(framework_components)
     }
 
     /// Post-configuration lifecycle callback.
@@ -140,13 +119,14 @@ impl Application for ZerostashApp {
     /// possible.
     fn after_config(&mut self, config: Self::Cfg) -> Result<(), FrameworkError> {
         // Configure components
-        self.state.components.after_config(&config)?;
-        self.config = Some(config);
+        let mut components = self.state.components_mut();
+        components.after_config(&config)?;
+        self.config.set_once(config);
         Ok(())
     }
 
     /// Get tracing configuration from command-line options
-    fn tracing_config(&self, command: &EntryPoint<ZerostashCmd>) -> trace::Config {
+    fn tracing_config(&self, command: &EntryPoint) -> trace::Config {
         if command.verbose {
             trace::Config::verbose()
         } else {
@@ -156,10 +136,10 @@ impl Application for ZerostashApp {
 }
 
 pub fn fatal_error2(err: Box<dyn std::error::Error>) -> ! {
-    status_err!("{} fatal error: {}", (&*app_reader()).name(), err);
+    status_err!("{} fatal error: {}", APP.name(), err);
     process::exit(1)
 }
 pub fn fatal_error(err: Error) -> ! {
-    status_err!("{} fatal error: {}", (&*app_reader()).name(), err);
+    status_err!("{} fatal error: {}", APP.name(), err);
     process::exit(1)
 }

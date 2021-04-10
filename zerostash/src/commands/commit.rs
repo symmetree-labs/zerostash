@@ -1,33 +1,29 @@
 //! `commit` subcommand
 
-use crate::application::app_reader;
-use abscissa_core::{Command, Options, Runnable};
+use crate::application::APP;
+use abscissa_core::{Clap, Command, Runnable};
 
 /// `commit` subcommand
 ///
-/// The `Options` proc macro generates an option parser based on the struct
+/// The `Clap` proc macro generates an option parser based on the struct
 /// definition, and is defined in the `gumdrop` crate. See their documentation
 /// for a more comprehensive example:
 ///
 /// <https://docs.rs/gumdrop/>
-#[derive(Command, Debug, Options)]
+#[derive(Command, Debug, Clap)]
 pub struct Commit {
-    #[options(free)]
     stash: String,
-
-    #[options(free)]
     paths: Vec<String>,
 }
 
 impl Runnable for Commit {
     /// Start the application.
     fn run(&self) {
-        let app = &*app_reader();
-        let mut stash = app.open_stash(&self.stash);
+        let mut stash = APP.open_stash(&self.stash);
 
         for path in self.paths.iter() {
             stash
-                .add_recursive(app.get_worker_threads(), path)
+                .add_recursive(APP.get_worker_threads(), path)
                 .expect("Failed to add path");
         }
 

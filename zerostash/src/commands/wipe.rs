@@ -1,18 +1,17 @@
 //! `wipe` subcommand
 
-use crate::application::app_config;
-use abscissa_core::{Command, Options, Runnable};
+use crate::application::APP;
+use abscissa_core::{Clap, Command, Runnable};
 
 /// `wipe` subcommand
 ///
-/// The `Options` proc macro generates an option parser based on the struct
+/// The `Clap` proc macro generates an option parser based on the struct
 /// definition, and is defined in the `gumdrop` crate. See their documentation
 /// for a more comprehensive example:
 ///
 /// <https://docs.rs/gumdrop/>
-#[derive(Command, Debug, Options)]
+#[derive(Command, Debug, Clap)]
 pub struct Wipe {
-    #[options(free)]
     stash: String,
 }
 
@@ -21,7 +20,7 @@ impl Runnable for Wipe {
     fn run(&self) {
         use crate::config::Backend::*;
 
-        let config = &*app_config();
+        let config = APP.config.read();
         let path = match config.resolve_stash(&self.stash) {
             None => self.stash.clone(),
             Some(stash) => match &stash.backend {
