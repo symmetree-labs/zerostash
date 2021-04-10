@@ -9,6 +9,7 @@ use abscissa_core::{
     config::{self, CfgCell},
     status_err, trace, Application, FrameworkError, StandardPaths,
 };
+use abscissa_tokio::TokioComponent;
 
 use anyhow::Result;
 use libzerostash::Stash;
@@ -106,7 +107,8 @@ impl Application for ZerostashApp {
     /// beyond the default ones provided by the framework, this is the place
     /// to do so.
     fn register_components(&mut self, command: &Self::Cmd) -> Result<(), FrameworkError> {
-        let framework_components = self.framework_components(command)?;
+        let mut framework_components = self.framework_components(command)?;
+        framework_components.push(Box::new(TokioComponent::new()?));
         let mut app_components = self.state.components_mut();
         app_components.register(framework_components)
     }

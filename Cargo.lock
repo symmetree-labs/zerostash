@@ -42,6 +42,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "abscissa_tokio"
+version = "0.6.0-pre.1"
+source = "git+https://github.com/rsdy/abscissa?branch=main#535b98ba3bd7213105af7dfe38ca15512a732b18"
+dependencies = [
+ "abscissa_core",
+ "tokio",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1200,6 +1209,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "134af885d758d645f0f0505c9a8b3f9bf8a348fd822e112ab5248138348f1722"
+dependencies = [
+ "autocfg",
+ "num_cpus",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "toml"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1443,6 +1463,7 @@ name = "zerostash"
 version = "0.1.0"
 dependencies = [
  "abscissa_core",
+ "abscissa_tokio",
  "anyhow",
  "clap 3.0.0-beta.2",
  "libzerostash",
