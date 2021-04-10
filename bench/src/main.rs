@@ -178,7 +178,7 @@ mod tests {
     fn bup_rollsum(b: &mut test::Bencher) {
         let mut buf = [0; SELFTEST_SIZE];
         let rand = SystemRandom::new();
-        rand.fill(&mut buf);
+        rand.fill(&mut buf).unwrap();
 
         b.iter(|| {
             rollsum_sum(&buf, 0, SELFTEST_SIZE);
@@ -187,7 +187,7 @@ mod tests {
 
     #[bench]
     fn chunk_saturated_e2e(b: &mut test::Bencher) {
-        use libzerostash::{backends::*, Stash, StashKey};
+        use libzerostash::{backends::test::*, Stash, StashKey};
         use std::{env::set_current_dir, sync::Arc};
         let key = "abcdef1234567890abcdef1234567890";
         let key = StashKey::open_stash(&key, &key).unwrap();
@@ -204,7 +204,7 @@ mod tests {
 
     #[bench]
     fn chunk_e2e(b: &mut test::Bencher) {
-        use libzerostash::{backends::*, Stash, StashKey};
+        use libzerostash::{backends::test::*, Stash, StashKey};
         use std::{env::set_current_dir, sync::Arc};
         let key = "abcdef1234567890abcdef1234567890";
         let key = StashKey::open_stash(&key, &key).unwrap();

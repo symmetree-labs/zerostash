@@ -389,9 +389,9 @@ where
 
         let capacity = object.capacity();
         Storage {
-            object,
             backend,
             crypto,
+            object,
             capacity,
         }
     }

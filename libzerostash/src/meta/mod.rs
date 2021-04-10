@@ -65,11 +65,11 @@ impl MetaObjectHeader {
         }
     }
 
-    fn get_offset(&self, field: &Field) -> Option<u32> {
+    fn get_offset(&self, field: &str) -> Option<u32> {
         match self {
             MetaObjectHeader::V1 { ref offsets, .. } => {
                 for fo in offsets.iter() {
-                    if &fo.as_field() == field {
+                    if fo.as_field() == field {
                         return Some(fo.into());
                     }
                 }
@@ -144,7 +144,7 @@ mod tests {
         let key = Secret::new(*b"abcdef1234567890abcdef1234567890");
 
         let crypto = crypto::ObjectOperations::new(key);
-        let storage = Arc::new(backends::InMemoryBackend::default());
+        let storage = Arc::new(backends::test::InMemoryBackend::default());
         let oid = ObjectId::new(&crypto);
         let mut mw = meta::Writer::new(oid, storage.clone(), crypto.clone()).unwrap();
 

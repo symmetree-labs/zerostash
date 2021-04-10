@@ -4,7 +4,6 @@ use lru::LruCache;
 use memmap::{Mmap, MmapOptions};
 use thiserror::Error;
 
-use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -102,44 +101,50 @@ impl Backend for Directory {
     }
 }
 
-#[derive(Clone, Default)]
-pub struct InMemoryBackend(Arc<Mutex<HashMap<ObjectId, Arc<ReadObject>>>>);
+pub mod test {
+    use super::*;
+    use std::collections::HashMap;
 
-impl Backend for InMemoryBackend {
-    fn write_object(&self, object: &WriteObject) -> Result<()> {
-        self.0
-            .lock()
-            .unwrap()
-            .insert(object.id, Arc::new(object.into()));
-        Ok(())
+    #[derive(Clone, Default)]
+    pub struct InMemoryBackend(Arc<Mutex<HashMap<ObjectId, Arc<ReadObject>>>>);
+
+    impl Backend for InMemoryBackend {
+        fn write_object(&self, object: &WriteObject) -> Result<()> {
+            self.0
+                .lock()
+                .unwrap()
+                .insert(object.id, Arc::new(object.into()));
+            Ok(())
+        }
+
+        fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
+            self.0
+                .lock()
+                .unwrap()
+                .get(id)
+                .ok_or(BackendError::NoObjectFound)
+                .map(Arc::clone)
+        }
     }
 
-    fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
-        self.0
-            .lock()
-            .unwrap()
-            .get(id)
-            .ok_or_else(|| BackendError::NoObjectFound)
-            .map(Arc::clone)
-    }
-}
+    #[derive(Clone, Default)]
+    pub struct NullBackend(Arc<Mutex<usize>>);
 
-#[derive(Clone, Default)]
-pub struct NullBackend(Arc<Mutex<usize>>);
-
-impl NullBackend {
-    pub fn len(&self) -> usize {
-        *self.0.lock().unwrap()
-    }
-}
-
-impl Backend for NullBackend {
-    fn write_object(&self, _object: &WriteObject) -> Result<()> {
-        *self.0.lock().unwrap() += 1;
-        Ok(())
+    #[allow(clippy::len_without_is_empty)]
+    impl NullBackend {
+        pub fn len(&self) -> usize {
+            *self.0.lock().unwrap()
+        }
     }
 
-    fn read_object(&self, _id: &ObjectId) -> Result<Arc<ReadObject>> {
-        unimplemented!();
+    impl Backend for NullBackend {
+        fn write_object(&self, _object: &WriteObject) -> Result<()> {
+            *self.0.lock().unwrap() += 1;
+            Ok(())
+        }
+
+        fn read_object(&self, _id: &ObjectId) -> Result<Arc<ReadObject>> {
+            unimplemented!();
+        }
     }
 }

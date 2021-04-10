@@ -6,6 +6,7 @@
 
 // Tip: Deny warnings with `RUSTFLAGS="-D warnings"` environment variable in CI
 
+#![deny(clippy::all)]
 #![forbid(unsafe_code)]
 #![warn(
     missing_docs,

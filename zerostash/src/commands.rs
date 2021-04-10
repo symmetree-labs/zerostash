@@ -77,7 +77,7 @@ impl Runnable for EntryPoint {
 impl Configurable<ZerostashConfig> for EntryPoint {
     /// Location of the configuration file
     fn config_path(&self) -> Option<PathBuf> {
-        let filename = PathBuf::from(ZerostashConfig::path());
+        let filename = ZerostashConfig::path();
 
         if filename.exists() {
             Some(filename)

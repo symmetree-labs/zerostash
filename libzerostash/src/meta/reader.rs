@@ -60,18 +60,16 @@ where
         self.crypto.decrypt_object_into(&mut self.inner, &obj);
 
         let mut de = serde_cbor::Deserializer::from_slice(self.inner.as_ref()).into_iter();
-        self.header = de.next().ok_or_else(|| ReadError::InvalidHeader)?.ok();
+        self.header = de.next().ok_or(ReadError::InvalidHeader)?.ok();
 
-        self.header.clone().ok_or_else(|| ReadError::NoHeader)
+        self.header.clone().ok_or(ReadError::NoHeader)
     }
 
     pub fn read_into<F: MetaObjectField>(&mut self, store: &mut F) -> Result<()> {
         match self.header {
             None => Err(ReadError::NoHeader),
             Some(ref header) => {
-                let frame_start = header
-                    .get_offset(&F::key())
-                    .ok_or_else(|| ReadError::NoField)? as usize;
+                let frame_start = header.get_offset(&F::key()).ok_or(ReadError::NoField)? as usize;
 
                 let buffer: &[u8] = self.inner.as_ref();
                 let decompress =
