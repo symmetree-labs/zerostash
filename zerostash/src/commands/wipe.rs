@@ -1,7 +1,6 @@
 //! `wipe` subcommand
 
-use crate::application::APP;
-use abscissa_core::{Clap, Command, Runnable};
+use crate::prelude::*;
 
 /// `wipe` subcommand
 ///

@@ -10,7 +10,7 @@ use abscissa_core::{
     status_err, trace, Application, FrameworkError, StandardPaths,
 };
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use libzerostash::Stash;
 
 use std::{process, sync::Arc};
@@ -55,8 +55,7 @@ impl ZerostashApp {
                 let path = pathy.as_ref();
                 let key = ask_credentials().unwrap_or_else(|e| fatal_error(e));
                 let backend = Arc::new(
-                    libzerostash::backends::Directory::new(path)
-                        .unwrap_or_else(|e| fatal_error(e.into())),
+                    libzerostash::backends::Directory::new(path).unwrap_or_else(|e| fatal_error(e)),
                 );
 
                 Stash::new(backend, key)
@@ -71,7 +70,7 @@ impl ZerostashApp {
         let mut stash = self.open_stash(pathy);
         match stash.read() {
             Ok(_) => stash,
-            Err(e) => fatal_error2(e),
+            Err(e) => fatal_error(e),
         }
     }
 
@@ -135,11 +134,8 @@ impl Application for ZerostashApp {
     }
 }
 
-pub fn fatal_error2(err: Box<dyn std::error::Error>) -> ! {
-    status_err!("{} fatal error: {}", APP.name(), err);
-    process::exit(1)
-}
-pub fn fatal_error(err: Error) -> ! {
-    status_err!("{} fatal error: {}", APP.name(), err);
+/// report a fatal error and exit
+pub fn fatal_error(err: impl Into<Box<dyn std::error::Error>>) -> ! {
+    status_err!("{} fatal error: {}", APP.name(), err.into());
     process::exit(1)
 }

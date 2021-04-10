@@ -1,6 +1,6 @@
 //! `alias-del` subcommand
 
-use abscissa_core::{Clap, Command, Runnable};
+use crate::prelude::*;
 
 /// `alias-del` subcommand
 ///

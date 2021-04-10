@@ -1,6 +1,6 @@
 //! `alias-add` subcommand
 
-use abscissa_core::{Clap, Command, Runnable};
+use crate::prelude::*;
 
 /// `alias-add` subcommand
 ///

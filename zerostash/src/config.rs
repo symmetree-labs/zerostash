@@ -26,6 +26,7 @@ impl Default for ZerostashConfig {
     }
 }
 
+/// Describe the configuration for a named stash
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Stash {
@@ -34,11 +35,12 @@ pub struct Stash {
 }
 
 impl Stash {
+    /// Try to open a stash with the config-stored credentials
     pub fn try_open(&self) -> Result<libzerostash::Stash> {
         let key = {
             use Key::*;
             match &self.key {
-                None => ask_credentials()?,
+                Interactive => ask_credentials()?,
                 Plaintext { user, password } => libzerostash::StashKey::open_stash(user, password)?,
             }
         };
@@ -57,31 +59,42 @@ impl Stash {
     }
 }
 
+/// Ask for credentials on the standard input using [rpassword]
 pub fn ask_credentials() -> Result<libzerostash::StashKey> {
     let username = rprompt::prompt_reply_stderr("Username: ")?;
     let password = rpassword::prompt_password_stderr("Password: ")?;
     Ok(libzerostash::StashKey::open_stash(username, password)?)
 }
 
+/// Credentials for a stash
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "source")]
 pub enum Key {
+    /// Plain text username/password pair
     #[serde(rename = "plaintext")]
+    #[allow(missing_docs)]
     Plaintext { user: String, password: String },
+
+    /// Get credentials through other interactive/command line methods
     #[serde(rename = "ask")]
-    None,
+    Interactive,
 }
 
+/// Backend configuration
+/// This may be specific to the backend type
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "type")]
 pub enum Backend {
+    /// Use a directory on a local filesystem
     #[serde(rename = "fs")]
+    #[allow(missing_docs)]
     Filesystem { path: String },
 }
 
 impl ZerostashConfig {
+    /// Path to the configuration directory
     pub fn path() -> PathBuf {
         xdg::BaseDirectories::with_prefix("zerostash")
             .unwrap()
@@ -89,10 +102,13 @@ impl ZerostashConfig {
             .expect("cannot create configuration directory")
     }
 
+    /// Write the config file to the file system
     pub fn write(&self) -> Result<()> {
         unimplemented!()
     }
 
+    /// Find a stash by name in the config, and return a read-only
+    /// reference if found
     pub fn resolve_stash(&self, alias: impl AsRef<str>) -> Option<&Stash> {
         self.stashes.get(alias.as_ref())
     }

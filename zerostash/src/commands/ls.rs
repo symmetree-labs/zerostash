@@ -1,9 +1,6 @@
 //! `ls` subcommand
 
-use crate::application::APP;
-use abscissa_core::{Clap, Command, Runnable};
-use anyhow::{format_err, Error};
-use std::process;
+use crate::prelude::*;
 
 /// `ls` subcommand
 ///
