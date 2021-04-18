@@ -1,6 +1,7 @@
 use crate::compress;
 use crate::objects::{ObjectId, WriteObject};
 
+use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
 
 use std::collections::{HashMap, HashSet};
@@ -79,31 +80,35 @@ impl MetaObjectHeader {
     }
 }
 
+#[async_trait]
 pub trait MetaObjectField {
     type Item: DeserializeOwned;
 
     fn key() -> String;
-    fn serialize(&self, mw: &mut impl FieldWriter);
-    fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>);
+    async fn serialize(&self, mw: &mut impl FieldWriter);
+    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>);
 
     fn as_offset(&self, offs: u32) -> FieldOffset {
         FieldOffset(offs, Self::key())
     }
 }
 
-pub trait FieldWriter {
-    fn write_next(&mut self, obj: impl Serialize);
+#[async_trait]
+pub trait FieldWriter: Send {
+    async fn write_next(&mut self, obj: impl Serialize + Send + 'async_trait);
 }
 
-pub trait FieldReader<T> {
-    fn read_next(&mut self) -> Result<T, Box<dyn Error>>;
+#[async_trait]
+pub trait FieldReader<T>: Send {
+    async fn read_next(&mut self) -> Result<T, Box<dyn Error>>;
 }
 
+#[async_trait]
 impl<'b, T> FieldReader<T> for Decoder<'b>
 where
     T: DeserializeOwned,
 {
-    fn read_next(&mut self) -> Result<T, Box<dyn Error>> {
+    async fn read_next(&mut self) -> Result<T, Box<dyn Error>> {
         Ok(T::deserialize(self)?)
     }
 }

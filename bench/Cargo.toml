@@ -9,6 +9,7 @@ edition= "2018"
 [dependencies]
 libzerostash = { path = "../libzerostash" }
 walkdir = "^2.2.7"
+tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"] }
 
 [dev-dependencies]
 ring = "*"

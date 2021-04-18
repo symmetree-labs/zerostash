@@ -34,23 +34,23 @@ impl Stash {
         }
     }
 
-    pub fn read(&mut self) -> Result<&Self> {
+    pub async fn read(&mut self) -> Result<&Self> {
         let mut metareader =
             meta::Reader::new(self.backend.clone(), self.master_key.get_meta_crypto()?);
         let mut next_object = Some(self.master_key.root_object_id()?);
 
         while let Some(header) = match next_object {
-            Some(ref o) => Some(metareader.open(o)?),
+            Some(ref o) => Some(metareader.open(o).await?),
             None => None,
         } {
             next_object = header.next_object();
 
-            match metareader.read_into(&mut self.files) {
+            match metareader.read_into(&mut self.files).await {
                 Ok(_) | Err(ReadError::NoField) => (),
                 Err(e) => return Err(e.into()),
             };
 
-            match metareader.read_into(&mut self.files) {
+            match metareader.read_into(&mut self.files).await {
                 Ok(_) | Err(ReadError::NoField) => (),
                 Err(e) => return Err(e.into()),
             };
@@ -72,7 +72,7 @@ impl Stash {
         }
     }
 
-    pub fn restore_by_glob(
+    pub async fn restore_by_glob(
         &mut self,
         threads: usize,
         pattern: &[impl AsRef<str>],
@@ -84,12 +84,13 @@ impl Stash {
             self.backend.clone(),
             self.master_key.get_object_crypto()?,
             target,
-        );
+        )
+        .await;
 
         Ok(())
     }
 
-    pub fn add_recursive(&mut self, threads: usize, path: impl AsRef<Path>) -> Result<()> {
+    pub async fn add_recursive(&mut self, threads: usize, path: impl AsRef<Path>) -> Result<()> {
         let mut objstore =
             objects::Storage::new(self.backend.clone(), self.master_key.get_object_crypto()?);
 
@@ -99,21 +100,22 @@ impl Stash {
             &mut self.files,
             &mut objstore,
             path,
-        );
+        )
+        .await;
 
         Ok(())
     }
 
-    pub fn commit(&mut self) -> Result<ObjectIndex> {
+    pub async fn commit(&mut self) -> Result<ObjectIndex> {
         let mut mw = meta::Writer::new(
             self.master_key.root_object_id()?,
             self.backend.clone(),
             self.master_key.get_meta_crypto()?,
         )?;
 
-        mw.write_field(&self.files);
-        mw.write_field(&self.chunks);
-        mw.seal_and_store();
+        mw.write_field(&self.files).await;
+        mw.write_field(&self.chunks).await;
+        mw.seal_and_store().await;
 
         Ok(mw.objects().clone())
     }

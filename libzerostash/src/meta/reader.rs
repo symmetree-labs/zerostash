@@ -52,8 +52,8 @@ where
         }
     }
 
-    pub fn open(&mut self, id: &ObjectId) -> Result<MetaObjectHeader> {
-        let obj = self.backend.read_object(id)?;
+    pub async fn open(&mut self, id: &ObjectId) -> Result<MetaObjectHeader> {
+        let obj = self.backend.read_object(id).await?;
 
         self.inner.reset_cursor();
         self.inner.set_id(*id);
@@ -65,7 +65,7 @@ where
         self.header.clone().ok_or(ReadError::NoHeader)
     }
 
-    pub fn read_into<F: MetaObjectField>(&mut self, store: &mut F) -> Result<()> {
+    pub async fn read_into<F: MetaObjectField>(&mut self, store: &mut F) -> Result<()> {
         match self.header {
             None => Err(ReadError::NoHeader),
             Some(ref header) => {
@@ -77,7 +77,7 @@ where
 
                 let mut reader = serde_cbor::Deserializer::from_reader(decompress);
 
-                store.deserialize(&mut reader);
+                store.deserialize(&mut reader).await;
                 Ok(())
             }
         }

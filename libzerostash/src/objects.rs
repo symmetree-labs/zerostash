@@ -5,6 +5,7 @@ use crate::compress;
 use crate::crypto::*;
 use crate::BLOCK_SIZE;
 
+use async_trait::async_trait;
 use itertools::Itertools;
 use thiserror::Error;
 
@@ -29,9 +30,10 @@ pub enum ObjectError {
 
 pub type Result<T> = std::result::Result<T, ObjectError>;
 
+#[async_trait]
 pub trait ObjectStore: Clone + Send {
-    fn store_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>>;
-    fn flush(&mut self) -> Result<()>;
+    async fn store_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>>;
+    async fn flush(&mut self) -> Result<()>;
 }
 
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,8 +130,8 @@ impl AsRef<[u8]> for BlockBuffer {
 }
 
 pub struct Object<T> {
-    pub id: ObjectId,
-    pub buffer: T,
+    id: ObjectId,
+    buffer: T,
     capacity: usize,
     cursor: usize,
 }
@@ -146,6 +148,11 @@ impl<T> Object<T> {
 }
 
 impl<T> Object<T> {
+    #[inline(always)]
+    pub fn id(&self) -> &ObjectId {
+        &self.id
+    }
+
     #[inline(always)]
     pub fn set_id(&mut self, id: ObjectId) {
         self.id = id;
@@ -175,6 +182,11 @@ impl<T> Object<T>
 where
     T: AsRef<[u8]>,
 {
+    #[inline(always)]
+    pub fn as_inner(&self) -> &[u8] {
+        self.buffer.as_ref()
+    }
+
     pub fn with_id(id: ObjectId, buffer: T) -> Object<T> {
         let mut object = Object {
             id: ObjectId::default(),
@@ -191,6 +203,11 @@ impl<T> Object<T>
 where
     T: AsMut<[u8]>,
 {
+    #[inline(always)]
+    pub fn as_inner_mut(&mut self) -> &mut [u8] {
+        self.buffer.as_mut()
+    }
+
     #[inline]
     pub fn clear(&mut self) {
         for i in self.buffer.as_mut().iter_mut() {
@@ -341,13 +358,6 @@ where
     }
 }
 
-impl<T> AsMut<Object<T>> for Object<T> {
-    #[inline(always)]
-    fn as_mut(&mut self) -> &mut Object<T> {
-        self
-    }
-}
-
 impl<T> AsRef<Object<T>> for Object<T> {
     #[inline(always)]
     fn as_ref(&self) -> &Object<T> {
@@ -397,16 +407,17 @@ where
     }
 }
 
+#[async_trait]
 impl<C> ObjectStore for Storage<C>
 where
     C: CryptoProvider,
 {
-    fn store_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>> {
+    async fn store_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>> {
         let mut compressed = compress::block(&data)?;
         let size = compressed.len();
         let mut offs = self.object.position();
         if offs + size > self.capacity {
-            self.flush()?;
+            self.flush().await?;
             offs = self.object.position();
         }
 
@@ -425,9 +436,9 @@ where
         }))
     }
 
-    fn flush(&mut self) -> Result<()> {
+    async fn flush(&mut self) -> Result<()> {
         self.object.finalize(&self.crypto);
-        self.backend.write_object(&self.object)?;
+        self.backend.write_object(&self.object).await?;
 
         self.object.id.reset(&self.crypto);
         self.object.reset_cursor();
@@ -436,16 +447,25 @@ where
     }
 }
 
-#[derive(Clone, Default)]
-pub struct NullStorage(pub Arc<Mutex<usize>>);
+mod test {
+    use super::*;
 
-impl ObjectStore for NullStorage {
-    fn store_chunk(&mut self, _hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>> {
-        *self.0.lock().unwrap() += data.len();
-        Ok(Arc::default())
-    }
+    #[derive(Clone, Default)]
+    pub struct NullStorage(pub Arc<Mutex<usize>>);
 
-    fn flush(&mut self) -> Result<()> {
-        Ok(())
+    #[async_trait]
+    impl ObjectStore for NullStorage {
+        async fn store_chunk(
+            &mut self,
+            _hash: &CryptoDigest,
+            data: &[u8],
+        ) -> Result<Arc<ChunkPointer>> {
+            *self.0.lock().unwrap() += data.len();
+            Ok(Arc::default())
+        }
+
+        async fn flush(&mut self) -> Result<()> {
+            Ok(())
+        }
     }
 }

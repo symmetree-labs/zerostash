@@ -1,6 +1,7 @@
 use crate::chunks::ChunkPointer;
 use crate::meta::{FieldReader, FieldWriter, MetaObjectField};
 
+use async_trait::async_trait;
 use dashmap::DashMap;
 
 use std::error::Error;
@@ -28,9 +29,11 @@ pub struct Entry {
 
 impl Entry {
     #[cfg(windows)]
-    pub fn from_file(file: &fs::File, path: impl AsRef<Path>) -> Result<Entry, Box<dyn Error>> {
+    pub fn from_metadata(
+        metadata: fs::Metadata,
+        path: impl AsRef<Path>,
+    ) -> Result<Entry, Box<dyn Error>> {
         let path = path.as_ref();
-        let metadata = file.metadata()?;
         let (unix_secs, unix_nanos) = to_unix_mtime(&metadata)?;
 
         Ok(File {
@@ -49,10 +52,12 @@ impl Entry {
     }
 
     #[cfg(unix)]
-    pub fn from_file(file: &fs::File, path: impl AsRef<Path>) -> Result<Entry, Box<dyn Error>> {
+    pub fn from_metadata(
+        metadata: fs::Metadata,
+        path: impl AsRef<Path>,
+    ) -> Result<Entry, Box<dyn Error>> {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-        let metadata = file.metadata()?;
         let perms = metadata.permissions();
         let (unix_secs, unix_nanos) = to_unix_mtime(&metadata)?;
 
@@ -96,6 +101,7 @@ impl FileStore {
     }
 }
 
+#[async_trait]
 impl MetaObjectField for FileStore {
     type Item = Entry;
 
@@ -103,14 +109,14 @@ impl MetaObjectField for FileStore {
         "files".to_string()
     }
 
-    fn serialize(&self, mw: &mut impl FieldWriter) {
+    async fn serialize(&self, mw: &mut impl FieldWriter) {
         for f in self.0.iter() {
-            mw.write_next(f.key());
+            mw.write_next(f.key()).await;
         }
     }
 
-    fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
-        while let Ok(file) = mw.read_next() {
+    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
+        while let Ok(file) = mw.read_next().await {
             self.0.insert(Arc::new(file), ());
         }
     }

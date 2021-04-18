@@ -19,10 +19,14 @@ pub struct Checkout {
 impl Runnable for Checkout {
     /// Start the application.
     fn run(&self) {
-        let mut stash = APP.stash_exists(&self.stash);
+        abscissa_tokio::run(&APP, async {
+            let mut stash = APP.stash_exists(&self.stash).await;
 
-        stash
-            .restore_by_glob(APP.get_worker_threads(), &self.paths, &self.target)
-            .expect("Error extracting data");
+            stash
+                .restore_by_glob(APP.get_worker_threads(), &self.paths, &self.target)
+                .await
+                .expect("Error extracting data");
+        })
+        .unwrap();
     }
 }

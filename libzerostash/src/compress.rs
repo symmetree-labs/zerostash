@@ -30,29 +30,28 @@ pub fn destream<R: Read>(r: R) -> Result<Decoder<R>> {
     Decoder::new(r)
 }
 
-pub fn decompress_into(dst: &mut [u8], mut src: &[u8]) -> Result<()> {
+pub fn decompress_into(dst: &mut [u8], mut src: &[u8]) -> Result<u32> {
     // Copied and adapted from https://github.com/bozaro/lz4-rs/blob/master/src/block/mod.rs
-    use lz4::liblz4::*;
     use libc::c_char;
+    use lz4::liblz4::*;
     use std::io::{Error, ErrorKind};
 
     let size;
 
     if src.len() < 4 {
-	return Err(Error::new(
-	    ErrorKind::InvalidInput,
-	    "Source buffer must at least contain size prefix.",
-	));
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "Source buffer must at least contain size prefix.",
+        ));
     }
-    size =
-	(src[0] as i32) | (src[1] as i32) << 8 | (src[2] as i32) << 16 | (src[3] as i32) << 24;
+    size = (src[0] as i32) | (src[1] as i32) << 8 | (src[2] as i32) << 16 | (src[3] as i32) << 24;
 
     src = &src[4..];
 
     if size <= 0 {
         return Err(Error::new(
             ErrorKind::InvalidInput,
-            "Parsed size prefix in buffer must not be negative."
+            "Parsed size prefix in buffer must not be negative.",
         ));
     }
 
@@ -79,5 +78,6 @@ pub fn decompress_into(dst: &mut [u8], mut src: &[u8]) -> Result<()> {
         ));
     }
 
-    Ok(())
+    // size is strictly > 0 at this point, so this is safe
+    Ok(size as u32)
 }

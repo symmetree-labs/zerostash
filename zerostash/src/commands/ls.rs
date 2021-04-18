@@ -18,7 +18,7 @@ pub struct Ls {
 impl Runnable for Ls {
     /// Start the application.
     fn run(&self) {
-        let mut stash = APP.stash_exists(&self.stash);
+        let stash = APP.open_stash(&self.stash);
 
         for file in stash.list(&self.paths) {
             println!("{}", file.name);

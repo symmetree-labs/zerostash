@@ -4,50 +4,44 @@ use crate::objects::ObjectStore;
 use crate::rollsum::SeaSplit;
 use crate::splitter::FileSplitter;
 
-use crossbeam_utils::thread;
 use ignore::{DirEntry, WalkBuilder};
-use memmap::MmapOptions;
+use memmap2::MmapOptions;
+use tokio::{fs, sync::mpsc, task};
 
-use std::fs;
 use std::path::Path;
 
-type Sender = crossbeam_channel::Sender<DirEntry>;
-type Receiver = crossbeam_channel::Receiver<DirEntry>;
+type Sender = mpsc::Sender<DirEntry>;
+type Receiver = mpsc::Receiver<DirEntry>;
 
 #[allow(unused)]
-pub fn recursive(
-    num_threads: usize,
+pub async fn recursive(
+    max_file_handles: usize,
     chunkindex: &mut ChunkStore,
     fileindex: &mut FileStore,
-    objectstore: &mut (impl ObjectStore),
+    objectstore: &mut (impl ObjectStore + 'static),
     path: impl AsRef<Path>,
 ) {
-    thread::scope(|s| {
-        let (sender, r) = crossbeam_channel::bounded::<DirEntry>(16 * num_threads);
+    let (mut sender, receiver) = mpsc::channel(max_file_handles);
 
-        for i in 0..(num_threads - 1) {
-            let receiver = r.clone();
-            let chunkindex = chunkindex.clone();
-            let fileindex = fileindex.clone();
-            let objectstore = objectstore.clone();
+    let handle = task::spawn(process_file_loop(
+        receiver,
+        chunkindex.clone(),
+        fileindex.clone(),
+        objectstore.clone(),
+    ));
 
-            s.spawn(move |_| process_file_loop(receiver, chunkindex, fileindex, objectstore));
-        }
+    process_path(0, sender, path);
 
-        // we need sender to go out of scope
-        // otherwise the channels never close
-        process_path(num_threads, sender, path);
-    })
-    .unwrap()
+    handle.await;
 }
 
-fn process_file_loop(
-    receiver: Receiver,
+async fn process_file_loop(
+    mut r: Receiver,
     chunkindex: ChunkStore,
     mut fileindex: FileStore,
     mut objectstore: impl ObjectStore,
 ) {
-    for file in receiver.iter() {
+    while let Some(file) = r.recv().await {
         let path = file.path();
 
         if file
@@ -62,14 +56,15 @@ fn process_file_loop(
             continue;
         }
 
-        let osfile = fs::File::open(path);
+        let osfile = fs::File::open(path).await;
         if osfile.is_err() {
             println!("skipping {}: {}", path.display(), osfile.unwrap_err());
             continue;
         }
 
         let osfile = osfile.unwrap();
-        let mut entry = files::Entry::from_file(&osfile, path).unwrap();
+        let metadata = osfile.metadata().await.unwrap();
+        let mut entry = files::Entry::from_metadata(metadata, path).unwrap();
 
         if !fileindex.has_changed(&entry) {
             continue;
@@ -85,14 +80,16 @@ fn process_file_loop(
             // directly from the previous call
             MmapOptions::new()
                 .len(entry.size as usize)
-                .map(&osfile)
+                .populate()
+                .map(&osfile.into_std().await)
                 .unwrap()
         };
 
         for (start, hash, data) in FileSplitter::<SeaSplit>::new(&mmap) {
-            let chunkptr = chunkindex
-                .push(hash, || objectstore.store_chunk(&hash, data))
-                .unwrap();
+            let chunkptr = {
+                let store_fn = objectstore.store_chunk(&hash, data);
+                chunkindex.push(hash, store_fn).await.unwrap()
+            };
 
             entry.chunks.push((start, chunkptr));
         }
@@ -100,32 +97,36 @@ fn process_file_loop(
         fileindex.push(entry);
     }
 
-    objectstore.flush().unwrap();
+    objectstore.flush().await.unwrap();
 }
 
+/// if `threads == 0`, it chooses the number of threads automatically using heuristics
 fn process_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
     let walker = WalkBuilder::new(path)
         .threads(threads)
         .standard_filters(false)
-        .build_parallel();
-    walker.run(|| {
+        .build();
+
+    for result in walker {
+        if result.is_err() {
+            continue;
+        }
+
+        let entry = result.unwrap();
+        if !entry.path().is_file() {
+            continue;
+        }
+
         let tx = sender.clone();
-        Box::new(move |result| {
-            use ignore::WalkState::*;
-
-            if result.is_err() {
-                return Continue;
-            }
-
-            let entry = result.unwrap();
-            if !entry.path().is_file() {
-                return Continue;
-            }
-
-            tx.send(entry).unwrap();
-            Continue
-        })
-    });
+        task::spawn(async move {
+            tx.send(entry).await.unwrap();
+        });
+    }
+    // walker.run(|| {
+    //     let tx = sender.clone();
+    //     Box::new(move |result| {
+    //     })
+    // });
 }
 
 #[cfg(test)]

@@ -18,14 +18,18 @@ pub struct Commit {
 impl Runnable for Commit {
     /// Start the application.
     fn run(&self) {
-        let mut stash = APP.open_stash(&self.stash);
+        abscissa_tokio::run(&APP, async {
+            let mut stash = APP.open_stash(&self.stash);
 
-        for path in self.paths.iter() {
-            stash
-                .add_recursive(APP.get_worker_threads(), path)
-                .expect("Failed to add path");
-        }
+            for path in self.paths.iter() {
+                stash
+                    .add_recursive(APP.get_worker_threads(), path)
+                    .await
+                    .expect("Failed to add path");
+            }
 
-        stash.commit().expect("Failed to write metadata");
+            stash.commit().await.expect("Failed to write metadata");
+        })
+        .unwrap();
     }
 }

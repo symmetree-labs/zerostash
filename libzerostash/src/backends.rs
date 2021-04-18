@@ -1,13 +1,14 @@
 use crate::objects::{Object, ObjectId, ReadBuffer, ReadObject, WriteObject};
 
+use async_trait::async_trait;
 use lru::LruCache;
-use memmap::{Mmap, MmapOptions};
+use std::{
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use thiserror::Error;
-
-use std::fs;
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use tokio::{fs, sync::Mutex};
 
 #[derive(Error, Debug)]
 pub enum BackendError {
@@ -24,20 +25,10 @@ pub enum BackendError {
 
 pub type Result<T> = std::result::Result<T, BackendError>;
 
+#[async_trait]
 pub trait Backend: Send + Sync {
-    fn write_object(&self, object: &WriteObject) -> Result<()>;
-    fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>>;
-}
-
-pub struct MmappedFile {
-    pub _file: fs::File,
-    pub mmap: Mmap,
-}
-
-impl AsRef<[u8]> for MmappedFile {
-    fn as_ref(&self) -> &[u8] {
-        self.mmap.as_ref()
-    }
+    async fn write_object(&self, object: &WriteObject) -> Result<()>;
+    async fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>>;
 }
 
 #[derive(Clone)]
@@ -48,7 +39,7 @@ pub struct Directory {
 
 impl Directory {
     pub fn new(target: impl AsRef<Path>) -> Result<Directory> {
-        fs::create_dir_all(&target)?;
+        std::fs::create_dir_all(&target)?;
         Ok(Directory {
             target: Arc::new(target.as_ref().into()),
             read_lru: Arc::new(Mutex::new(LruCache::new(100))),
@@ -56,44 +47,28 @@ impl Directory {
     }
 }
 
+#[async_trait]
 impl Backend for Directory {
-    fn write_object(&self, object: &WriteObject) -> Result<()> {
-        let size = object.buffer.as_ref().len();
-
-        let filename = self.target.join(object.id.to_string());
-
-        let mut file = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(filename)?;
-
-        file.set_len(size as u64)?;
-
-        {
-            let mut mmap = unsafe { MmapOptions::new().len(size).map_mut(&file)? };
-            mmap.copy_from_slice(object.buffer.as_ref());
-        }
-
-        file.flush()?;
+    async fn write_object(&self, object: &WriteObject) -> Result<()> {
+        let filename = self.target.join(object.id().to_string());
+        fs::write(filename, object.as_inner()).await?;
         Ok(())
     }
 
-    fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
-        let mut lru = self.read_lru.lock().unwrap();
+    async fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
+        let lru = {
+            let mut lock = self.read_lru.lock().await;
+            lock.get(id).cloned()
+        };
 
-        match lru.get(id) {
-            Some(mmap) => Ok(mmap.clone()),
+        match lru {
+            Some(buffer) => Ok(buffer),
             None => {
                 let filename = self.target.join(id.to_string());
-                let file = fs::OpenOptions::new().read(true).open(filename)?;
-                let mmap = unsafe { MmapOptions::new().map(&file)? };
+                let file = fs::read(&filename).await?;
+                let obj = Arc::new(Object::with_id(*id, ReadBuffer::new(file)));
 
-                let obj = Arc::new(Object::with_id(
-                    *id,
-                    ReadBuffer::new(MmappedFile { _file: file, mmap }),
-                ));
-                lru.put(*id, obj.clone());
+                self.read_lru.lock().await.put(*id, obj.clone());
 
                 Ok(obj)
             }
@@ -103,21 +78,22 @@ impl Backend for Directory {
 
 pub mod test {
     use super::*;
-    use std::collections::HashMap;
+    use std::{collections::HashMap, sync::Mutex};
 
     #[derive(Clone, Default)]
     pub struct InMemoryBackend(Arc<Mutex<HashMap<ObjectId, Arc<ReadObject>>>>);
 
+    #[async_trait]
     impl Backend for InMemoryBackend {
-        fn write_object(&self, object: &WriteObject) -> Result<()> {
+        async fn write_object(&self, object: &WriteObject) -> Result<()> {
             self.0
                 .lock()
                 .unwrap()
-                .insert(object.id, Arc::new(object.into()));
+                .insert(*object.id(), Arc::new(object.into()));
             Ok(())
         }
 
-        fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
+        async fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
             self.0
                 .lock()
                 .unwrap()
@@ -137,13 +113,14 @@ pub mod test {
         }
     }
 
+    #[async_trait]
     impl Backend for NullBackend {
-        fn write_object(&self, _object: &WriteObject) -> Result<()> {
+        async fn write_object(&self, _object: &WriteObject) -> Result<()> {
             *self.0.lock().unwrap() += 1;
             Ok(())
         }
 
-        fn read_object(&self, _id: &ObjectId) -> Result<Arc<ReadObject>> {
+        async fn read_object(&self, _id: &ObjectId) -> Result<Arc<ReadObject>> {
             unimplemented!();
         }
     }

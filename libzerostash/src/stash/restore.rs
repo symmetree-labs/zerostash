@@ -1,70 +1,71 @@
 #![allow(unused)]
 
-use crate::backends::Backend;
-use crate::chunks::ChunkPointer;
-use crate::compress;
-use crate::crypto::CryptoProvider;
-use crate::files::{self, FileIndex};
-use crate::objects::*;
+use crate::{
+    backends::Backend,
+    chunks::ChunkPointer,
+    compress,
+    crypto::CryptoProvider,
+    files::{self, FileIndex},
+    objects::*,
+};
 
-use crossbeam_utils::thread;
 use itertools::Itertools;
-use memmap::MmapOptions;
+use memmap2::MmapOptions;
+use tokio::{fs, sync::mpsc, task};
 
-use std::collections::HashMap;
-use std::env;
-use std::error::Error;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::UNIX_EPOCH;
+use std::{
+    collections::HashMap,
+    env,
+    error::Error,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::UNIX_EPOCH,
+};
 
 type ThreadWork = (PathBuf, Arc<files::Entry>);
 
-type Sender = crossbeam_channel::Sender<ThreadWork>;
-type Receiver = crossbeam_channel::Receiver<ThreadWork>;
+type Sender = mpsc::Sender<ThreadWork>;
+type Receiver = mpsc::Receiver<ThreadWork>;
 
 pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + 'a)>;
 
-pub fn from_iter(
-    num_threads: usize,
-    iter: FileIterator,
+pub async fn from_iter(
+    max_file_handles: usize,
+    iter: FileIterator<'_>,
     backend: Arc<dyn Backend>,
-    crypto: impl CryptoProvider,
+    crypto: impl CryptoProvider + 'static,
     target: impl AsRef<Path>,
 ) {
-    thread::scope(move |s| {
-        // need to set up threads here and stuff
-        let (sender, receiver) = crossbeam_channel::bounded::<ThreadWork>(2 * num_threads);
+    let (mut sender, receiver) = mpsc::channel(max_file_handles);
 
-        for range in 0..(num_threads - 1) {
-            let backend = backend.clone();
-            let crypto = crypto.clone();
-            let receiver = receiver.clone();
+    // TODO this is single-threaded
+    task::spawn(process_packet_loop(receiver, backend, crypto));
 
-            s.spawn(move |_| process_packet_loop(receiver, backend, crypto));
+    for md in iter {
+        let path = get_path(&md.name);
+
+        // if there's no parent, then the entire thing is root.
+        // if what we're trying to extract is root, then what happens?
+        let mut basedir = target.as_ref().to_owned();
+        if let Some(parent) = path.parent() {
+            // create the file and parent directory
+            fs::create_dir_all(basedir.join(parent)).await.unwrap();
         }
 
-        for md in iter {
-            let path = get_path(&md.name);
+        let filename = basedir.join(&path);
 
-            // if there's no parent, then the entire thing is root.
-            // if what we're trying to extract is root, then what happens?
-            let mut basedir = target.as_ref().to_owned();
-            if let Some(parent) = path.parent() {
-                // create the file and parent directory
-                fs::create_dir_all(basedir.join(parent)).unwrap();
-            }
-
-            let filename = basedir.join(&path);
-
-            sender.send((filename, md.clone()));
+        if sender.send((filename, md.clone())).await.is_err() {
+            println!("internal process crashed");
+            return;
         }
-    })
-    .unwrap();
+    }
 }
 
-fn process_packet_loop(r: Receiver, backend: Arc<dyn Backend>, crypto: impl CryptoProvider) {
+async fn process_packet_loop(
+    mut r: Receiver,
+    backend: Arc<dyn Backend>,
+    crypto: impl CryptoProvider,
+) {
     // Since resources here are all managed by RAII, and they all
     // implement Drop, we can simply go through the Arc<_>s,
     // mmap them, open the corresponding objects to extract details,
@@ -75,7 +76,7 @@ fn process_packet_loop(r: Receiver, backend: Arc<dyn Backend>, crypto: impl Cryp
     let mut buffer = WriteObject::default();
 
     // This loop is managing an mmap of a file that's written
-    for (filename, metadata) in r.iter() {
+    while let Some((filename, metadata)) = r.recv().await {
         if metadata.size == 0 {
             continue;
         }
@@ -84,8 +85,9 @@ fn process_packet_loop(r: Receiver, backend: Arc<dyn Backend>, crypto: impl Cryp
             .write(true)
             .read(true)
             .open(filename)
+            .await
             .unwrap();
-        fd.set_len(metadata.size).unwrap();
+        fd.set_len(metadata.size).await.unwrap();
 
         let object_ordered = metadata.chunks.iter().fold(HashMap::new(), |mut a, c| {
             a.entry(c.1.file).or_insert_with(Vec::new).push(c);
@@ -95,18 +97,18 @@ fn process_packet_loop(r: Receiver, backend: Arc<dyn Backend>, crypto: impl Cryp
         let mut mmap = unsafe {
             MmapOptions::new()
                 .len(metadata.size as usize)
-                .map_mut(&fd)
+                .map_mut(&fd.into_std().await)
                 .expect("mmap")
         };
 
         // This loop manages the object we're reading from
         for (objectid, cs) in object_ordered.iter() {
-            let object = backend.read_object(objectid).expect("object read");
+            let object = backend.read_object(objectid).await.expect("object read");
 
             // This loop will extract & decrypt & decompress from the object
             for (i, (start, cp)) in cs.iter().enumerate() {
                 let start = *start as usize;
-                let mut target: &mut [u8] = buffer.buffer.as_mut();
+                let mut target: &mut [u8] = buffer.as_inner_mut();
 
                 let len = crypto.decrypt_chunk(&mut target, &object, cp);
                 compress::decompress_into(&mut mmap[start..], &target[..len]).unwrap();

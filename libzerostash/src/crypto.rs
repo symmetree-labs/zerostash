@@ -105,7 +105,7 @@ impl CryptoProvider for ObjectOperations {
         let aead = get_aead(derive_chunk_key(&self.key, hash));
         let tag = aead
             .seal_in_place_separate_tag(
-                get_chunk_nonce(&object.id, data.len() as u32),
+                get_chunk_nonce(object.id(), data.len() as u32),
                 aead::Aad::empty(),
                 data,
             )
@@ -121,7 +121,7 @@ impl CryptoProvider for ObjectOperations {
 
         let tag = aead
             .seal_in_place_separate_tag(
-                get_object_nonce(&object.id),
+                get_object_nonce(object.id()),
                 aead::Aad::empty(),
                 object.as_mut(),
             )
@@ -144,12 +144,12 @@ impl CryptoProvider for ObjectOperations {
         let start = chunk.offs as usize;
         let end = start + size;
 
-        target[..size].copy_from_slice(&o.buffer.as_ref()[start..end]);
+        target[..size].copy_from_slice(&o.as_inner()[start..end]);
         target[size..cyphertext_size].copy_from_slice(&chunk.tag);
 
         let aead = get_aead(derive_chunk_key(&self.key, &chunk.hash));
         aead.open_in_place(
-            get_chunk_nonce(&o.id, chunk.size),
+            get_chunk_nonce(o.id(), chunk.size),
             aead::Aad::empty(),
             &mut target[..cyphertext_size],
         )
@@ -163,11 +163,11 @@ impl CryptoProvider for ObjectOperations {
         output: &mut Object<O>,
         obj: &Object<I>,
     ) {
-        let buf: &mut [u8] = output.buffer.as_mut();
-        buf.copy_from_slice(&obj.buffer.as_ref());
+        let buf: &mut [u8] = output.as_inner_mut();
+        buf.copy_from_slice(&obj.as_inner());
 
         let aead = get_aead(self.key.clone());
-        aead.open_in_place(get_object_nonce(&obj.id), aead::Aad::empty(), buf)
+        aead.open_in_place(get_object_nonce(obj.id()), aead::Aad::empty(), buf)
             .unwrap();
 
         output.reserve_tag();

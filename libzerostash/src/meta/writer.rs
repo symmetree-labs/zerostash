@@ -7,6 +7,7 @@ use crate::meta::{
 };
 use crate::objects::{ObjectId, WriteObject};
 
+use async_trait::async_trait;
 use serde::Serialize;
 use serde_cbor::ser::to_vec as serialize_to_vec;
 
@@ -26,11 +27,12 @@ pub struct Writer<C> {
     crypto: C,
 }
 
+#[async_trait]
 impl<C> FieldWriter for Writer<C>
 where
     C: CryptoProvider,
 {
-    fn write_next(&mut self, obj: impl Serialize) {
+    async fn write_next(&mut self, obj: impl Serialize + Send + 'async_trait) {
         let writer = self.encoder.writer().unwrap();
         let capacity = writer.capacity();
         let position = writer.position();
@@ -38,11 +40,11 @@ where
         let record = serialize_to_vec(&obj).unwrap();
 
         if capacity - position < STREAM_BLOCK_SIZE {
-            self.seal_and_store();
+            self.seal_and_store().await;
         }
 
         if record.len() + position > capacity - 64 {
-            self.seal_and_store();
+            self.seal_and_store().await;
         }
 
         self.encoder.start().unwrap().write_all(&record).unwrap();
@@ -77,7 +79,7 @@ where
         &self.objects
     }
 
-    pub fn write_field<F: MetaObjectField>(&mut self, obj: &F) {
+    pub async fn write_field<F: MetaObjectField>(&mut self, obj: &F) {
         // book keeping
         self.offsets
             .push(obj.as_offset(self.encoder.writer().unwrap().position() as u32));
@@ -85,13 +87,13 @@ where
         self.objects
             .entry(F::key())
             .or_default()
-            .insert(self.encoder.writer().unwrap().id);
+            .insert(*self.encoder.writer().unwrap().id());
 
         self.encoder.start().unwrap();
 
         // clean up
         self.current_field = Some(F::key());
-        obj.serialize(self);
+        obj.serialize(self).await;
         self.current_field = None;
 
         // skip to next multiple of STREAM_BLOCK_SIZE
@@ -103,11 +105,11 @@ where
             object.seek(SeekFrom::Current(skip as i64)).unwrap();
             self.encoder = WriteState::Parked(object);
         } else {
-            self.seal_and_store();
+            self.seal_and_store().await;
         }
     }
 
-    pub fn seal_and_store(&mut self) {
+    pub async fn seal_and_store(&mut self) {
         let mut object = self.encoder.finish().unwrap();
         let end = object.position();
 
@@ -128,14 +130,14 @@ where
 
         // encrypt & store
         self.crypto.encrypt_object(&mut object);
-        self.backend.write_object(&object).unwrap();
+        self.backend.write_object(&object).await.unwrap();
 
         // track which objects are holding what kind of data
         for fo in self.offsets.drain(..) {
             self.objects
                 .entry(fo.as_field())
                 .or_default()
-                .insert(object.id);
+                .insert(*object.id());
         }
 
         // start cleaning up and bookkeeping

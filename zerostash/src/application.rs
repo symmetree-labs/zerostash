@@ -51,7 +51,7 @@ impl ZerostashApp {
     pub(crate) fn open_stash(&self, pathy: impl AsRef<str>) -> Stash {
         let config = self.config.read();
 
-        let mut stash = match config.resolve_stash(&pathy) {
+        let stash = match config.resolve_stash(&pathy) {
             None => {
                 let path = pathy.as_ref();
                 let key = ask_credentials().unwrap_or_else(|e| fatal_error(e));
@@ -67,9 +67,9 @@ impl ZerostashApp {
         stash
     }
 
-    pub(crate) fn stash_exists(&self, pathy: impl AsRef<str>) -> Stash {
+    pub(crate) async fn stash_exists(&self, pathy: impl AsRef<str>) -> Stash {
         let mut stash = self.open_stash(pathy);
-        match stash.read() {
+        match stash.read().await {
             Ok(_) => stash,
             Err(e) => fatal_error(e),
         }

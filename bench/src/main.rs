@@ -26,7 +26,8 @@ fn dir_stat(path: &str) -> (u64, usize) {
     (lens.iter().sum::<u64>(), lens.len())
 }
 
-pub fn main() {
+#[tokio::main(flavor = "multi_thread")]
+async fn main() {
     let threads = args().nth(1).unwrap();
     let path = args().nth(2).unwrap();
     let output = args().nth(3).unwrap();
@@ -41,11 +42,13 @@ pub fn main() {
         let mut repo = Stash::new(Arc::new(backends::Directory::new(&output).unwrap()), key);
 
         let store_start = Instant::now();
-        repo.add_recursive(threads.parse().unwrap(), &path).unwrap();
+        repo.add_recursive(threads.parse().unwrap(), &path)
+            .await
+            .unwrap();
         let store_time = store_start.elapsed();
 
         let commit_start = Instant::now();
-        let mobjects = repo.commit().unwrap();
+        let mobjects = repo.commit().await.unwrap();
         let commit_time = commit_start.elapsed();
 
         let objects = mobjects
@@ -133,11 +136,12 @@ pub fn main() {
         let mut repo = Stash::new(Arc::new(backends::Directory::new(&output).unwrap()), key);
 
         let read_start = Instant::now();
-        repo.read().unwrap();
+        repo.read().await.unwrap();
         let read_time = read_start.elapsed();
 
         let restore_start = Instant::now();
         repo.restore_by_glob(threads.parse().unwrap(), &["*"], restore_to)
+            .await
             .unwrap();
         let restore_time = restore_start.elapsed();
 

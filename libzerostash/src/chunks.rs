@@ -2,9 +2,9 @@ use crate::crypto::{CryptoDigest, Tag};
 use crate::meta::{FieldReader, FieldWriter, MetaObjectField};
 use crate::objects::{ObjectError, ObjectId};
 
+use async_trait::async_trait;
 use dashmap::{mapref::entry::Entry, DashMap};
-
-use std::sync::Arc;
+use std::{future::Future, marker::Unpin, sync::Arc};
 
 #[derive(Eq, PartialEq, Hash, Default, Serialize, Deserialize)]
 pub struct ChunkPointer {
@@ -24,10 +24,10 @@ impl ChunkStore {
         &self.0
     }
 
-    pub fn push(
+    pub async fn push(
         &self,
         digest: CryptoDigest,
-        mut store: impl FnMut() -> Result<Arc<ChunkPointer>, ObjectError>,
+        store: (impl Future<Output = Result<Arc<ChunkPointer>, ObjectError>> + Unpin),
     ) -> Result<Arc<ChunkPointer>, ObjectError> {
         // do a simple check to ensure we don't write-lock straight away
         if let Some(ptr) = self.0.get(&digest) {
@@ -40,7 +40,7 @@ impl ChunkStore {
         match self.0.entry(digest) {
             Entry::Occupied(e) => Ok(e.get().clone()),
             Entry::Vacant(e) => {
-                let address = (store)()?;
+                let address = store.await?;
                 e.insert(address.clone());
                 Ok(address)
             }
@@ -48,6 +48,7 @@ impl ChunkStore {
     }
 }
 
+#[async_trait]
 impl MetaObjectField for ChunkStore {
     type Item = (CryptoDigest, Arc<ChunkPointer>);
 
@@ -55,14 +56,14 @@ impl MetaObjectField for ChunkStore {
         "chunks".to_string()
     }
 
-    fn serialize(&self, mw: &mut impl FieldWriter) {
+    async fn serialize(&self, mw: &mut impl FieldWriter) {
         for f in self.0.iter() {
-            mw.write_next((f.key(), f.value()));
+            mw.write_next((f.key(), f.value())).await;
         }
     }
 
-    fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
-        while let Ok((hash, pointer)) = mw.read_next() {
+    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
+        while let Ok((hash, pointer)) = mw.read_next().await {
             self.0.insert(hash, pointer);
         }
     }
