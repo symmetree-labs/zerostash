@@ -50,7 +50,7 @@ mod tests {
     fn check_chunk_iterator_sum() {
         use super::FileSplitter;
         use crate::rollsum::SeaSplit;
-        use memmap::MmapOptions;
+        use memmap2::MmapOptions;
         use std::fs::File;
 
         let file = File::open(PATH).unwrap();

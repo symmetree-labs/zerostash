@@ -196,13 +196,15 @@ mod tests {
         let key = "abcdef1234567890abcdef1234567890";
         let key = StashKey::open_stash(&key, &key).unwrap();
         let mut repo = Stash::new(Arc::new(NullBackend::default()), key);
-
         set_current_dir("../libzerostash").unwrap();
+
+        let basic_rt = tokio::runtime::Runtime::new().unwrap();
+
         // first build up the file index
-        repo.add_recursive(4, PATH_100).unwrap();
+        basic_rt.block_on(repo.add_recursive(4, PATH_100)).unwrap();
 
         b.iter(|| {
-            repo.add_recursive(4, PATH_100).unwrap();
+            basic_rt.block_on(repo.add_recursive(4, PATH_100)).unwrap();
         })
     }
 
@@ -215,8 +217,11 @@ mod tests {
         let mut repo = Stash::new(Arc::new(NullBackend::default()), key);
 
         set_current_dir("../libzerostash").unwrap();
+
+        let basic_rt = tokio::runtime::Runtime::new().unwrap();
+
         b.iter(|| {
-            repo.add_recursive(4, PATH_100).unwrap();
+            basic_rt.block_on(repo.add_recursive(4, PATH_100)).unwrap();
         })
     }
 

@@ -133,18 +133,20 @@ fn process_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
 mod tests {
     const PATH_100: &str = "tests/data/100_random_1k";
 
-    #[test]
-    fn test_stats_add_up() {
+    // need a multi-threaded scheduler for anything involving
+    // `store::recursive`
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_stats_add_up() {
         use crate::chunks::*;
         use crate::files::*;
-        use crate::objects::*;
+        use crate::objects::test::*;
         use crate::stash::store;
 
         let mut cs = ChunkStore::default();
         let mut fs = FileStore::default();
         let mut s = NullStorage::default();
 
-        store::recursive(4, &mut cs, &mut fs, &mut s, PATH_100);
+        store::recursive(2, &mut cs, &mut fs, &mut s, PATH_100).await;
 
         assert_eq!(100, fs.index().len());
         assert_eq!(

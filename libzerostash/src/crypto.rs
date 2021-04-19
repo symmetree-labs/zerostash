@@ -275,7 +275,7 @@ mod tests {
         // do it again, because reusing target buffers is fair game
         crypto.decrypt_object_into(&mut decrypted, &obj);
 
-        assert_eq!(&decrypted.buffer.as_ref()[..len], &cleartext[..]);
+        assert_eq!(&decrypted.as_inner()[..len], &cleartext[..]);
     }
 
     #[test]

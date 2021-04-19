@@ -12,7 +12,7 @@ use thiserror::Error;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::string::ToString;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[derive(Error, Debug)]
 pub enum ObjectError {
@@ -447,11 +447,11 @@ where
     }
 }
 
-mod test {
+pub mod test {
     use super::*;
 
     #[derive(Clone, Default)]
-    pub struct NullStorage(pub Arc<Mutex<usize>>);
+    pub struct NullStorage(Arc<tokio::sync::Mutex<usize>>);
 
     #[async_trait]
     impl ObjectStore for NullStorage {
@@ -460,7 +460,7 @@ mod test {
             _hash: &CryptoDigest,
             data: &[u8],
         ) -> Result<Arc<ChunkPointer>> {
-            *self.0.lock().unwrap() += data.len();
+            *self.0.lock().await += data.len();
             Ok(Arc::default())
         }
 

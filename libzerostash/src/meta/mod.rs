@@ -135,8 +135,8 @@ impl FieldOffset {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn can_deserialize_fields() {
+    #[tokio::test]
+    async fn can_deserialize_fields() {
         use crate::backends;
         use crate::chunks::{self, ChunkPointer};
         use crate::crypto::{self, CryptoDigest};
@@ -155,24 +155,26 @@ mod tests {
 
         let chunks = chunks::ChunkStore::default();
         chunks
-            .push(CryptoDigest::default(), || {
-                Ok(Arc::new(ChunkPointer::default()))
-            })
+            .push(
+                CryptoDigest::default(),
+                Box::pin(async { Ok(Arc::new(ChunkPointer::default())) }),
+            )
+            .await
             .unwrap();
 
-        mw.write_field(&chunks);
-        mw.seal_and_store();
+        mw.write_field(&chunks).await;
+        mw.seal_and_store().await;
 
         let mut mr = meta::Reader::new(storage, crypto);
         let objects = mw.objects().get(&chunks::ChunkStore::key()).unwrap();
         assert_eq!(objects.len(), 1);
 
         for id in objects.iter() {
-            mr.open(&id).unwrap();
+            mr.open(&id).await.unwrap();
         }
 
         let mut chunks_restore = chunks::ChunkStore::default();
-        mr.read_into(&mut chunks_restore).unwrap();
+        mr.read_into(&mut chunks_restore).await.unwrap();
 
         assert_eq!(chunks_restore.index().len(), 1);
     }
