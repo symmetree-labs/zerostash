@@ -30,6 +30,7 @@ zeroize = "1.1"
 ignore = "^0.4"
 tokio = { version = "^1", features = ["fs", "rt", "sync"] }
 async-trait = { version = "^0.1" }
+flume = "^0.10"
 
 [dev-dependencies]
 criterion = "0.3"

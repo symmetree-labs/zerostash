@@ -9,15 +9,17 @@ use crate::{
     objects::*,
 };
 
+use flume as mpsc;
 use itertools::Itertools;
 use memmap2::MmapOptions;
-use tokio::{fs, sync::mpsc, task};
+use tokio::{fs, task};
 
 use std::{
     collections::HashMap,
     env,
     error::Error,
     path::{Path, PathBuf},
+    pin::Pin,
     sync::Arc,
     time::UNIX_EPOCH,
 };
@@ -36,7 +38,7 @@ pub async fn from_iter(
     crypto: impl CryptoProvider + 'static,
     target: impl AsRef<Path>,
 ) {
-    let (mut sender, receiver) = mpsc::channel(max_file_handles);
+    let (mut sender, receiver) = mpsc::bounded(max_file_handles);
 
     // TODO this is single-threaded
     task::spawn(process_packet_loop(receiver, backend, crypto));
@@ -54,7 +56,7 @@ pub async fn from_iter(
 
         let filename = basedir.join(&path);
 
-        if sender.send((filename, md.clone())).await.is_err() {
+        if sender.send_async((filename, md.clone())).await.is_err() {
             println!("internal process crashed");
             return;
         }
@@ -76,7 +78,7 @@ async fn process_packet_loop(
     let mut buffer = WriteObject::default();
 
     // This loop is managing an mmap of a file that's written
-    while let Some((filename, metadata)) = r.recv().await {
+    while let Ok((filename, metadata)) = r.recv_async().await {
         if metadata.size == 0 {
             continue;
         }

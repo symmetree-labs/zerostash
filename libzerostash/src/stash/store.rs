@@ -4,9 +4,10 @@ use crate::objects::ObjectStore;
 use crate::rollsum::SeaSplit;
 use crate::splitter::FileSplitter;
 
+use flume as mpsc;
 use ignore::{DirEntry, WalkBuilder};
 use memmap2::MmapOptions;
-use tokio::{fs, sync::mpsc, task};
+use tokio::{fs, task};
 
 use std::path::Path;
 
@@ -21,7 +22,7 @@ pub async fn recursive(
     objectstore: &mut (impl ObjectStore + 'static),
     path: impl AsRef<Path>,
 ) {
-    let (mut sender, receiver) = mpsc::channel(max_file_handles);
+    let (mut sender, receiver) = mpsc::bounded(max_file_handles);
 
     let handle = task::spawn(process_file_loop(
         receiver,
@@ -36,12 +37,12 @@ pub async fn recursive(
 }
 
 async fn process_file_loop(
-    mut r: Receiver,
+    r: Receiver,
     chunkindex: ChunkStore,
     mut fileindex: FileStore,
     mut objectstore: impl ObjectStore,
 ) {
-    while let Some(file) = r.recv().await {
+    while let Ok(file) = r.recv_async().await {
         let path = file.path();
 
         if file
@@ -105,28 +106,27 @@ fn process_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
     let walker = WalkBuilder::new(path)
         .threads(threads)
         .standard_filters(false)
-        .build();
+        .build_parallel();
 
-    for result in walker {
-        if result.is_err() {
-            continue;
-        }
-
-        let entry = result.unwrap();
-        if !entry.path().is_file() {
-            continue;
-        }
-
+    walker.run(|| {
         let tx = sender.clone();
-        task::spawn(async move {
-            tx.send(entry).await.unwrap();
-        });
-    }
-    // walker.run(|| {
-    //     let tx = sender.clone();
-    //     Box::new(move |result| {
-    //     })
-    // });
+        Box::new(move |result| {
+            use ignore::WalkState::*;
+
+            if result.is_err() {
+                return Continue;
+            }
+
+            let entry = result.unwrap();
+            if !entry.path().is_file() {
+                return Continue;
+            }
+
+            tx.send(entry).unwrap();
+
+            Continue
+        })
+    });
 }
 
 #[cfg(test)]
