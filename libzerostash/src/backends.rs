@@ -1,4 +1,4 @@
-use crate::objects::{Object, ObjectId, ReadBuffer, ReadObject, WriteObject};
+use crate::object::{Object, ObjectId, ReadBuffer, ReadObject, WriteObject};
 
 use async_trait::async_trait;
 use lru::LruCache;

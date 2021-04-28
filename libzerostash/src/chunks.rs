@@ -1,6 +1,6 @@
 use crate::crypto::{CryptoDigest, Tag};
 use crate::meta::{FieldReader, FieldWriter, MetaObjectField};
-use crate::objects::{ObjectError, ObjectId};
+use crate::object::{ObjectError, ObjectId};
 
 use async_trait::async_trait;
 use dashmap::{mapref::entry::Entry, DashMap};

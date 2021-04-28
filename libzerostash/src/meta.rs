@@ -1,5 +1,5 @@
 use crate::compress;
-use crate::objects::{ObjectId, WriteObject};
+use crate::object::{ObjectId, WriteObject};
 
 use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};

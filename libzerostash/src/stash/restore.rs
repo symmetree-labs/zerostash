@@ -6,7 +6,7 @@ use crate::{
     compress,
     crypto::CryptoProvider,
     files::{self, FileIndex},
-    objects::*,
+    object::*,
 };
 
 use flume as mpsc;

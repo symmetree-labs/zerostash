@@ -1,6 +1,6 @@
 use crate::chunks::ChunkStore;
 use crate::files::{self, FileStore};
-use crate::objects::ObjectStore;
+use crate::object;
 use crate::rollsum::SeaSplit;
 use crate::splitter::FileSplitter;
 
@@ -19,7 +19,7 @@ pub async fn recursive(
     max_file_handles: usize,
     chunkindex: &mut ChunkStore,
     fileindex: &mut FileStore,
-    objectstore: &mut (impl ObjectStore + 'static),
+    objectstore: impl object::Writer + 'static,
     path: impl AsRef<Path>,
 ) {
     let (mut sender, receiver) = mpsc::bounded(max_file_handles);
@@ -31,7 +31,7 @@ pub async fn recursive(
         objectstore.clone(),
     ));
 
-    process_path(0, sender, path);
+    walk_path(0, sender, path);
 
     handle.await;
 }
@@ -40,7 +40,7 @@ async fn process_file_loop(
     r: Receiver,
     chunkindex: ChunkStore,
     mut fileindex: FileStore,
-    mut objectstore: impl ObjectStore,
+    mut objectstore: impl object::Writer,
 ) {
     while let Ok(file) = r.recv_async().await {
         let path = file.path();
@@ -88,7 +88,7 @@ async fn process_file_loop(
 
         for (start, hash, data) in FileSplitter::<SeaSplit>::new(&mmap) {
             let chunkptr = {
-                let store_fn = objectstore.store_chunk(&hash, data);
+                let store_fn = objectstore.write_chunk(&hash, data);
                 chunkindex.push(hash, store_fn).await.unwrap()
             };
 
@@ -102,7 +102,7 @@ async fn process_file_loop(
 }
 
 /// if `threads == 0`, it chooses the number of threads automatically using heuristics
-fn process_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
+fn walk_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
     let walker = WalkBuilder::new(path)
         .threads(threads)
         .standard_filters(false)

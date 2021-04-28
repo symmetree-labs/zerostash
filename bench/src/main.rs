@@ -2,7 +2,7 @@
 #![cfg_attr(test, feature(test))]
 
 use libzerostash::stash::{Stash, StashKey};
-use libzerostash::{backends, objects};
+use libzerostash::{backends, object};
 
 use std::collections::{HashMap, HashSet};
 use std::env::args;
@@ -54,7 +54,7 @@ async fn main() {
         let objects = mobjects
             .values()
             .flatten()
-            .collect::<HashSet<&objects::ObjectId>>();
+            .collect::<HashSet<&object::ObjectId>>();
 
         let ol = objects.len();
         let fl = repo.file_index().len();

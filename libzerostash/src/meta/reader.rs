@@ -2,7 +2,7 @@ use crate::backends::{Backend, BackendError};
 use crate::compress;
 use crate::crypto::CryptoProvider;
 use crate::meta::{MetaObjectField, MetaObjectHeader, ObjectIndex};
-use crate::objects::{BlockBuffer, Object, ObjectId};
+use crate::object::{BlockBuffer, Object, ObjectId};
 
 use thiserror::Error;
 

@@ -1,5 +1,5 @@
 use crate::chunks::ChunkPointer;
-use crate::objects::{Object, ObjectId, WriteObject};
+use crate::object::{Object, ObjectId, WriteObject};
 
 use blake2b_simd::blake2bp::Params as Blake2;
 use getrandom::getrandom;

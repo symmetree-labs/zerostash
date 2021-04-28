@@ -1,85 +1,19 @@
-use crate::backends::{Backend, BackendError};
-use crate::chunks::ChunkPointer;
+use crate::{
+    crypto::{Random, Tag},
+    BLOCK_SIZE,
+};
 
-use crate::compress;
-use crate::crypto::*;
-use crate::BLOCK_SIZE;
+use super::ObjectId;
 
-use async_trait::async_trait;
-use itertools::Itertools;
-use thiserror::Error;
+use std::{io, mem::size_of};
 
-use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::mem::size_of;
-use std::string::ToString;
-use std::sync::Arc;
-
-#[derive(Error, Debug)]
-pub enum ObjectError {
-    #[error("IO error")]
-    Io {
-        #[from]
-        source: io::Error,
-    },
-    #[error("Backend error")]
-    Backend {
-        #[from]
-        source: BackendError,
-    },
-}
-
-pub type Result<T> = std::result::Result<T, ObjectError>;
-
-#[async_trait]
-pub trait ObjectStore: Clone + Send {
-    async fn store_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>>;
-    async fn flush(&mut self) -> Result<()>;
-}
-
-#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ObjectId(CryptoDigest);
 pub type WriteObject = Object<BlockBuffer>;
 pub type ReadObject = Object<ReadBuffer>;
-
-impl ObjectId {
-    #[inline(always)]
-    pub fn new(random: &impl Random) -> ObjectId {
-        let mut id = ObjectId::default();
-        id.reset(random);
-        id
-    }
-
-    pub fn from_bytes(bytes: impl AsRef<[u8]>) -> ObjectId {
-        let mut id = ObjectId::default();
-        id.0.copy_from_slice(bytes.as_ref());
-
-        id
-    }
-
-    #[inline(always)]
-    pub fn reset(&mut self, random: &impl Random) {
-        random.fill(&mut self.0);
-    }
-}
-
-impl AsRef<[u8]> for ObjectId {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl ToString for ObjectId {
-    #[inline(always)]
-    fn to_string(&self) -> String {
-        format!("{:02x}", self.0.as_ref().iter().format(""))
-    }
-}
 
 #[derive(Clone)]
 pub struct BlockBuffer(Box<[u8]>);
 pub struct ReadBuffer(ReadBufferInner);
-pub type ReadBufferInner = Box<dyn AsRef<[u8]> + Send + Sync + 'static>;
+type ReadBufferInner = Box<dyn AsRef<[u8]> + Send + Sync + 'static>;
 
 impl<WO> From<WO> for ReadObject
 where
@@ -231,7 +165,7 @@ where
     }
 }
 
-impl<T> Write for Object<T>
+impl<T> io::Write for Object<T>
 where
     T: AsMut<[u8]>,
 {
@@ -252,27 +186,28 @@ where
     }
 }
 
-impl<T> Read for Object<T>
+impl<T> io::Read for Object<T>
 where
     T: AsRef<[u8]>,
 {
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let end = buf.len() + self.cursor;
+        let inner = self.as_inner();
 
-        if end > self.buffer.as_ref().len() {
+        if end > inner.len() {
             Err(io::Error::from(io::ErrorKind::UnexpectedEof))
         } else {
-            buf.copy_from_slice(&self.buffer.as_ref()[self.cursor..end]);
+            buf.copy_from_slice(&inner[self.cursor..end]);
             self.cursor = end;
             Ok(buf.len())
         }
     }
 }
 
-impl<T> Seek for Object<T> {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        use SeekFrom::*;
+impl<T> io::Seek for Object<T> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        use io::SeekFrom::*;
 
         let umax = self.capacity as u64;
         let imax = self.capacity as i64;
@@ -362,110 +297,5 @@ impl<T> AsRef<Object<T>> for Object<T> {
     #[inline(always)]
     fn as_ref(&self) -> &Object<T> {
         self
-    }
-}
-
-pub struct Storage<C> {
-    backend: Arc<dyn Backend>,
-    crypto: C,
-    object: WriteObject,
-    capacity: usize,
-}
-
-impl<C> Clone for Storage<C>
-where
-    C: Random + Clone,
-{
-    fn clone(&self) -> Storage<C> {
-        let mut object = self.object.clone();
-        object.id.reset(&self.crypto);
-
-        Storage {
-            object,
-            backend: self.backend.clone(),
-            crypto: self.crypto.clone(),
-            capacity: self.capacity,
-        }
-    }
-}
-
-impl<C> Storage<C>
-where
-    C: CryptoProvider,
-{
-    pub fn new(backend: Arc<dyn Backend>, crypto: C) -> Storage<C> {
-        let mut object = WriteObject::default();
-        object.id.reset(&crypto);
-
-        let capacity = object.capacity();
-        Storage {
-            backend,
-            crypto,
-            object,
-            capacity,
-        }
-    }
-}
-
-#[async_trait]
-impl<C> ObjectStore for Storage<C>
-where
-    C: CryptoProvider,
-{
-    async fn store_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>> {
-        let mut compressed = compress::block(&data)?;
-        let size = compressed.len();
-        let mut offs = self.object.position();
-        if offs + size > self.capacity {
-            self.flush().await?;
-            offs = self.object.position();
-        }
-
-        let tag = self
-            .crypto
-            .encrypt_chunk(&self.object, hash, &mut compressed);
-
-        self.object.write_all(&compressed)?;
-
-        Ok(Arc::new(ChunkPointer {
-            offs: offs as u32,
-            size: size as u32,
-            file: self.object.id,
-            hash: *hash,
-            tag,
-        }))
-    }
-
-    async fn flush(&mut self) -> Result<()> {
-        self.object.finalize(&self.crypto);
-        self.backend.write_object(&self.object).await?;
-
-        self.object.id.reset(&self.crypto);
-        self.object.reset_cursor();
-
-        Ok(())
-    }
-}
-
-pub mod test {
-    use super::*;
-
-    #[derive(Clone, Default)]
-    pub struct NullStorage(Arc<tokio::sync::Mutex<usize>>);
-
-    #[async_trait]
-    impl ObjectStore for NullStorage {
-        async fn store_chunk(
-            &mut self,
-            _hash: &CryptoDigest,
-            data: &[u8],
-        ) -> Result<Arc<ChunkPointer>> {
-            *self.0.lock().await += data.len();
-            Ok(Arc::default())
-        }
-
-        async fn flush(&mut self) -> Result<()> {
-            Ok(())
-        }
     }
 }

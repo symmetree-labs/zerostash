@@ -9,7 +9,7 @@ pub mod compress;
 pub mod crypto;
 pub mod files;
 pub mod meta;
-pub mod objects;
+pub mod object;
 pub mod stash;
 
 pub mod rollsum;

@@ -5,7 +5,7 @@ use crate::meta::{
     Encoder, Field, FieldOffset, FieldWriter, MetaObjectField, MetaObjectHeader, ObjectIndex,
     HEADER_SIZE,
 };
-use crate::objects::{ObjectId, WriteObject};
+use crate::object::{ObjectId, WriteObject};
 
 use async_trait::async_trait;
 use serde::Serialize;

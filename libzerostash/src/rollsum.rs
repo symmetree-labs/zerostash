@@ -15,7 +15,7 @@ pub trait Rollsum {
 }
 
 #[derive(Default)]
-pub struct SeaSplit;
+pub struct SeaSplit(SeaHasher);
 
 impl Rollsum for SeaSplit {
     fn new() -> Self {
@@ -23,15 +23,14 @@ impl Rollsum for SeaSplit {
     }
 
     fn find_offset(&mut self, buf: &[u8]) -> usize {
-        let mut hasher = SeaHasher::default();
-
+        self.0 = SeaHasher::default();
         let mut last = 0;
 
-	// On occasion a too high value for step size can produce
-	// chunks larger than a single object
+        // On occasion a too high value for step size can produce
+        // chunks larger than a single object
         for limit in (0..buf.len()).step_by(32) {
-            hasher.write(&buf[last..limit]);
-            let output = hasher.finish();
+            self.0.write(&buf[last..limit]);
+            let output = self.0.finish();
 
             if (output & ((u64::from(BLOBSIZE)) - 1)) == ((u64::from(BLOBSIZE)) - 1) {
                 return limit + 1;

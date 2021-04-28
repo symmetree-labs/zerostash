@@ -2,7 +2,7 @@ use crate::{
     backends::Backend,
     chunks, files,
     meta::{self, ReadError},
-    objects,
+    object,
 };
 pub use crate::{crypto::StashKey, meta::ObjectIndex};
 
@@ -91,17 +91,10 @@ impl Stash {
     }
 
     pub async fn add_recursive(&mut self, threads: usize, path: impl AsRef<Path>) -> Result<()> {
-        let mut objstore =
-            objects::Storage::new(self.backend.clone(), self.master_key.get_object_crypto()?);
+        let objstore =
+            object::Storage::new(self.backend.clone(), self.master_key.get_object_crypto()?);
 
-        store::recursive(
-            threads,
-            &mut self.chunks,
-            &mut self.files,
-            &mut objstore,
-            path,
-        )
-        .await;
+        store::recursive(threads, &mut self.chunks, &mut self.files, objstore, path).await;
 
         Ok(())
     }
