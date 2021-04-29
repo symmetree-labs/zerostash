@@ -1,0 +1,57 @@
+version: 2
+updates:
+- package-ecosystem: cargo
+  directory: "/"
+  schedule:
+    interval: daily
+  open-pull-requests-limit: 10
+  reviewers:
+  - rsdy
+  assignees:
+  - rsdy
+  ignore:
+  - dependency-name: gumdrop
+    versions:
+    - "> 0.7.0, < 1"
+  - dependency-name: serde
+    versions:
+    - 1.0.123
+    - 1.0.124
+    - 1.0.125
+  - dependency-name: anyhow
+    versions:
+    - 1.0.38
+    - 1.0.39
+  - dependency-name: once_cell
+    versions:
+    - 1.5.2
+    - 1.6.0
+    - 1.7.0
+    - 1.7.2
+  - dependency-name: ring
+    versions:
+    - 0.16.17
+    - 0.16.20
+  - dependency-name: crossbeam-utils
+    versions:
+    - 0.8.1
+    - 0.8.2
+    - 0.8.3
+  - dependency-name: thiserror
+    versions:
+    - 1.0.23
+    - 1.0.24
+  - dependency-name: lru
+    versions:
+    - 0.6.3
+    - 0.6.4
+    - 0.6.5
+  - dependency-name: rust-argon2
+    versions:
+    - 0.8.3
+  - dependency-name: crossbeam-channel
+    versions:
+    - 0.5.0
+  - dependency-name: blake2b_simd
+    versions:
+    - 0.5.11
