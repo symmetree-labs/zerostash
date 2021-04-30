@@ -5,8 +5,8 @@ use thiserror::Error;
 
 use std::{io, sync::Arc};
 
-mod store;
-pub use store::{Storage, Writer};
+mod writer;
+pub use writer::{AEADWriter, Writer};
 
 mod object;
 pub use object::{BlockBuffer, Object, ReadBuffer, ReadObject, WriteObject};

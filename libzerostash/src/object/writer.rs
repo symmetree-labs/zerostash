@@ -17,21 +17,21 @@ pub trait Writer: Sync + Send + Clone {
     async fn flush(&mut self) -> Result<()>;
 }
 
-pub struct Storage<C> {
+pub struct AEADWriter<C> {
     backend: Arc<dyn Backend>,
     crypto: C,
     object: WriteObject,
 }
 
-impl<C> Storage<C>
+impl<C> AEADWriter<C>
 where
     C: CryptoProvider,
 {
-    pub fn new(backend: Arc<dyn Backend>, crypto: C) -> Storage<C> {
+    pub fn new(backend: Arc<dyn Backend>, crypto: C) -> AEADWriter<C> {
         let mut object = WriteObject::default();
-        object.set_id(ObjectId::new(&crypto));
+        object.reset_id(&crypto);
 
-        Storage {
+        AEADWriter {
             backend,
             crypto,
             object,
@@ -39,15 +39,15 @@ where
     }
 }
 
-impl<C> Clone for Storage<C>
+impl<C> Clone for AEADWriter<C>
 where
     C: Random + Clone,
 {
-    fn clone(&self) -> Storage<C> {
+    fn clone(&self) -> AEADWriter<C> {
         let mut object = self.object.clone();
         object.set_id(ObjectId::new(&self.crypto));
 
-        Storage {
+        AEADWriter {
             object,
             backend: self.backend.clone(),
             crypto: self.crypto.clone(),
@@ -56,7 +56,7 @@ where
 }
 
 #[async_trait]
-impl<C> Writer for Storage<C>
+impl<C> Writer for AEADWriter<C>
 where
     C: CryptoProvider + Sync,
 {
@@ -88,7 +88,7 @@ where
         self.object.finalize(&self.crypto);
         self.backend.write_object(&self.object).await?;
 
-        self.object.set_id(ObjectId::new(&self.crypto));
+        self.object.reset_id(&self.crypto);
         self.object.reset_cursor();
 
         Ok(())

@@ -92,7 +92,7 @@ impl Stash {
 
     pub async fn add_recursive(&mut self, threads: usize, path: impl AsRef<Path>) -> Result<()> {
         let objstore =
-            object::Storage::new(self.backend.clone(), self.master_key.get_object_crypto()?);
+            object::AEADWriter::new(self.backend.clone(), self.master_key.get_object_crypto()?);
 
         store::recursive(threads, &mut self.chunks, &mut self.files, objstore, path).await;
 

@@ -79,6 +79,10 @@ impl<T> Object<T> {
             buffer,
         }
     }
+
+    pub fn reset_id(&mut self, random: &impl Random) {
+        self.id.reset(random)
+    }
 }
 
 impl<T> Object<T> {
