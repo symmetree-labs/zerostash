@@ -10,10 +10,11 @@ edition= "2018"
 libzerostash = { path = "../libzerostash" }
 walkdir = "^2.2.7"
 tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"] }
+num_cpus = "1"
 
 [dev-dependencies]
 ring = "*"
-memmap = "*"
+memmap2 = "*"
 
 [[bin]]
 path = "src/main.rs"

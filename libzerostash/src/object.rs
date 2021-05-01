@@ -14,6 +14,8 @@ pub use object::{BlockBuffer, Object, ReadBuffer, ReadObject, WriteObject};
 mod id;
 pub use id::ObjectId;
 
+pub mod write_balancer;
+
 #[derive(Error, Debug)]
 pub enum ObjectError {
     #[error("IO error")]

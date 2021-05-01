@@ -1,10 +1,11 @@
-use crate::chunks::ChunkStore;
 use crate::files::{self, FileStore};
 use crate::object;
 use crate::rollsum::SeaSplit;
 use crate::splitter::FileSplitter;
+use crate::{chunks::ChunkStore, object::write_balancer::RoundRobinBalancer};
 
 use flume as mpsc;
+use futures::future::join_all;
 use ignore::{DirEntry, WalkBuilder};
 use memmap2::MmapOptions;
 use tokio::{fs, task};
@@ -23,30 +24,38 @@ pub async fn recursive(
     path: impl AsRef<Path>,
 ) {
     let (mut sender, receiver) = mpsc::bounded(max_file_handles);
+    let balancer = RoundRobinBalancer::new(objectstore, max_file_handles)
+        .await
+        .unwrap();
 
-    let handle = task::spawn(process_file_loop(
-        receiver,
-        chunkindex.clone(),
-        fileindex.clone(),
-        objectstore.clone(),
-    ));
+    let handles = (0..max_file_handles)
+        .map(|_| {
+            task::spawn(process_file_loop(
+                receiver.clone(),
+                chunkindex.clone(),
+                fileindex.clone(),
+                balancer.clone(),
+            ))
+        })
+        .collect::<Vec<_>>();
 
-    walk_path(0, sender, path);
+    walk_path(max_file_handles, sender, path);
 
-    handle.await;
+    join_all(handles).await;
+
+    balancer.flush().await.unwrap();
 }
 
 async fn process_file_loop(
     r: Receiver,
     chunkindex: ChunkStore,
     mut fileindex: FileStore,
-    mut objectstore: impl object::Writer,
+    writer: RoundRobinBalancer<impl object::Writer + 'static>,
 ) {
     while let Ok(file) = r.recv_async().await {
-        let path = file.path();
+        let path = file.path().to_owned();
 
-        if file
-            .path()
+        if path
             .components()
             .any(|c| c == std::path::Component::ParentDir)
         {
@@ -57,7 +66,7 @@ async fn process_file_loop(
             continue;
         }
 
-        let osfile = fs::File::open(path).await;
+        let osfile = fs::File::open(&path).await;
         if osfile.is_err() {
             println!("skipping {}: {}", path.display(), osfile.unwrap_err());
             continue;
@@ -86,19 +95,24 @@ async fn process_file_loop(
                 .unwrap()
         };
 
-        for (start, hash, data) in FileSplitter::<SeaSplit>::new(&mmap) {
-            let chunkptr = {
-                let store_fn = objectstore.write_chunk(&hash, data);
-                chunkindex.push(hash, store_fn).await.unwrap()
-            };
+        let splitter = FileSplitter::<SeaSplit>::new(&mmap);
+        let chunks = splitter.map(|(start, hash, data)| {
+            let writer = writer.clone();
+            let chunkindex = chunkindex.clone();
+            let data = data.to_vec();
 
-            entry.chunks.push((start, chunkptr));
-        }
+            tokio::spawn(async move {
+                let store_fn = Box::pin(writer.write(&hash, &data));
+                (start, chunkindex.push(hash, store_fn).await.unwrap())
+            })
+        });
+
+        entry
+            .chunks
+            .extend(join_all(chunks).await.into_iter().map(Result::unwrap));
 
         fileindex.push(entry);
     }
-
-    objectstore.flush().await.unwrap();
 }
 
 /// if `threads == 0`, it chooses the number of threads automatically using heuristics
@@ -106,7 +120,21 @@ fn walk_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
     let walker = WalkBuilder::new(path)
         .threads(threads)
         .standard_filters(false)
+        // .build();
         .build_parallel();
+
+    // for result in walker {
+    //     if result.is_err() {
+    //         continue;
+    //     }
+
+    //     let entry = result.unwrap();
+    //     if !entry.path().is_file() {
+    //         continue;
+    //     }
+
+    //     sender.send(entry).unwrap();
+    // }
 
     walker.run(|| {
         let tx = sender.clone();
@@ -127,6 +155,8 @@ fn walk_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
             Continue
         })
     });
+
+    println!("all paths done");
 }
 
 #[cfg(test)]

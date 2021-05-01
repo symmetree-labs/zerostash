@@ -1,3 +1,4 @@
+use super::{ObjectId, Result, WriteObject};
 use crate::{
     backends::Backend,
     chunks::ChunkPointer,
@@ -5,14 +6,12 @@ use crate::{
     crypto::{CryptoDigest, CryptoProvider, Random},
 };
 
-use super::{ObjectId, Result, WriteObject};
-
 use async_trait::async_trait;
 
 use std::{io::Write, sync::Arc};
 
 #[async_trait]
-pub trait Writer: Sync + Send + Clone {
+pub trait Writer: Send + Clone {
     async fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>>;
     async fn flush(&mut self) -> Result<()>;
 }

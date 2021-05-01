@@ -28,10 +28,10 @@ fn dir_stat(path: &str) -> (u64, usize) {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let threads = args().nth(1).unwrap();
-    let path = args().nth(2).unwrap();
-    let output = args().nth(3).unwrap();
-    let restore_to = args().nth(4).unwrap();
+    let threads = num_cpus::get();
+    let path = args().nth(1).unwrap();
+    let output = args().nth(2).unwrap();
+    let restore_to = args().nth(3).unwrap();
 
     let key = "abcdef1234567890abcdef1234567890";
 
@@ -42,9 +42,7 @@ async fn main() {
         let mut repo = Stash::new(Arc::new(backends::Directory::new(&output).unwrap()), key);
 
         let store_start = Instant::now();
-        repo.add_recursive(threads.parse().unwrap(), &path)
-            .await
-            .unwrap();
+        repo.add_recursive(threads, &path).await.unwrap();
         let store_time = store_start.elapsed();
 
         let commit_start = Instant::now();
@@ -58,7 +56,7 @@ async fn main() {
 
         let ol = objects.len();
         let fl = repo.file_index().len();
-        let cl = repo.chunk_index().len();
+        let cl = repo.chunk_index().read().await.len();
         let (creuse_sum, creuse_cnt) = {
             let mut chunk_reuse = HashMap::new();
             for f in repo.file_index().into_iter() {
@@ -130,6 +128,7 @@ async fn main() {
         creuse_cnt,
         creuse_sum / creuse_cnt
     );
+    return;
 
     {
         let key = StashKey::open_stash(&key, &key).unwrap();
@@ -140,7 +139,7 @@ async fn main() {
         let read_time = read_start.elapsed();
 
         let restore_start = Instant::now();
-        repo.restore_by_glob(threads.parse().unwrap(), &["*"], restore_to)
+        repo.restore_by_glob(threads, &["*"], restore_to)
             .await
             .unwrap();
         let restore_time = restore_start.elapsed();
@@ -226,9 +225,9 @@ mod tests {
     }
 
     #[bench]
-    fn split_file(b: &mut test::Bencher) {
+    fn split_seasplit(b: &mut test::Bencher) {
         use libzerostash::{rollsum::SeaSplit, splitter::FileSplitter};
-        use memmap::MmapOptions;
+        use memmap2::MmapOptions;
         use std::fs::File;
 
         let file = File::open(PATH).unwrap();
@@ -239,7 +238,21 @@ mod tests {
                 .map(|(_, _, c)| c.len())
                 .sum::<usize>()
         });
+    }
 
-        println!("asdf");
+    #[bench]
+    fn split_bupsplit(b: &mut test::Bencher) {
+        use libzerostash::{rollsum::BupSplit, splitter::FileSplitter};
+        use memmap2::MmapOptions;
+        use std::fs::File;
+
+        let file = File::open(PATH).unwrap();
+        let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
+
+        b.iter(|| {
+            FileSplitter::<BupSplit>::new(&mmap)
+                .map(|(_, _, c)| c.len())
+                .sum::<usize>()
+        });
     }
 }

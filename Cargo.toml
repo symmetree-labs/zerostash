@@ -1,6 +1,8 @@
 [profile.release]
 panic = "abort"
 lto = true
+# debug = true
+# opt-level = 2
 				   
 [workspace]
 members = [
