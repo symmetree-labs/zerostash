@@ -24,7 +24,7 @@ pub struct Entry {
     pub readonly: bool,
     pub name: String,
 
-    pub chunks: Vec<(u64, Arc<ChunkPointer>)>,
+    pub chunks: Vec<(u64, ChunkPointer)>,
 }
 
 impl Entry {

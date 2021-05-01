@@ -3,8 +3,6 @@ use crate::{chunks::ChunkPointer, crypto::CryptoDigest};
 
 use flume as mpsc;
 
-use std::sync::Arc;
-
 #[derive(Clone)]
 pub struct RoundRobinBalancer<W> {
     enqueue: mpsc::Sender<W>,
@@ -27,7 +25,7 @@ impl<W: 'static + Writer> RoundRobinBalancer<W> {
         })
     }
 
-    pub async fn write(&self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>> {
+    pub async fn write(&self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
         let mut writer = self.dequeue.recv_async().await.unwrap();
         let result = writer.write_chunk(hash, data).await;
         self.enqueue.send_async(writer).await.unwrap();

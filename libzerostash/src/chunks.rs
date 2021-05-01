@@ -14,7 +14,7 @@ use std::{
 };
 
 #[derive(Eq, PartialEq, Hash, Default, Serialize, Deserialize)]
-pub struct ChunkPointer {
+pub struct RawChunkPointer {
     pub offs: u32,
     pub size: u32,
     pub file: ObjectId,
@@ -22,8 +22,9 @@ pub struct ChunkPointer {
     pub tag: Tag,
 }
 
+pub type ChunkPointer = Arc<RawChunkPointer>;
 // pub type ChunkIndex = DashMap<CryptoDigest, Arc<ChunkPointer>>;
-pub type ChunkIndex = RwLock<BTreeMap<CryptoDigest, Arc<ChunkPointer>>>;
+pub type ChunkIndex = RwLock<BTreeMap<CryptoDigest, ChunkPointer>>;
 
 #[derive(Clone)]
 pub struct ChunkStore(Arc<ChunkIndex>);
@@ -39,15 +40,15 @@ impl ChunkStore {
         &self.0
     }
 
-    pub async fn get(&self, digest: &CryptoDigest) -> Option<Arc<ChunkPointer>> {
+    pub async fn get(&self, digest: &CryptoDigest) -> Option<ChunkPointer> {
         self.0.read().await.get(digest).map(Clone::clone)
     }
 
     pub async fn push(
         &self,
         digest: CryptoDigest,
-        store: (impl Future<Output = Result<Arc<ChunkPointer>, ObjectError>> + Unpin),
-    ) -> Result<Arc<ChunkPointer>, ObjectError> {
+        store: (impl Future<Output = Result<ChunkPointer, ObjectError>> + Unpin),
+    ) -> Result<ChunkPointer, ObjectError> {
         let mut map = self.0.write().await;
         match map.entry(digest) {
             Entry::Occupied(e) => Ok(e.get().clone()),
@@ -62,7 +63,7 @@ impl ChunkStore {
 
 #[async_trait]
 impl MetaObjectField for ChunkStore {
-    type Item = (CryptoDigest, Arc<ChunkPointer>);
+    type Item = (CryptoDigest, ChunkPointer);
 
     fn key() -> String {
         "chunks".to_string()

@@ -1,7 +1,7 @@
 use super::{ObjectId, Result, WriteObject};
 use crate::{
     backends::Backend,
-    chunks::ChunkPointer,
+    chunks::{ChunkPointer, RawChunkPointer},
     compress,
     crypto::{CryptoDigest, CryptoProvider, Random},
 };
@@ -12,7 +12,7 @@ use std::{io::Write, sync::Arc};
 
 #[async_trait]
 pub trait Writer: Send + Clone {
-    async fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>>;
+    async fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer>;
     async fn flush(&mut self) -> Result<()>;
 }
 
@@ -59,7 +59,7 @@ impl<C> Writer for AEADWriter<C>
 where
     C: CryptoProvider + Sync,
 {
-    async fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<Arc<ChunkPointer>> {
+    async fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
         let mut compressed = compress::block(&data)?;
         let size = compressed.len();
         let mut offs = self.object.position();
@@ -74,7 +74,7 @@ where
 
         self.object.write_all(&compressed)?;
 
-        Ok(Arc::new(ChunkPointer {
+        Ok(Arc::new(RawChunkPointer {
             offs: offs as u32,
             size: size as u32,
             file: *self.object.id(),

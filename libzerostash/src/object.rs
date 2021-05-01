@@ -40,11 +40,7 @@ pub mod test {
 
     #[async_trait]
     impl Writer for NullStorage {
-        async fn write_chunk(
-            &mut self,
-            _hash: &CryptoDigest,
-            data: &[u8],
-        ) -> Result<Arc<ChunkPointer>> {
+        async fn write_chunk(&mut self, _hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
             *self.0.lock().await += data.len();
             Ok(Arc::default())
         }
