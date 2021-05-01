@@ -141,7 +141,7 @@ mod tests {
         use crate::chunks::{self, ChunkPointer};
         use crate::crypto::{self, CryptoDigest};
         use crate::meta::{self, MetaObjectField};
-        use crate::objects::ObjectId;
+        use crate::object::ObjectId;
 
         use secrecy::Secret;
         use std::sync::Arc;
@@ -157,7 +157,7 @@ mod tests {
         chunks
             .push(
                 CryptoDigest::default(),
-                Box::pin(async { Ok(Arc::new(ChunkPointer::default())) }),
+                Box::pin(async { Ok(ChunkPointer::default()) }),
             )
             .await
             .unwrap();
@@ -176,6 +176,6 @@ mod tests {
         let mut chunks_restore = chunks::ChunkStore::default();
         mr.read_into(&mut chunks_restore).await.unwrap();
 
-        assert_eq!(chunks_restore.index().len(), 1);
+        assert_eq!(chunks_restore.index().read().await.len(), 1);
     }
 }

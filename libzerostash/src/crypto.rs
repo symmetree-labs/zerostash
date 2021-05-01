@@ -1,4 +1,4 @@
-use crate::chunks::ChunkPointer;
+use crate::chunks::RawChunkPointer;
 use crate::object::{Object, ObjectId, WriteObject};
 
 use blake2b_simd::blake2bp::Params as Blake2;
@@ -7,6 +7,8 @@ use ring::aead;
 use secrecy::{ExposeSecret, Secret};
 use thiserror::Error;
 use zeroize::Zeroize;
+
+use std::borrow::Borrow;
 
 pub const CRYPTO_DIGEST_SIZE: usize = 32;
 pub type CryptoDigest = [u8; CRYPTO_DIGEST_SIZE];
@@ -45,11 +47,11 @@ pub trait CryptoProvider: Random + Clone + Send {
     fn encrypt_chunk(&self, object_id: &WriteObject, hash: &CryptoDigest, data: &mut [u8]) -> Tag;
     fn encrypt_object(&self, object: &mut WriteObject);
 
-    fn decrypt_chunk<T: AsRef<[u8]>>(
+    fn decrypt_chunk<Buffer: AsRef<[u8]>, Pointer: Borrow<RawChunkPointer>>(
         &self,
         target: &mut [u8],
-        o: &Object<T>,
-        chunk: &ChunkPointer,
+        o: &Object<Buffer>,
+        chunk: Pointer,
     ) -> usize;
 
     fn decrypt_object_into<I: AsRef<[u8]>, O: AsMut<[u8]>>(
@@ -130,12 +132,14 @@ impl CryptoProvider for ObjectOperations {
         object.write_tag(tag.as_ref());
     }
 
-    fn decrypt_chunk<T: AsRef<[u8]>>(
+    fn decrypt_chunk<B: AsRef<[u8]>, P: Borrow<RawChunkPointer>>(
         &self,
         target: &mut [u8],
-        o: &Object<T>,
-        chunk: &ChunkPointer,
+        o: &Object<B>,
+        chunk: P,
     ) -> usize {
+        let chunk: &RawChunkPointer = chunk.borrow();
+
         let size = chunk.size as usize;
         let cyphertext_size = size + chunk.tag.len();
 
@@ -253,7 +257,7 @@ mod tests {
     #[test]
     fn test_object_encryption() {
         use super::{CryptoProvider, ObjectOperations};
-        use crate::objects::WriteObject;
+        use crate::object::WriteObject;
         use secrecy::Secret;
 
         let key = Secret::new(*b"abcdef1234567890abcdef1234567890");
@@ -280,8 +284,8 @@ mod tests {
 
     #[test]
     fn test_chunk_encryption() {
-        use super::{ChunkPointer, CryptoProvider, ObjectOperations};
-        use crate::objects::WriteObject;
+        use super::{CryptoProvider, ObjectOperations};
+        use crate::{chunks::RawChunkPointer, object::WriteObject};
         use secrecy::Secret;
         use std::io::Write;
 
@@ -294,12 +298,12 @@ mod tests {
 
         let mut encrypted = cleartext.clone();
         let tag = crypto.encrypt_chunk(&obj, hash, &mut encrypted);
-        let cp = ChunkPointer {
+        let cp = RawChunkPointer {
             offs: 0,
             size: size as u32,
             hash: *hash,
             tag,
-            ..ChunkPointer::default()
+            ..RawChunkPointer::default()
         };
         obj.write(&encrypted).unwrap();
 

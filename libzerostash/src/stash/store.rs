@@ -169,14 +169,14 @@ mod tests {
     async fn test_stats_add_up() {
         use crate::chunks::*;
         use crate::files::*;
-        use crate::objects::test::*;
+        use crate::object::test::*;
         use crate::stash::store;
 
         let mut cs = ChunkStore::default();
         let mut fs = FileStore::default();
         let mut s = NullStorage::default();
 
-        store::recursive(2, &mut cs, &mut fs, &mut s, PATH_100).await;
+        store::recursive(2, &mut cs, &mut fs, s, PATH_100).await;
 
         assert_eq!(100, fs.index().len());
         assert_eq!(

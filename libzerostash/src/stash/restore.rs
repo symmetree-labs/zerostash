@@ -91,10 +91,14 @@ async fn process_packet_loop(
             .unwrap();
         fd.set_len(metadata.size).await.unwrap();
 
-        let object_ordered = metadata.chunks.iter().fold(HashMap::new(), |mut a, c| {
-            a.entry(c.1.file).or_insert_with(Vec::new).push(c);
-            a
-        });
+        let object_ordered = metadata
+            .chunks
+            .iter()
+            .cloned()
+            .fold(HashMap::new(), |mut a, c| {
+                a.entry(c.1.file).or_insert_with(Vec::new).push(c);
+                a
+            });
 
         let mut mmap = unsafe {
             MmapOptions::new()
@@ -104,12 +108,12 @@ async fn process_packet_loop(
         };
 
         // This loop manages the object we're reading from
-        for (objectid, cs) in object_ordered.iter() {
-            let object = backend.read_object(objectid).await.expect("object read");
+        for (objectid, cs) in object_ordered.into_iter() {
+            let object = backend.read_object(&objectid).await.expect("object read");
 
             // This loop will extract & decrypt & decompress from the object
-            for (i, (start, cp)) in cs.iter().enumerate() {
-                let start = *start as usize;
+            for (i, (start, cp)) in cs.into_iter().enumerate() {
+                let start = start as usize;
                 let mut target: &mut [u8] = buffer.as_inner_mut();
 
                 let len = crypto.decrypt_chunk(&mut target, &object, cp);
