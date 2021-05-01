@@ -48,9 +48,6 @@ impl ChunkStore {
         digest: CryptoDigest,
         store: (impl Future<Output = Result<Arc<ChunkPointer>, ObjectError>> + Unpin),
     ) -> Result<Arc<ChunkPointer>, ObjectError> {
-        // be as lazy as possible in storing the object:
-        // at this stage the store is locked, so it's still best to
-        // release it asap
         let mut map = self.0.write().await;
         match map.entry(digest) {
             Entry::Occupied(e) => Ok(e.get().clone()),
