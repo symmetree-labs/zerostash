@@ -4,7 +4,7 @@ use seahash::SeaHasher;
 use std::hash::Hasher;
 
 const ROLLSUM_CHAR_OFFSET: u32 = 31;
-const BLOBBITS: u32 = (13);
+const BLOBBITS: u32 = (12);
 const BLOBSIZE: u32 = (1 << BLOBBITS);
 const WINDOWBITS: u32 = (6);
 const WINDOWSIZE: u32 = (1 << WINDOWBITS);
