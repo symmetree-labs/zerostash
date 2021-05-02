@@ -35,6 +35,9 @@ async fn main() {
 
     let key = "abcdef1234567890abcdef1234567890";
 
+    let _ = std::fs::remove_dir_all(&output);
+    let _ = std::fs::remove_dir_all(&restore_to);
+
     // i am really, truly sorry for this. there must be a better way,
     // but i can't be bothered to find it
     let (store_time, commit_time, ol, fl, cl, creuse_sum, creuse_cnt, ssize, tlen, tsize) = {
