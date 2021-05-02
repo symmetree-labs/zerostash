@@ -17,16 +17,17 @@ type Receiver = mpsc::Receiver<DirEntry>;
 
 #[allow(unused)]
 pub async fn recursive(
-    max_file_handles: usize,
+    worker_count: usize,
     chunkindex: &mut ChunkStore,
     fileindex: &mut FileStore,
     objectstore: impl object::Writer + 'static,
     path: impl AsRef<Path>,
 ) {
-    let (mut sender, receiver) = mpsc::bounded(max_file_handles);
-    let balancer = RoundRobinBalancer::new(objectstore, max_file_handles).unwrap();
+    // make sure the input and output queues are generous
+    let (mut sender, receiver) = mpsc::bounded(worker_count * 2);
+    let balancer = RoundRobinBalancer::new(objectstore, worker_count * 2).unwrap();
 
-    let handles = (0..max_file_handles)
+    let workers = (0..worker_count)
         .map(|_| {
             task::spawn(process_file_loop(
                 receiver.clone(),
@@ -37,9 +38,11 @@ pub async fn recursive(
         })
         .collect::<Vec<_>>();
 
-    walk_path(max_file_handles, sender, path);
+    // it's probably not a good idea to have walker threads compete
+    // with workers, so we don't need to scale this up so aggressively
+    walk_path(worker_count / 2, sender, path);
 
-    join_all(handles).await;
+    join_all(workers).await;
 
     balancer.flush().unwrap();
 }
@@ -99,7 +102,7 @@ async fn process_file_loop(
             let chunkindex = chunkindex.clone();
             let data = data.to_vec();
 
-            tokio::task::spawn_blocking(move || {
+            task::spawn_blocking(move || {
                 let store = || writer.write(&hash, &data);
                 (start, chunkindex.push(hash, store).unwrap())
             })
