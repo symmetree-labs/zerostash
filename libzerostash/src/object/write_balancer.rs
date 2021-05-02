@@ -36,7 +36,7 @@ impl<W: 'static + Writer> RoundRobinBalancer<W> {
     pub fn flush(&self) -> Result<()> {
         for _ in 0..self.writers {
             let mut writer = self.dequeue.recv().unwrap();
-            writer.flush().unwrap();
+            writer.flush()?;
             self.enqueue.send(writer).unwrap();
         }
 
