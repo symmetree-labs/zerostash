@@ -155,11 +155,7 @@ mod tests {
 
         let chunks = chunks::ChunkStore::default();
         chunks
-            .push(
-                CryptoDigest::default(),
-                Box::pin(async { Ok(ChunkPointer::default()) }),
-            )
-            .await
+            .push(CryptoDigest::default(), || Ok(ChunkPointer::default()))
             .unwrap();
 
         mw.write_field(&chunks).await;
@@ -176,6 +172,6 @@ mod tests {
         let mut chunks_restore = chunks::ChunkStore::default();
         mr.read_into(&mut chunks_restore).await.unwrap();
 
-        assert_eq!(chunks_restore.index().read().await.len(), 1);
+        assert_eq!(chunks_restore.index().len(), 1);
     }
 }
