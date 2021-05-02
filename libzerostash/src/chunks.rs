@@ -3,15 +3,9 @@ use crate::meta::{FieldReader, FieldWriter, MetaObjectField};
 use crate::object::{ObjectError, ObjectId};
 
 use async_trait::async_trait;
-// use dashmap::{mapref::entry::Entry, DashMap};
-use tokio::sync::RwLock;
+use dashmap::DashMap;
 
-use std::{
-    collections::{btree_map::Entry, BTreeMap},
-    future::Future,
-    marker::Unpin,
-    sync::Arc,
-};
+use std::sync::Arc;
 
 #[derive(Eq, PartialEq, Hash, Default, Serialize, Deserialize)]
 pub struct RawChunkPointer {
@@ -23,41 +17,29 @@ pub struct RawChunkPointer {
 }
 
 pub type ChunkPointer = Arc<RawChunkPointer>;
-// pub type ChunkIndex = DashMap<CryptoDigest, Arc<ChunkPointer>>;
-pub type ChunkIndex = RwLock<BTreeMap<CryptoDigest, ChunkPointer>>;
+pub type ChunkIndex = DashMap<CryptoDigest, ChunkPointer>;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ChunkStore(Arc<ChunkIndex>);
-
-impl Default for ChunkStore {
-    fn default() -> Self {
-        ChunkStore(Arc::new(RwLock::new(BTreeMap::default())))
-    }
-}
 
 impl ChunkStore {
     pub fn index(&self) -> &ChunkIndex {
         &self.0
     }
 
-    pub async fn get(&self, digest: &CryptoDigest) -> Option<ChunkPointer> {
-        self.0.read().await.get(digest).map(Clone::clone)
+    pub fn get(&self, digest: &CryptoDigest) -> Option<ChunkPointer> {
+        self.0.get(digest).map(|r| r.value().clone())
     }
 
-    pub async fn push(
+    pub fn push(
         &self,
         digest: CryptoDigest,
-        store: (impl Future<Output = Result<ChunkPointer, ObjectError>> + Unpin),
+        store: impl Fn() -> Result<ChunkPointer, ObjectError>,
     ) -> Result<ChunkPointer, ObjectError> {
-        let mut map = self.0.write().await;
-        match map.entry(digest) {
-            Entry::Occupied(e) => Ok(e.get().clone()),
-            Entry::Vacant(e) => {
-                let address = store.await?;
-                e.insert(address.clone());
-                Ok(address)
-            }
-        }
+        self.0
+            .entry(digest)
+            .or_try_insert_with(store)
+            .map(|r| r.value().clone())
     }
 }
 
@@ -70,15 +52,14 @@ impl MetaObjectField for ChunkStore {
     }
 
     async fn serialize(&self, mw: &mut impl FieldWriter) {
-        for record in self.0.read().await.iter() {
-            mw.write_next(record).await;
+        for r in self.0.iter() {
+            mw.write_next((r.key(), r.value())).await;
         }
     }
 
     async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
-        let mut map = self.0.write().await;
         while let Ok((hash, pointer)) = mw.read_next().await {
-            map.insert(hash, pointer);
+            self.0.insert(hash, pointer);
         }
     }
 }

@@ -109,7 +109,7 @@ async fn process_packet_loop(
 
         // This loop manages the object we're reading from
         for (objectid, cs) in object_ordered.into_iter() {
-            let object = backend.read_object(&objectid).await.expect("object read");
+            let object = backend.read_object(&objectid).expect("object read");
 
             // This loop will extract & decrypt & decompress from the object
             for (i, (start, cp)) in cs.into_iter().enumerate() {

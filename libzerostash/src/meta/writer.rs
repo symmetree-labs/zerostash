@@ -130,7 +130,7 @@ where
 
         // encrypt & store
         self.crypto.encrypt_object(&mut object);
-        self.backend.write_object(&object).await.unwrap();
+        self.backend.write_object(&object).unwrap();
 
         // track which objects are holding what kind of data
         for fo in self.offsets.drain(..) {

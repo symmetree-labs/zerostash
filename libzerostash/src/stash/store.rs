@@ -24,9 +24,7 @@ pub async fn recursive(
     path: impl AsRef<Path>,
 ) {
     let (mut sender, receiver) = mpsc::bounded(max_file_handles);
-    let balancer = RoundRobinBalancer::new(objectstore, max_file_handles)
-        .await
-        .unwrap();
+    let balancer = RoundRobinBalancer::new(objectstore, max_file_handles).unwrap();
 
     let handles = (0..max_file_handles)
         .map(|_| {
@@ -43,7 +41,7 @@ pub async fn recursive(
 
     join_all(handles).await;
 
-    balancer.flush().await.unwrap();
+    balancer.flush().unwrap();
 }
 
 async fn process_file_loop(
@@ -101,9 +99,9 @@ async fn process_file_loop(
             let chunkindex = chunkindex.clone();
             let data = data.to_vec();
 
-            tokio::spawn(async move {
-                let store_fn = Box::pin(writer.write(&hash, &data));
-                (start, chunkindex.push(hash, store_fn).await.unwrap())
+            tokio::task::spawn_blocking(move || {
+                let store = || writer.write(&hash, &data);
+                (start, chunkindex.push(hash, store).unwrap())
             })
         });
 
@@ -120,21 +118,7 @@ fn walk_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
     let walker = WalkBuilder::new(path)
         .threads(threads)
         .standard_filters(false)
-        // .build();
         .build_parallel();
-
-    // for result in walker {
-    //     if result.is_err() {
-    //         continue;
-    //     }
-
-    //     let entry = result.unwrap();
-    //     if !entry.path().is_file() {
-    //         continue;
-    //     }
-
-    //     sender.send(entry).unwrap();
-    // }
 
     walker.run(|| {
         let tx = sender.clone();

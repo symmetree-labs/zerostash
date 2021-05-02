@@ -6,14 +6,11 @@ use crate::{
     crypto::{CryptoDigest, CryptoProvider, Random},
 };
 
-use async_trait::async_trait;
-
 use std::{io::Write, sync::Arc};
 
-#[async_trait]
 pub trait Writer: Send + Clone {
-    async fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer>;
-    async fn flush(&mut self) -> Result<()>;
+    fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer>;
+    fn flush(&mut self) -> Result<()>;
 }
 
 pub struct AEADWriter<C> {
@@ -54,17 +51,16 @@ where
     }
 }
 
-#[async_trait]
 impl<C> Writer for AEADWriter<C>
 where
     C: CryptoProvider + Sync,
 {
-    async fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
+    fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
         let mut compressed = compress::block(&data)?;
         let size = compressed.len();
         let mut offs = self.object.position();
         if offs + size > self.object.capacity() {
-            self.flush().await?;
+            self.flush()?;
             offs = self.object.position();
         }
 
@@ -83,9 +79,9 @@ where
         }))
     }
 
-    async fn flush(&mut self) -> Result<()> {
+    fn flush(&mut self) -> Result<()> {
         self.object.finalize(&self.crypto);
-        self.backend.write_object(&self.object).await?;
+        self.backend.write_object(&self.object)?;
 
         self.object.reset_id(&self.crypto);
         self.object.reset_cursor();

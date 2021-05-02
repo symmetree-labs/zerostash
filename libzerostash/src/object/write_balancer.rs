@@ -11,11 +11,11 @@ pub struct RoundRobinBalancer<W> {
 }
 
 impl<W: 'static + Writer> RoundRobinBalancer<W> {
-    pub async fn new(writer: W, writers: usize) -> Result<Self> {
+    pub fn new(writer: W, writers: usize) -> Result<Self> {
         let (enqueue, dequeue) = mpsc::bounded(writers);
 
         for _ in 0..writers {
-            enqueue.send_async(writer.clone()).await.unwrap();
+            enqueue.send(writer.clone()).unwrap();
         }
 
         Ok(RoundRobinBalancer {
@@ -25,19 +25,19 @@ impl<W: 'static + Writer> RoundRobinBalancer<W> {
         })
     }
 
-    pub async fn write(&self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
-        let mut writer = self.dequeue.recv_async().await.unwrap();
-        let result = writer.write_chunk(hash, data).await;
-        self.enqueue.send_async(writer).await.unwrap();
+    pub fn write(&self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
+        let mut writer = self.dequeue.recv().unwrap();
+        let result = writer.write_chunk(hash, data);
+        self.enqueue.send(writer).unwrap();
 
         result
     }
 
-    pub async fn flush(&self) -> Result<()> {
+    pub fn flush(&self) -> Result<()> {
         for _ in 0..self.writers {
-            let mut writer = self.dequeue.recv_async().await.unwrap();
-            writer.flush().await.unwrap();
-            self.enqueue.send_async(writer).await.unwrap();
+            let mut writer = self.dequeue.recv().unwrap();
+            writer.flush().unwrap();
+            self.enqueue.send(writer).unwrap();
         }
 
         Ok(())

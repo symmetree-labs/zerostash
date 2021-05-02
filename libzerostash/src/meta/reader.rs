@@ -53,7 +53,7 @@ where
     }
 
     pub async fn open(&mut self, id: &ObjectId) -> Result<MetaObjectHeader> {
-        let obj = self.backend.read_object(id).await?;
+        let obj = self.backend.read_object(id)?;
 
         self.inner.reset_cursor();
         self.inner.set_id(*id);

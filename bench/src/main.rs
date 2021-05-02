@@ -56,7 +56,7 @@ async fn main() {
 
         let ol = objects.len();
         let fl = repo.file_index().len();
-        let cl = repo.chunk_index().read().await.len();
+        let cl = repo.chunk_index().len();
         let (creuse_sum, creuse_cnt) = {
             let mut chunk_reuse = HashMap::new();
             for f in repo.file_index().into_iter() {

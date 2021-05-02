@@ -1,14 +1,12 @@
 use crate::object::{Object, ObjectId, ReadBuffer, ReadObject, WriteObject};
 
-use async_trait::async_trait;
 use lru::LruCache;
 use std::{
-    io,
+    fs, io,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 use thiserror::Error;
-use tokio::{fs, sync::Mutex};
 
 #[derive(Error, Debug)]
 pub enum BackendError {
@@ -25,10 +23,9 @@ pub enum BackendError {
 
 pub type Result<T> = std::result::Result<T, BackendError>;
 
-#[async_trait]
 pub trait Backend: Send + Sync {
-    async fn write_object(&self, object: &WriteObject) -> Result<()>;
-    async fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>>;
+    fn write_object(&self, object: &WriteObject) -> Result<()>;
+    fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>>;
 }
 
 #[derive(Clone)]
@@ -47,17 +44,16 @@ impl Directory {
     }
 }
 
-#[async_trait]
 impl Backend for Directory {
-    async fn write_object(&self, object: &WriteObject) -> Result<()> {
+    fn write_object(&self, object: &WriteObject) -> Result<()> {
         let filename = self.target.join(object.id().to_string());
-        fs::write(filename, object.as_inner()).await?;
+        fs::write(filename, object.as_inner())?;
         Ok(())
     }
 
-    async fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
+    fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
         let lru = {
-            let mut lock = self.read_lru.lock().await;
+            let mut lock = self.read_lru.lock().unwrap();
             lock.get(id).cloned()
         };
 
@@ -65,10 +61,10 @@ impl Backend for Directory {
             Some(buffer) => Ok(buffer),
             None => {
                 let filename = self.target.join(id.to_string());
-                let file = fs::read(&filename).await?;
+                let file = fs::read(&filename)?;
                 let obj = Arc::new(Object::with_id(*id, ReadBuffer::new(file)));
 
-                self.read_lru.lock().await.put(*id, obj.clone());
+                self.read_lru.lock().unwrap().put(*id, obj.clone());
 
                 Ok(obj)
             }
@@ -83,9 +79,8 @@ pub mod test {
     #[derive(Clone, Default)]
     pub struct InMemoryBackend(Arc<Mutex<HashMap<ObjectId, Arc<ReadObject>>>>);
 
-    #[async_trait]
     impl Backend for InMemoryBackend {
-        async fn write_object(&self, object: &WriteObject) -> Result<()> {
+        fn write_object(&self, object: &WriteObject) -> Result<()> {
             self.0
                 .lock()
                 .unwrap()
@@ -93,7 +88,7 @@ pub mod test {
             Ok(())
         }
 
-        async fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
+        fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
             self.0
                 .lock()
                 .unwrap()
@@ -113,14 +108,13 @@ pub mod test {
         }
     }
 
-    #[async_trait]
     impl Backend for NullBackend {
-        async fn write_object(&self, _object: &WriteObject) -> Result<()> {
+        fn write_object(&self, _object: &WriteObject) -> Result<()> {
             *self.0.lock().unwrap() += 1;
             Ok(())
         }
 
-        async fn read_object(&self, _id: &ObjectId) -> Result<Arc<ReadObject>> {
+        fn read_object(&self, _id: &ObjectId) -> Result<Arc<ReadObject>> {
             unimplemented!();
         }
     }
