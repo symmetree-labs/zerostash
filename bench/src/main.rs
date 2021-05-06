@@ -131,7 +131,6 @@ async fn main() {
         creuse_cnt,
         creuse_sum / creuse_cnt
     );
-    return;
 
     {
         let key = StashKey::open_stash(&key, &key).unwrap();
@@ -140,6 +139,7 @@ async fn main() {
         let read_start = Instant::now();
         repo.read().await.unwrap();
         let read_time = read_start.elapsed();
+        println!("repo open: {}", read_time.as_secs_f64());
 
         let restore_start = Instant::now();
         repo.restore_by_glob(threads, &["*"], restore_to)
@@ -150,12 +150,10 @@ async fn main() {
         let total_time = (read_time + restore_time).as_secs_f64();
 
         println!(
-            r#"read time: {}
-restore time: {}
+            r#"restore time: {}
 throughput packed: {}
 throughput unpacked: {}
 "#,
-            read_time.as_secs_f64(),
             restore_time.as_secs_f64(),
             mb(tsize as f64) / total_time,
             mb(ssize as f64) / total_time

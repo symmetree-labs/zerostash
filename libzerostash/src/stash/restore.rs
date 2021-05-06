@@ -10,14 +10,16 @@ use crate::{
 };
 
 use flume as mpsc;
+use futures::future::join_all;
 use itertools::Itertools;
 use memmap2::MmapOptions;
-use tokio::{fs, task};
+use tokio::task;
 
 use std::{
     collections::HashMap,
     env,
     error::Error,
+    fs,
     path::{Path, PathBuf},
     pin::Pin,
     sync::Arc,
@@ -38,10 +40,17 @@ pub async fn from_iter(
     crypto: impl CryptoProvider + 'static,
     target: impl AsRef<Path>,
 ) {
-    let (mut sender, receiver) = mpsc::bounded(max_file_handles);
+    let (mut sender, receiver) = mpsc::bounded(2 * max_file_handles);
 
-    // TODO this is single-threaded
-    task::spawn(process_packet_loop(receiver, backend, crypto));
+    let workers = (0..max_file_handles)
+        .map(|_| {
+            task::spawn(process_packet_loop(
+                receiver.clone(),
+                backend.clone(),
+                crypto.clone(),
+            ))
+        })
+        .collect::<Vec<_>>();
 
     for md in iter {
         let path = get_path(&md.name);
@@ -51,7 +60,7 @@ pub async fn from_iter(
         let mut basedir = target.as_ref().to_owned();
         if let Some(parent) = path.parent() {
             // create the file and parent directory
-            fs::create_dir_all(basedir.join(parent)).await.unwrap();
+            fs::create_dir_all(basedir.join(parent)).unwrap();
         }
 
         let filename = basedir.join(&path);
@@ -61,6 +70,9 @@ pub async fn from_iter(
             return;
         }
     }
+
+    drop(sender);
+    join_all(workers).await;
 }
 
 async fn process_packet_loop(
@@ -87,9 +99,8 @@ async fn process_packet_loop(
             .write(true)
             .read(true)
             .open(filename)
-            .await
             .unwrap();
-        fd.set_len(metadata.size).await.unwrap();
+        fd.set_len(metadata.size).unwrap();
 
         let object_ordered = metadata
             .chunks
@@ -103,7 +114,7 @@ async fn process_packet_loop(
         let mut mmap = unsafe {
             MmapOptions::new()
                 .len(metadata.size as usize)
-                .map_mut(&fd.into_std().await)
+                .map_mut(&fd)
                 .expect("mmap")
         };
 
