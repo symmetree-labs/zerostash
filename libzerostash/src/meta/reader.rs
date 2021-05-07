@@ -1,7 +1,8 @@
 use crate::backends::{Backend, BackendError};
 use crate::compress;
 use crate::crypto::{CryptoProvider, IndexKey};
-use crate::meta::{MetaObjectField, MetaObjectHeader, ObjectIndex};
+use crate::index::IndexField;
+use crate::meta::{MetaObjectHeader, ObjectIndex};
 use crate::object::{BlockBuffer, Object, ObjectId};
 
 use thiserror::Error;
@@ -63,11 +64,12 @@ impl Reader {
         self.header.clone().ok_or(ReadError::NoHeader)
     }
 
-    pub async fn read_into<F: MetaObjectField>(&mut self, store: &mut F) -> Result<()> {
+    pub async fn read_into<F: IndexField>(&mut self, name: &str, store: &mut F) -> Result<()> {
         match self.header {
             None => Err(ReadError::NoHeader),
             Some(ref header) => {
-                let frame_start = header.get_offset(&F::key()).ok_or(ReadError::NoField)? as usize;
+                let frame_start =
+                    header.get_offset(name.into()).ok_or(ReadError::NoField)? as usize;
 
                 let buffer: &[u8] = self.inner.as_ref();
                 let decompress =

@@ -1,9 +1,9 @@
 use crate::backends::Backend;
 use crate::compress::{self, STREAM_BLOCK_SIZE};
 use crate::crypto::{CryptoProvider, IndexKey};
+use crate::index::IndexField;
 use crate::meta::{
-    Encoder, Field, FieldOffset, FieldWriter, MetaObjectField, MetaObjectHeader, ObjectIndex,
-    HEADER_SIZE,
+    Encoder, Field, FieldOffset, FieldWriter, MetaObjectHeader, ObjectIndex, HEADER_SIZE,
 };
 use crate::object::{ObjectId, WriteObject};
 
@@ -73,20 +73,22 @@ impl Writer {
         &self.objects
     }
 
-    pub async fn write_field<F: MetaObjectField>(&mut self, obj: &F) {
+    pub async fn write_field<F: IndexField>(&mut self, name: &str, obj: &F) {
         // book keeping
-        self.offsets
-            .push(obj.as_offset(self.encoder.writer().unwrap().position() as u32));
+        self.offsets.push(FieldOffset(
+            self.encoder.writer().unwrap().position() as u32,
+            name.into(),
+        ));
 
         self.objects
-            .entry(F::key())
+            .entry(name.into())
             .or_default()
             .insert(*self.encoder.writer().unwrap().id());
 
         self.encoder.start().unwrap();
 
         // clean up
-        self.current_field = Some(F::key());
+        self.current_field = Some(name.into());
         obj.serialize(self).await;
         self.current_field = None;
 

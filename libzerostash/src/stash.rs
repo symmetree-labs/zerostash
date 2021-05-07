@@ -19,8 +19,8 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Clone, Default)]
 pub struct FileStashIndex {
-    chunks: chunks::ChunkStore,
-    files: files::FileStore,
+    chunks: chunks::ChunkIndex,
+    files: files::FileIndex,
 }
 
 #[async_trait]
@@ -38,12 +38,12 @@ impl Index for FileStashIndex {
         } {
             next_object = header.next_object();
 
-            match metareader.read_into(&mut self.files).await {
+            match metareader.read_into("files", &mut self.files).await {
                 Ok(_) | Err(ReadError::NoField) => (),
                 Err(e) => return Err(e.into()),
             };
 
-            match metareader.read_into(&mut self.chunks).await {
+            match metareader.read_into("chunks", &mut self.chunks).await {
                 Ok(_) | Err(ReadError::NoField) => (),
                 Err(e) => return Err(e.into()),
             };
@@ -53,8 +53,8 @@ impl Index for FileStashIndex {
     }
 
     async fn write_fields(&mut self, metawriter: &mut meta::Writer) -> Result<()> {
-        metawriter.write_field(&self.files).await;
-        metawriter.write_field(&self.chunks).await;
+        metawriter.write_field("files", &self.files).await;
+        metawriter.write_field("chunks", &self.chunks).await;
         metawriter.seal_and_store().await;
 
         Ok(())
@@ -62,11 +62,11 @@ impl Index for FileStashIndex {
 }
 
 impl FileStashIndex {
-    fn chunks(&self) -> &chunks::ChunkStore {
+    pub fn chunks(&self) -> &chunks::ChunkIndex {
         &self.chunks
     }
 
-    fn files(&self) -> &files::FileStore {
+    pub fn files(&self) -> &files::FileIndex {
         &self.files
     }
 }
@@ -100,7 +100,7 @@ impl Stash<FileStashIndex> {
             .iter()
             .map(|g| glob::Pattern::new(g.as_ref()).unwrap())
             .collect::<Vec<glob::Pattern>>();
-        let base_iter = self.file_index().into_iter().map(|r| r.key().clone());
+        let base_iter = self.index().files().iter().map(|r| r.clone());
 
         match glob.len() {
             i if i == 0 => Box::new(base_iter),
@@ -147,11 +147,7 @@ impl Stash<FileStashIndex> {
         Ok(mw.objects().clone())
     }
 
-    pub fn file_index(&self) -> &files::FileIndex {
-        self.index.files().index()
-    }
-
-    pub fn chunk_index(&self) -> &chunks::ChunkIndex {
-        self.index.chunks().index()
+    pub fn index(&self) -> &FileStashIndex {
+        &self.index
     }
 }

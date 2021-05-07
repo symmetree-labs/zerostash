@@ -77,12 +77,12 @@ async fn process_file_loop(
         let metadata = osfile.metadata().await.unwrap();
         let mut entry = files::Entry::from_metadata(metadata, path).unwrap();
 
-        if !index.files().has_changed(&entry) {
+        if index.files().contains(&entry) {
             continue;
         }
 
         if entry.size == 0 {
-            fileindex.push(entry);
+            fileindex.insert(entry.into());
             continue;
         }
 
@@ -104,7 +104,14 @@ async fn process_file_loop(
 
             task::spawn_blocking(move || {
                 let store = || writer.write(&hash, &data);
-                (start, chunkindex.push(hash, store).unwrap())
+                (
+                    start,
+                    chunkindex
+                        .entry(hash)
+                        .or_try_insert_with(store)
+                        .map(|r| r.value().clone())
+                        .unwrap(),
+                )
             })
         });
 
@@ -112,7 +119,7 @@ async fn process_file_loop(
             .chunks
             .extend(join_all(chunks).await.into_iter().map(Result::unwrap));
 
-        fileindex.push(entry);
+        fileindex.insert(entry.into());
     }
 }
 

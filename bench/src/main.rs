@@ -62,12 +62,11 @@ async fn main() {
             .collect::<HashSet<&object::ObjectId>>();
 
         let ol = objects.len();
-        let fl = repo.file_index().len();
-        let cl = repo.chunk_index().len();
+        let fl = repo.index().files().len();
+        let cl = repo.index().chunks().len();
         let (creuse_sum, creuse_cnt) = {
             let mut chunk_reuse = HashMap::new();
-            for f in repo.file_index().into_iter() {
-                let f = f.key();
+            for f in repo.index().files().iter() {
                 f.chunks
                     .iter()
                     .for_each(|(_, c)| *chunk_reuse.entry(c.hash).or_insert(0u32) += 1)
@@ -81,8 +80,7 @@ async fn main() {
 
         let ssize = {
             let mut data_size = 0.0f64;
-            for f in repo.file_index().into_iter() {
-                let f = f.key();
+            for f in repo.index().files().iter() {
                 data_size += f.size as f64
             }
             data_size

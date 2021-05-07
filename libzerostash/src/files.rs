@@ -1,18 +1,8 @@
 use crate::chunks::ChunkPointer;
-use crate::meta::{FieldReader, FieldWriter, MetaObjectField};
 
-use async_trait::async_trait;
-use dashmap::DashMap;
+use std::{error::Error, fs, path::Path, sync::Arc, time::UNIX_EPOCH};
 
-use std::error::Error;
-use std::fs;
-use std::path::Path;
-use std::sync::Arc;
-use std::time::UNIX_EPOCH;
-
-type DashSet<T> = DashMap<T, ()>;
-
-#[derive(Hash, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Hash, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct Entry {
     pub unix_secs: u64,
     pub unix_nanos: u32,
@@ -82,42 +72,4 @@ fn to_unix_mtime(m: &fs::Metadata) -> Result<(u64, u32), Box<dyn Error>> {
     Ok((mtime.as_secs(), mtime.subsec_nanos()))
 }
 
-pub type FileIndex = DashSet<Arc<Entry>>;
-
-#[derive(Clone, Default)]
-pub struct FileStore(Arc<FileIndex>);
-
-impl FileStore {
-    pub fn index(&self) -> &FileIndex {
-        &self.0
-    }
-
-    pub fn has_changed(&self, file: &Entry) -> bool {
-        !self.0.contains_key(file)
-    }
-
-    pub fn push(&self, file: Entry) {
-        self.0.insert(Arc::new(file), ());
-    }
-}
-
-#[async_trait]
-impl MetaObjectField for FileStore {
-    type Item = Entry;
-
-    fn key() -> String {
-        "files".to_string()
-    }
-
-    async fn serialize(&self, mw: &mut impl FieldWriter) {
-        for f in self.0.iter() {
-            mw.write_next(f.key()).await;
-        }
-    }
-
-    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
-        while let Ok(file) = mw.read_next().await {
-            self.0.insert(Arc::new(file), ());
-        }
-    }
-}
+pub type FileIndex = crate::index::Set<Arc<Entry>>;

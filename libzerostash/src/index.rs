@@ -37,42 +37,40 @@ pub trait Key: Serialize + DeserializeOwned + Eq + Hash + Send + Sync {}
 impl<T> Value for T where T: Serialize + DeserializeOwned + Send + Sync {}
 impl<T> Key for T where T: Serialize + DeserializeOwned + Eq + Hash + Send + Sync {}
 
-#[derive(Default, Clone)]
-pub struct Set<V: Key>(Arc<DashSet<V>>);
+pub type Set<V: Key> = Arc<DashSet<V>>;
 
 #[async_trait]
 impl<V: Key> IndexField for Set<V> {
     type Item = V;
 
     async fn serialize(&self, mw: &mut impl FieldWriter) {
-        for f in self.0.iter() {
+        for f in self.iter() {
             mw.write_next(f.key()).await;
         }
     }
 
     async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
         while let Ok(item) = mw.read_next().await {
-            self.0.insert(item);
+            self.insert(item);
         }
     }
 }
 
-#[derive(Default, Clone)]
-pub struct Map<K: Key, V: Value>(Arc<DashMap<K, V>>);
+pub type Map<K: Key, V: Value> = Arc<DashMap<K, V>>;
 
 #[async_trait]
 impl<K: Key, V: Value> IndexField for Map<K, V> {
     type Item = (K, V);
 
     async fn serialize(&self, mw: &mut impl FieldWriter) {
-        for r in self.0.iter() {
+        for r in self.iter() {
             mw.write_next((r.key(), r.value())).await;
         }
     }
 
     async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
         while let Ok((hash, pointer)) = mw.read_next().await {
-            self.0.insert(hash, pointer);
+            self.insert(hash, pointer);
         }
     }
 }

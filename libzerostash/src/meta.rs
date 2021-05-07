@@ -81,19 +81,6 @@ impl MetaObjectHeader {
 }
 
 #[async_trait]
-pub trait MetaObjectField {
-    type Item: DeserializeOwned;
-
-    fn key() -> String;
-    async fn serialize(&self, mw: &mut impl FieldWriter);
-    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>);
-
-    fn as_offset(&self, offs: u32) -> FieldOffset {
-        FieldOffset(offs, Self::key())
-    }
-}
-
-#[async_trait]
 pub trait FieldWriter: Send {
     async fn write_next(&mut self, obj: impl Serialize + Send + 'async_trait);
 }
