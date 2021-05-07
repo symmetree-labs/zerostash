@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 #![cfg_attr(test, feature(test))]
 
-use libzerostash::stash::{Stash, StashKey};
+use libzerostash::stash::{FileStashIndex, Stash, StashKey};
 use libzerostash::{backends, object};
 
 use std::collections::{HashMap, HashSet};
@@ -42,7 +42,11 @@ async fn main() {
     // but i can't be bothered to find it
     let (store_time, commit_time, ol, fl, cl, creuse_sum, creuse_cnt, ssize, tlen, tsize) = {
         let key = StashKey::open_stash(&key, &key).unwrap();
-        let mut repo = Stash::new(Arc::new(backends::Directory::new(&output).unwrap()), key);
+        let mut repo = Stash::new(
+            Arc::new(backends::Directory::new(&output).unwrap()),
+            key,
+            FileStashIndex::default(),
+        );
 
         let store_start = Instant::now();
         repo.add_recursive(threads, &path).await.unwrap();
@@ -134,7 +138,11 @@ async fn main() {
 
     {
         let key = StashKey::open_stash(&key, &key).unwrap();
-        let mut repo = Stash::new(Arc::new(backends::Directory::new(&output).unwrap()), key);
+        let mut repo = Stash::new(
+            Arc::new(backends::Directory::new(&output).unwrap()),
+            key,
+            FileStashIndex::default(),
+        );
 
         let read_start = Instant::now();
         repo.read().await.unwrap();

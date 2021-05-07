@@ -3,7 +3,7 @@ use crate::{
     backends::Backend,
     chunks::{ChunkPointer, RawChunkPointer},
     compress,
-    crypto::{CryptoDigest, CryptoProvider, Random},
+    crypto::{ChunkKey, CryptoDigest, CryptoProvider},
 };
 
 use std::{io::Write, sync::Arc};
@@ -13,17 +13,14 @@ pub trait Writer: Send + Clone {
     fn flush(&mut self) -> Result<()>;
 }
 
-pub struct AEADWriter<C> {
+pub struct AEADWriter {
     backend: Arc<dyn Backend>,
-    crypto: C,
+    crypto: ChunkKey,
     object: WriteObject,
 }
 
-impl<C> AEADWriter<C>
-where
-    C: CryptoProvider,
-{
-    pub fn new(backend: Arc<dyn Backend>, crypto: C) -> AEADWriter<C> {
+impl AEADWriter {
+    pub fn new(backend: Arc<dyn Backend>, crypto: ChunkKey) -> Self {
         let mut object = WriteObject::default();
         object.reset_id(&crypto);
 
@@ -35,11 +32,8 @@ where
     }
 }
 
-impl<C> Clone for AEADWriter<C>
-where
-    C: Random + Clone,
-{
-    fn clone(&self) -> AEADWriter<C> {
+impl Clone for AEADWriter {
+    fn clone(&self) -> Self {
         let mut object = self.object.clone();
         object.set_id(ObjectId::new(&self.crypto));
 
@@ -51,10 +45,7 @@ where
     }
 }
 
-impl<C> Writer for AEADWriter<C>
-where
-    C: CryptoProvider + Sync,
-{
+impl Writer for AEADWriter {
     fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
         let mut compressed = compress::block(&data)?;
         let size = compressed.len();

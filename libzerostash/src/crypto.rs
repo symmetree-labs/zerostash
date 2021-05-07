@@ -1,5 +1,5 @@
 use crate::chunks::RawChunkPointer;
-use crate::object::{Object, ObjectId, WriteObject};
+use crate::object::{ObjectId, WriteObject};
 
 use blake2b_simd::blake2bp::Params as Blake2;
 use getrandom::getrandom;
@@ -7,8 +7,6 @@ use ring::aead;
 use secrecy::{ExposeSecret, Secret};
 use thiserror::Error;
 use zeroize::Zeroize;
-
-use std::borrow::Borrow;
 
 pub const CRYPTO_DIGEST_SIZE: usize = 32;
 pub type CryptoDigest = [u8; CRYPTO_DIGEST_SIZE];
@@ -43,22 +41,19 @@ pub trait Random {
     fn fill(&self, buf: &mut [u8]);
 }
 
-pub trait CryptoProvider: Random + Clone + Send {
+pub trait CryptoProvider: Random + Send + Sync + Clone {
     fn encrypt_chunk(&self, object_id: &WriteObject, hash: &CryptoDigest, data: &mut [u8]) -> Tag;
     fn encrypt_object(&self, object: &mut WriteObject);
 
-    fn decrypt_chunk<Buffer: AsRef<[u8]>, Pointer: Borrow<RawChunkPointer>>(
+    fn decrypt_chunk(
         &self,
         target: &mut [u8],
-        o: &Object<Buffer>,
-        chunk: Pointer,
+        source: &[u8],
+        source_id: &ObjectId,
+        chunk: &RawChunkPointer,
     ) -> usize;
 
-    fn decrypt_object_into<I: AsRef<[u8]>, O: AsMut<[u8]>>(
-        &self,
-        output: &mut Object<O>,
-        obj: &Object<I>,
-    );
+    fn decrypt_object_into(&self, target: &mut [u8], source: &[u8], source_id: &ObjectId);
 }
 
 pub struct StashKey {
@@ -76,11 +71,11 @@ impl StashKey {
             .map(|k| ObjectId::from_bytes(k.expose_secret()))
     }
 
-    pub(crate) fn get_meta_crypto(&self) -> Result<impl CryptoProvider> {
+    pub(crate) fn get_meta_crypto(&self) -> Result<IndexKey> {
         derive_subkey(&self.master_key, b"_0s_meta").map(ObjectOperations::new)
     }
 
-    pub(crate) fn get_object_crypto(&self) -> Result<impl CryptoProvider> {
+    pub(crate) fn get_object_crypto(&self) -> Result<ChunkKey> {
         derive_subkey(&self.master_key, b"_0s_obj_").map(ObjectOperations::new)
     }
 }
@@ -89,6 +84,9 @@ impl StashKey {
 pub struct ObjectOperations {
     key: Key,
 }
+
+pub type IndexKey = ObjectOperations;
+pub type ChunkKey = ObjectOperations;
 
 impl ObjectOperations {
     pub fn new(key: Key) -> ObjectOperations {
@@ -132,14 +130,13 @@ impl CryptoProvider for ObjectOperations {
         object.write_tag(tag.as_ref());
     }
 
-    fn decrypt_chunk<B: AsRef<[u8]>, P: Borrow<RawChunkPointer>>(
+    fn decrypt_chunk(
         &self,
         target: &mut [u8],
-        o: &Object<B>,
-        chunk: P,
+        source: &[u8],
+        source_id: &ObjectId,
+        chunk: &RawChunkPointer,
     ) -> usize {
-        let chunk: &RawChunkPointer = chunk.borrow();
-
         let size = chunk.size as usize;
         let cyphertext_size = size + chunk.tag.len();
 
@@ -148,12 +145,12 @@ impl CryptoProvider for ObjectOperations {
         let start = chunk.offs as usize;
         let end = start + size;
 
-        target[..size].copy_from_slice(&o.as_inner()[start..end]);
+        target[..size].copy_from_slice(&source[start..end]);
         target[size..cyphertext_size].copy_from_slice(&chunk.tag);
 
         let aead = get_aead(derive_chunk_key(&self.key, &chunk.hash));
         aead.open_in_place(
-            get_chunk_nonce(o.id(), chunk.size),
+            get_chunk_nonce(source_id, chunk.size),
             aead::Aad::empty(),
             &mut target[..cyphertext_size],
         )
@@ -162,19 +159,12 @@ impl CryptoProvider for ObjectOperations {
         size
     }
 
-    fn decrypt_object_into<I: AsRef<[u8]>, O: AsMut<[u8]>>(
-        &self,
-        output: &mut Object<O>,
-        obj: &Object<I>,
-    ) {
-        let buf: &mut [u8] = output.as_inner_mut();
-        buf.copy_from_slice(&obj.as_inner());
+    fn decrypt_object_into(&self, target: &mut [u8], source: &[u8], source_id: &ObjectId) {
+        target.copy_from_slice(source);
 
         let aead = get_aead(self.key.clone());
-        aead.open_in_place(get_object_nonce(obj.id()), aead::Aad::empty(), buf)
+        aead.open_in_place(get_object_nonce(source_id), aead::Aad::empty(), target)
             .unwrap();
-
-        output.reserve_tag();
     }
 }
 
@@ -308,7 +298,7 @@ mod tests {
         obj.write(&encrypted).unwrap();
 
         let mut decrypted = vec![0; size + tag.len()];
-        crypto.decrypt_chunk(&mut decrypted, &obj, &cp);
+        crypto.decrypt_chunk(&mut decrypted, obj.as_ref(), obj.id(), &cp);
 
         assert_eq!(&decrypted[..size], cleartext.as_ref());
     }

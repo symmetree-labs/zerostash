@@ -1,6 +1,6 @@
 use crate::backends::Backend;
 use crate::compress::{self, STREAM_BLOCK_SIZE};
-use crate::crypto::CryptoProvider;
+use crate::crypto::{CryptoProvider, IndexKey};
 use crate::meta::{
     Encoder, Field, FieldOffset, FieldWriter, MetaObjectField, MetaObjectHeader, ObjectIndex,
     HEADER_SIZE,
@@ -18,20 +18,17 @@ use std::sync::Arc;
 pub type WriteError = io::Error;
 pub type Result<T> = std::result::Result<T, WriteError>;
 
-pub struct Writer<C> {
+pub struct Writer {
     objects: ObjectIndex,
     offsets: Vec<FieldOffset>,
     encoder: WriteState,
     current_field: Option<Field>,
     backend: Arc<dyn Backend>,
-    crypto: C,
+    crypto: IndexKey,
 }
 
 #[async_trait]
-impl<C> FieldWriter for Writer<C>
-where
-    C: CryptoProvider,
-{
+impl FieldWriter for Writer {
     async fn write_next(&mut self, obj: impl Serialize + Send + 'async_trait) {
         let writer = self.encoder.writer().unwrap();
         let capacity = writer.capacity();
@@ -51,15 +48,12 @@ where
     }
 }
 
-impl<C> Writer<C>
-where
-    C: CryptoProvider,
-{
+impl Writer {
     pub fn new(
         root_object_id: ObjectId,
         backend: Arc<dyn Backend>,
-        crypto: C,
-    ) -> Result<Writer<C>> {
+        crypto: IndexKey,
+    ) -> Result<Self> {
         let mut object = WriteObject::default();
         object.reserve_tag();
         object.set_id(root_object_id);

@@ -1,6 +1,6 @@
 use crate::backends::{Backend, BackendError};
 use crate::compress;
-use crate::crypto::CryptoProvider;
+use crate::crypto::{CryptoProvider, IndexKey};
 use crate::meta::{MetaObjectField, MetaObjectHeader, ObjectIndex};
 use crate::object::{BlockBuffer, Object, ObjectId};
 
@@ -30,19 +30,16 @@ pub enum ReadError {
 }
 pub type Result<T> = std::result::Result<T, ReadError>;
 
-pub struct Reader<C> {
+pub struct Reader {
     inner: Object<BlockBuffer>,
     header: Option<MetaObjectHeader>,
     objects: ObjectIndex,
     backend: Arc<dyn Backend>,
-    crypto: C,
+    crypto: IndexKey,
 }
 
-impl<C> Reader<C>
-where
-    C: CryptoProvider,
-{
-    pub fn new(backend: Arc<dyn Backend>, crypto: C) -> Reader<C> {
+impl Reader {
+    pub fn new(backend: Arc<dyn Backend>, crypto: IndexKey) -> Self {
         Reader {
             inner: Object::default(),
             objects: ObjectIndex::default(),
@@ -57,7 +54,8 @@ where
 
         self.inner.reset_cursor();
         self.inner.set_id(*id);
-        self.crypto.decrypt_object_into(&mut self.inner, &obj);
+        self.crypto
+            .decrypt_object_into(self.inner.as_mut(), obj.as_inner(), obj.id());
 
         let mut de = serde_cbor::Deserializer::from_slice(self.inner.as_ref()).into_iter();
         self.header = de.next().ok_or(ReadError::InvalidHeader)?.ok();

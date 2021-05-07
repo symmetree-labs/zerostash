@@ -96,7 +96,7 @@ impl FileStore {
         !self.0.contains_key(file)
     }
 
-    pub fn push(&mut self, file: Entry) {
+    pub fn push(&self, file: Entry) {
         self.0.insert(Arc::new(file), ());
     }
 }

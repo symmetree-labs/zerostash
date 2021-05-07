@@ -1,8 +1,8 @@
-use crate::files::{self, FileStore};
+use crate::files;
 use crate::object;
+use crate::object::write_balancer::RoundRobinBalancer;
 use crate::rollsum::SeaSplit;
 use crate::splitter::FileSplitter;
-use crate::{chunks::ChunkStore, object::write_balancer::RoundRobinBalancer};
 
 use flume as mpsc;
 use futures::future::join_all;
@@ -18,8 +18,7 @@ type Receiver = mpsc::Receiver<DirEntry>;
 #[allow(unused)]
 pub async fn recursive(
     worker_count: usize,
-    chunkindex: &mut ChunkStore,
-    fileindex: &mut FileStore,
+    index: &super::FileStashIndex,
     objectstore: impl object::Writer + 'static,
     path: impl AsRef<Path>,
 ) {
@@ -31,8 +30,7 @@ pub async fn recursive(
         .map(|_| {
             task::spawn(process_file_loop(
                 receiver.clone(),
-                chunkindex.clone(),
-                fileindex.clone(),
+                index.clone(),
                 balancer.clone(),
             ))
         })
@@ -49,10 +47,12 @@ pub async fn recursive(
 
 async fn process_file_loop(
     r: Receiver,
-    chunkindex: ChunkStore,
-    mut fileindex: FileStore,
+    index: super::FileStashIndex,
     writer: RoundRobinBalancer<impl object::Writer + 'static>,
 ) {
+    let fileindex = index.files();
+    let chunkindex = index.chunks();
+
     while let Ok(file) = r.recv_async().await {
         let path = file.path().to_owned();
 
@@ -77,7 +77,7 @@ async fn process_file_loop(
         let metadata = osfile.metadata().await.unwrap();
         let mut entry = files::Entry::from_metadata(metadata, path).unwrap();
 
-        if !fileindex.has_changed(&entry) {
+        if !index.files().has_changed(&entry) {
             continue;
         }
 

@@ -12,6 +12,7 @@ pub mod meta;
 pub mod object;
 pub mod stash;
 
+mod index;
 pub mod rollsum;
 pub mod splitter;
 
