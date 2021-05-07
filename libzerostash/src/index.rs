@@ -37,7 +37,7 @@ pub trait Key: Serialize + DeserializeOwned + Eq + Hash + Send + Sync {}
 impl<T> Value for T where T: Serialize + DeserializeOwned + Send + Sync {}
 impl<T> Key for T where T: Serialize + DeserializeOwned + Eq + Hash + Send + Sync {}
 
-pub type Set<V: Key> = Arc<DashSet<V>>;
+pub type Set<V> = Arc<DashSet<V>>;
 
 #[async_trait]
 impl<V: Key> IndexField for Set<V> {
@@ -56,7 +56,7 @@ impl<V: Key> IndexField for Set<V> {
     }
 }
 
-pub type Map<K: Key, V: Value> = Arc<DashMap<K, V>>;
+pub type Map<K, V> = Arc<DashMap<K, V>>;
 
 #[async_trait]
 impl<K: Key, V: Value> IndexField for Map<K, V> {
