@@ -154,6 +154,15 @@ where
     }
 
     #[inline(always)]
+    pub fn tail_mut(&mut self) -> &mut [u8] {
+        &mut self.buffer.as_mut()[self.cursor..self.capacity]
+    }
+
+    pub fn position_mut(&mut self) -> &mut usize {
+        &mut self.cursor
+    }
+
+    #[inline(always)]
     pub fn write_tag(&mut self, buf: &[u8]) {
         self.buffer.as_mut()[self.capacity..].copy_from_slice(buf);
     }

@@ -1,4 +1,6 @@
-use crate::{backends::BackendError, chunks::ChunkPointer, crypto::CryptoDigest};
+use crate::{
+    backends::BackendError, chunks::ChunkPointer, compress::CompressError, crypto::CryptoDigest,
+};
 
 use async_trait::async_trait;
 use thiserror::Error;
@@ -27,6 +29,11 @@ pub enum ObjectError {
     Backend {
         #[from]
         source: BackendError,
+    },
+    #[error("Compression failed")]
+    Compress {
+        #[from]
+        source: CompressError,
     },
 }
 

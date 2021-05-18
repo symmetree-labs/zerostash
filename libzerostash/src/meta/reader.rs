@@ -73,7 +73,7 @@ impl Reader {
 
                 let buffer: &[u8] = self.inner.as_ref();
                 let decompress =
-                    compress::destream(Cursor::new(&buffer[frame_start..header.end()]))?;
+                    compress::destream(Cursor::new(&buffer[frame_start..header.end()]));
 
                 let mut reader = serde_cbor::Deserializer::from_reader(decompress);
 

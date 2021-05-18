@@ -42,16 +42,16 @@ pub trait Random {
 }
 
 pub trait CryptoProvider: Random + Send + Sync + Clone {
-    fn encrypt_chunk(&self, object_id: &WriteObject, hash: &CryptoDigest, data: &mut [u8]) -> Tag;
+    fn encrypt_chunk(&self, object_id: &ObjectId, hash: &CryptoDigest, data: &mut [u8]) -> Tag;
     fn encrypt_object(&self, object: &mut WriteObject);
 
-    fn decrypt_chunk(
+    fn decrypt_chunk<'buf>(
         &self,
-        target: &mut [u8],
+        target: &'buf mut [u8],
         source: &[u8],
         source_id: &ObjectId,
         chunk: &RawChunkPointer,
-    ) -> usize;
+    ) -> &'buf mut [u8];
 
     fn decrypt_object_into(&self, target: &mut [u8], source: &[u8], source_id: &ObjectId);
 }
@@ -101,11 +101,11 @@ impl Random for ObjectOperations {
 }
 
 impl CryptoProvider for ObjectOperations {
-    fn encrypt_chunk(&self, object: &WriteObject, hash: &CryptoDigest, data: &mut [u8]) -> Tag {
+    fn encrypt_chunk(&self, object_id: &ObjectId, hash: &CryptoDigest, data: &mut [u8]) -> Tag {
         let aead = get_aead(derive_chunk_key(&self.key, hash));
         let tag = aead
             .seal_in_place_separate_tag(
-                get_chunk_nonce(object.id(), data.len() as u32),
+                get_chunk_nonce(object_id, data.len() as u32),
                 aead::Aad::empty(),
                 data,
             )
@@ -130,13 +130,13 @@ impl CryptoProvider for ObjectOperations {
         object.write_tag(tag.as_ref());
     }
 
-    fn decrypt_chunk(
+    fn decrypt_chunk<'buf>(
         &self,
-        target: &mut [u8],
+        target: &'buf mut [u8],
         source: &[u8],
         source_id: &ObjectId,
         chunk: &RawChunkPointer,
-    ) -> usize {
+    ) -> &'buf mut [u8] {
         let size = chunk.size as usize;
         let cyphertext_size = size + chunk.tag.len();
 
@@ -156,7 +156,7 @@ impl CryptoProvider for ObjectOperations {
         )
         .unwrap();
 
-        size
+        &mut target[..size]
     }
 
     fn decrypt_object_into(&self, target: &mut [u8], source: &[u8], source_id: &ObjectId) {

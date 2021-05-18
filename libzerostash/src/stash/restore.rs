@@ -125,10 +125,10 @@ async fn process_packet_loop(
             // This loop will extract & decrypt & decompress from the object
             for (i, (start, cp)) in cs.into_iter().enumerate() {
                 let start = start as usize;
-                let mut target: &mut [u8] = buffer.as_inner_mut();
+                let mut cryptbuf: &mut [u8] = buffer.as_inner_mut();
 
-                let len = crypto.decrypt_chunk(&mut target, object.as_inner(), object.id(), &cp);
-                compress::decompress_into(&mut mmap[start..], &target[..len]).unwrap();
+                let buf = crypto.decrypt_chunk(&mut cryptbuf, object.as_inner(), object.id(), &cp);
+                compress::decompress_into(buf, &mut mmap[start..], 0).unwrap();
             }
         }
     }

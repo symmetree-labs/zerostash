@@ -6,7 +6,7 @@ use crate::{
     crypto::{ChunkKey, CryptoDigest, CryptoProvider},
 };
 
-use std::{io::Write, sync::Arc};
+use std::sync::Arc;
 
 pub trait Writer: Send + Clone {
     fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer>;
@@ -47,24 +47,29 @@ impl Clone for AEADWriter {
 
 impl Writer for AEADWriter {
     fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
-        let mut compressed = compress::block(&data)?;
-        let size = compressed.len();
+        let size = compress::get_maximum_output_size(data.len());
         let mut offs = self.object.position();
         if offs + size > self.object.capacity() {
             self.flush()?;
             offs = self.object.position();
         }
 
-        let tag = self
-            .crypto
-            .encrypt_chunk(&self.object, hash, &mut compressed);
+        let oid = *self.object.id();
 
-        self.object.write_all(&compressed)?;
+        let (size, tag) = {
+            let buffer = self.object.tail_mut();
+            let size = compress::compress_into(&data, buffer, 0)?;
+            let tag = self.crypto.encrypt_chunk(&oid, hash, &mut buffer[..size]);
+
+            (size, tag)
+        };
+
+        *self.object.position_mut() += size;
 
         Ok(Arc::new(RawChunkPointer {
             offs: offs as u32,
             size: size as u32,
-            file: *self.object.id(),
+            file: oid,
             hash: *hash,
             tag,
         }))

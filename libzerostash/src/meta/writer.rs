@@ -169,7 +169,7 @@ impl WriteState {
                 std::mem::swap(&mut tmp, self);
 
                 let encoder = match tmp {
-                    Parked(w) => compress::stream(w)?,
+                    Parked(w) => compress::stream(w),
                     _ => unreachable!(),
                 };
 
@@ -189,12 +189,7 @@ impl WriteState {
         match encoder {
             Idle => unreachable!(),
             Parked(w) => Ok(w),
-            Encoding(e) => {
-                let (object, err) = e.finish();
-                err?;
-
-                Ok(object)
-            }
+            Encoding(e) => Ok(e.finish()?),
         }
     }
 
@@ -203,7 +198,7 @@ impl WriteState {
         match self {
             Idle => unreachable!(),
             Parked(w) => Ok(w),
-            Encoding(e) => Ok(e.writer()),
+            Encoding(e) => Ok(e.get_ref()),
         }
     }
 }
