@@ -6,8 +6,6 @@ pub use lz4_flex::{
 
 use std::io::{Read, Write};
 
-pub const STREAM_LEVEL: u32 = 1;
-pub const BLOCK_LEVEL: i32 = 32;
 pub const STREAM_BLOCK_SIZE: usize = 64 * 1024;
 const LZ4_BLOCK_SIZE: BlockSize = BlockSize::Max64KB;
 
