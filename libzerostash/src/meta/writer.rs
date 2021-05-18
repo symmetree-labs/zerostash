@@ -1,5 +1,5 @@
 use crate::backends::Backend;
-use crate::compress::{self, STREAM_BLOCK_SIZE};
+use crate::compress;
 use crate::crypto::{CryptoProvider, IndexKey};
 use crate::index::IndexField;
 use crate::meta::{
@@ -36,7 +36,7 @@ impl FieldWriter for Writer {
 
         let record = serialize_to_vec(&obj).unwrap();
 
-        if capacity - position < STREAM_BLOCK_SIZE {
+        if capacity - position < compress::FRAME_BLOCK_SIZE.get_size() {
             self.seal_and_store().await;
         }
 
@@ -92,9 +92,9 @@ impl Writer {
         obj.serialize(self).await;
         self.current_field = None;
 
-        // skip to next multiple of STREAM_BLOCK_SIZE
         let object = self.encoder.writer().unwrap();
-        let skip = STREAM_BLOCK_SIZE - (object.position() - HEADER_SIZE) % STREAM_BLOCK_SIZE;
+        let block_size = compress::FRAME_BLOCK_SIZE.get_size();
+        let skip = block_size - (object.position() - HEADER_SIZE) % block_size;
 
         if skip + object.position() < object.capacity() {
             let mut object = self.encoder.finish().unwrap();
