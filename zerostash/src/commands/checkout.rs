@@ -20,10 +20,11 @@ impl Runnable for Checkout {
     /// Start the application.
     fn run(&self) {
         abscissa_tokio::run(&APP, async {
-            let mut stash = APP.stash_exists(&self.stash).await;
+            let stash = APP.stash_exists(&self.stash).await;
 
             stash
-                .restore_by_glob(APP.get_worker_threads(), &self.paths, &self.target)
+                .index()
+                .restore_by_glob(&stash, APP.get_worker_threads(), &self.paths, &self.target)
                 .await
                 .expect("Error extracting data");
         })

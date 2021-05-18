@@ -36,7 +36,7 @@ pub struct Stash {
 
 impl Stash {
     /// Try to open a stash with the config-stored credentials
-    pub fn try_open(&self) -> Result<libzerostash::Stash> {
+    pub fn try_open(&self) -> Result<crate::Stash> {
         let key = {
             use Key::*;
             match &self.key {
@@ -48,7 +48,7 @@ impl Stash {
         let stash = {
             use Backend::*;
             match &self.backend {
-                Filesystem { path } => libzerostash::Stash::new(
+                Filesystem { path } => crate::Stash::with_default_index(
                     Arc::new(libzerostash::backends::Directory::new(path)?),
                     key,
                 ),

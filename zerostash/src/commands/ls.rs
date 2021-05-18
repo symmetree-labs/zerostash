@@ -20,7 +20,7 @@ impl Runnable for Ls {
     fn run(&self) {
         let stash = APP.open_stash(&self.stash);
 
-        for file in stash.list(&self.paths) {
+        for file in stash.index().list(&self.paths) {
             println!("{}", file.name);
         }
     }

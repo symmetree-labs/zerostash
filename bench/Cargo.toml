@@ -8,6 +8,7 @@ edition= "2018"
 
 [dependencies]
 libzerostash = { path = "../libzerostash" }
+libzerostash-files = { path = "../libzerostash-files" }
 walkdir = "^2.2.7"
 tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"] }
 num_cpus = "1"

@@ -23,7 +23,8 @@ impl Runnable for Commit {
 
             for path in self.paths.iter() {
                 stash
-                    .add_recursive(APP.get_worker_threads(), path)
+                    .index()
+                    .add_recursive(&stash, APP.get_worker_threads(), path)
                     .await
                     .expect("Failed to add path");
             }

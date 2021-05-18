@@ -8,5 +8,7 @@ lto = true
 members = [
     "bench",
     "libzerostash",
+    "libzerostash-files",
+    "libzerostash-macros",
     "zerostash",
 ]

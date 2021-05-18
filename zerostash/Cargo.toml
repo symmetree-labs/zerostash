@@ -10,6 +10,7 @@ edition = "2018"
 anyhow = "1.0"
 clap = "3.0.0-beta.2"
 libzerostash = { path = "../libzerostash" }
+libzerostash-files = { path = "../libzerostash-files" }
 num_cpus = "1.13.0"
 rpassword = "5.0.0"
 rprompt = "1.0.5"

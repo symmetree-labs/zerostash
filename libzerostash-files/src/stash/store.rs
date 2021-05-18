@@ -1,8 +1,5 @@
-use crate::files;
-use crate::object;
-use crate::object::write_balancer::RoundRobinBalancer;
-use crate::rollsum::SeaSplit;
-use crate::splitter::FileSplitter;
+use crate::{files, rollsum::SeaSplit, splitter::FileSplitter};
+use libzerostash::object::{self, write_balancer::RoundRobinBalancer};
 
 use flume as mpsc;
 use futures::future::join_all;
@@ -18,7 +15,7 @@ type Receiver = mpsc::Receiver<DirEntry>;
 #[allow(unused)]
 pub async fn recursive(
     worker_count: usize,
-    index: &super::FileStashIndex,
+    index: &crate::FileStashIndex,
     objectstore: impl object::Writer + 'static,
     path: impl AsRef<Path>,
 ) {
@@ -47,7 +44,7 @@ pub async fn recursive(
 
 async fn process_file_loop(
     r: Receiver,
-    index: super::FileStashIndex,
+    index: crate::FileStashIndex,
     writer: RoundRobinBalancer<impl object::Writer + 'static>,
 ) {
     let fileindex = index.files();

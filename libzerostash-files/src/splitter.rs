@@ -1,5 +1,5 @@
-use crate::crypto::{chunk_hash, CryptoDigest};
 use crate::rollsum::Rollsum;
+use libzerostash::crypto::{chunk_hash, CryptoDigest};
 
 use std::marker::PhantomData;
 

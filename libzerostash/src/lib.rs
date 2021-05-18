@@ -7,17 +7,18 @@ pub mod backends;
 pub mod chunks;
 pub mod compress;
 pub mod crypto;
-pub mod files;
 pub mod meta;
 pub mod object;
 pub mod stash;
 
-mod index;
-pub mod rollsum;
-pub mod splitter;
+pub mod index;
 
-pub use crypto::StashKey;
-pub use stash::Stash;
+pub use crate::crypto::StashKey;
+pub use crate::index::Index;
+pub use crate::object::ObjectId;
+pub use crate::stash::Stash;
+
+pub use async_trait::async_trait;
 
 // Use block size of 4MiB for now
 pub const BLOCK_SIZE: usize = 4 * 1024 * 1024;

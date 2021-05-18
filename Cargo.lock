@@ -769,25 +769,45 @@ dependencies = [
  "criterion",
  "dashmap",
  "flume",
- "futures",
  "getrandom",
- "glob",
- "ignore",
  "itertools 0.10.0",
  "libc",
  "lru",
  "lz4_flex",
- "memmap2",
  "ring",
  "rust-argon2",
- "seahash",
  "secrecy",
  "serde",
  "serde_cbor",
  "serde_derive",
  "thiserror",
- "tokio",
  "zeroize",
+]
+
+[[package]]
+name = "libzerostash-files"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "futures",
+ "glob",
+ "ignore",
+ "itertools 0.10.0",
+ "libzerostash",
+ "memmap2",
+ "seahash",
+ "serde",
+ "serde_derive",
+ "tokio",
+]
+
+[[package]]
+name = "libzerostash-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1752,6 +1772,7 @@ dependencies = [
  "anyhow",
  "clap 3.0.0-beta.2",
  "libzerostash",
+ "libzerostash-files",
  "num_cpus",
  "once_cell",
  "rpassword",
@@ -1766,6 +1787,7 @@ name = "zerostash-bench"
 version = "0.1.0"
 dependencies = [
  "libzerostash",
+ "libzerostash-files",
  "memmap2",
  "num_cpus",
  "ring",

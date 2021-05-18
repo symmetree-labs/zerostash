@@ -21,3 +21,5 @@ pub mod commands;
 pub mod config;
 pub mod error;
 pub mod prelude;
+
+pub(crate) type Stash = libzerostash::Stash<libzerostash_files::FileStashIndex>;

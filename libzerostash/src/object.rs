@@ -1,11 +1,17 @@
 use crate::{
-    backends::BackendError, chunks::ChunkPointer, compress::CompressError, crypto::CryptoDigest,
+    backends::BackendError,
+    chunks::ChunkPointer,
+    compress::{CompressError, DecompressError},
+    crypto::CryptoDigest,
 };
 
 use async_trait::async_trait;
 use thiserror::Error;
 
 use std::{io, sync::Arc};
+
+mod reader;
+pub use reader::{AEADReader, Reader};
 
 mod writer;
 pub use writer::{AEADWriter, Writer};
@@ -30,10 +36,15 @@ pub enum ObjectError {
         #[from]
         source: BackendError,
     },
-    #[error("Compression failed")]
+    #[error("Compress failed")]
     Compress {
         #[from]
         source: CompressError,
+    },
+    #[error("Decompress failed")]
+    Decompress {
+        #[from]
+        source: DecompressError,
     },
 }
 

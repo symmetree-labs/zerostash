@@ -3,6 +3,7 @@
 use crate::{
     commands::EntryPoint,
     config::{ask_credentials, ZerostashConfig},
+    Stash,
 };
 use abscissa_core::{
     application::{self, AppCell},
@@ -10,9 +11,7 @@ use abscissa_core::{
     status_err, trace, Application, FrameworkError, StandardPaths,
 };
 use abscissa_tokio::TokioComponent;
-
 use anyhow::Result;
-use libzerostash::Stash;
 
 use std::{process, sync::Arc};
 
@@ -59,7 +58,7 @@ impl ZerostashApp {
                     libzerostash::backends::Directory::new(path).unwrap_or_else(|e| fatal_error(e)),
                 );
 
-                Stash::new(backend, key)
+                Stash::with_default_index(backend, key)
             }
             Some(cfg) => cfg.try_open().unwrap_or_else(|e| fatal_error(e)),
         };

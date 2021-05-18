@@ -1,8 +1,8 @@
 #![deny(clippy::all)]
 #![cfg_attr(test, feature(test))]
 
-use libzerostash::stash::{FileStashIndex, Stash, StashKey};
-use libzerostash::{backends, object};
+use libzerostash::{backends, object, Stash, StashKey};
+use libzerostash_files::FileStashIndex;
 
 use std::collections::{HashMap, HashSet};
 use std::env::args;
@@ -49,7 +49,10 @@ async fn main() {
         );
 
         let store_start = Instant::now();
-        repo.add_recursive(threads, &path).await.unwrap();
+        repo.index()
+            .add_recursive(&repo, threads, &path)
+            .await
+            .unwrap();
         let store_time = store_start.elapsed();
 
         let commit_start = Instant::now();
@@ -148,7 +151,8 @@ async fn main() {
         println!("repo open: {}", read_time.as_secs_f64());
 
         let restore_start = Instant::now();
-        repo.restore_by_glob(threads, &["*"], restore_to)
+        repo.index()
+            .restore_by_glob(&repo, threads, &["*"], restore_to)
             .await
             .unwrap();
         let restore_time = restore_start.elapsed();

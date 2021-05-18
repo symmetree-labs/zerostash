@@ -1,75 +1,14 @@
 use crate::{
     backends::Backend,
-    chunks, files,
     index::Index,
-    meta::{self, ReadError},
-    object::{self, ObjectId},
+    meta,
+    object::{AEADReader, AEADWriter},
 };
 pub use crate::{crypto::StashKey, meta::ObjectIndex};
 
-use async_trait::async_trait;
-
-use std::path::Path;
 use std::sync::Arc;
 
-pub(crate) mod restore;
-pub(crate) mod store;
-
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-#[derive(Clone, Default)]
-pub struct FileStashIndex {
-    chunks: chunks::ChunkIndex,
-    files: files::FileIndex,
-}
-
-#[async_trait]
-impl Index for FileStashIndex {
-    async fn read_fields(
-        &mut self,
-        mut metareader: meta::Reader,
-        start_object: ObjectId,
-    ) -> Result<()> {
-        let mut next_object = Some(start_object);
-
-        while let Some(header) = match next_object {
-            Some(ref o) => Some(metareader.open(o).await?),
-            None => None,
-        } {
-            next_object = header.next_object();
-
-            match metareader.read_into("files", &mut self.files).await {
-                Ok(_) | Err(ReadError::NoField) => (),
-                Err(e) => return Err(e.into()),
-            };
-
-            match metareader.read_into("chunks", &mut self.chunks).await {
-                Ok(_) | Err(ReadError::NoField) => (),
-                Err(e) => return Err(e.into()),
-            };
-        }
-
-        Ok(())
-    }
-
-    async fn write_fields(&mut self, metawriter: &mut meta::Writer) -> Result<()> {
-        metawriter.write_field("files", &self.files).await;
-        metawriter.write_field("chunks", &self.chunks).await;
-        metawriter.seal_and_store().await;
-
-        Ok(())
-    }
-}
-
-impl FileStashIndex {
-    pub fn chunks(&self) -> &chunks::ChunkIndex {
-        &self.chunks
-    }
-
-    pub fn files(&self) -> &files::FileIndex {
-        &self.files
-    }
-}
 
 pub struct Stash<I> {
     backend: Arc<dyn Backend>,
@@ -77,8 +16,14 @@ pub struct Stash<I> {
     master_key: StashKey,
 }
 
-impl Stash<FileStashIndex> {
-    pub fn new(backend: Arc<dyn Backend>, master_key: StashKey, index: FileStashIndex) -> Self {
+impl<I: Index + Default> Stash<I> {
+    pub fn with_default_index(backend: Arc<dyn Backend>, master_key: StashKey) -> Self {
+        Self::new(backend, master_key, I::default())
+    }
+}
+
+impl<I: Index> Stash<I> {
+    pub fn new(backend: Arc<dyn Backend>, master_key: StashKey, index: I) -> Self {
         Stash {
             backend,
             index,
@@ -95,46 +40,6 @@ impl Stash<FileStashIndex> {
         Ok(self)
     }
 
-    pub fn list<'a>(&'a self, glob: &'a [impl AsRef<str>]) -> restore::FileIterator<'a> {
-        let matchers = glob
-            .iter()
-            .map(|g| glob::Pattern::new(g.as_ref()).unwrap())
-            .collect::<Vec<glob::Pattern>>();
-        let base_iter = self.index().files().iter().map(|r| r.clone());
-
-        match glob.len() {
-            i if i == 0 => Box::new(base_iter),
-            _ => Box::new(base_iter.filter(move |f| matchers.iter().any(|m| m.matches(&f.name)))),
-        }
-    }
-
-    pub async fn restore_by_glob(
-        &mut self,
-        threads: usize,
-        pattern: &[impl AsRef<str>],
-        target: impl AsRef<Path>,
-    ) -> Result<()> {
-        restore::from_iter(
-            threads,
-            self.list(pattern),
-            self.backend.clone(),
-            self.master_key.get_object_crypto()?,
-            target,
-        )
-        .await;
-
-        Ok(())
-    }
-
-    pub async fn add_recursive(&mut self, threads: usize, path: impl AsRef<Path>) -> Result<()> {
-        let objstore =
-            object::AEADWriter::new(self.backend.clone(), self.master_key.get_object_crypto()?);
-
-        store::recursive(threads, &self.index, objstore, path).await;
-
-        Ok(())
-    }
-
     pub async fn commit(&mut self) -> Result<ObjectIndex> {
         let mut mw = meta::Writer::new(
             self.master_key.root_object_id()?,
@@ -147,7 +52,21 @@ impl Stash<FileStashIndex> {
         Ok(mw.objects().clone())
     }
 
-    pub fn index(&self) -> &FileStashIndex {
+    pub fn object_writer(&self) -> Result<AEADWriter> {
+        Ok(AEADWriter::new(
+            self.backend.clone(),
+            self.master_key.get_object_crypto()?,
+        ))
+    }
+
+    pub fn object_reader(&self) -> Result<AEADReader> {
+        Ok(AEADReader::new(
+            self.backend.clone(),
+            self.master_key.get_object_crypto()?,
+        ))
+    }
+
+    pub fn index(&self) -> &I {
         &self.index
     }
 }

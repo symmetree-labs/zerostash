@@ -1,6 +1,8 @@
-use crate::chunks::ChunkPointer;
+use libzerostash::{chunks::ChunkPointer, index};
 
 use std::{error::Error, fs, path::Path, sync::Arc, time::UNIX_EPOCH};
+
+pub type FileIndex = index::Set<Arc<Entry>>;
 
 #[derive(Hash, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct Entry {
@@ -71,5 +73,3 @@ fn to_unix_mtime(m: &fs::Metadata) -> Result<(u64, u32), Box<dyn Error>> {
     let mtime = m.modified()?.duration_since(UNIX_EPOCH)?;
     Ok((mtime.as_secs(), mtime.subsec_nanos()))
 }
-
-pub type FileIndex = crate::index::Set<Arc<Entry>>;

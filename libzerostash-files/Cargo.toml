@@ -1,0 +1,20 @@
+[package]
+name = "libzerostash-files"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+libzerostash = { path = "../libzerostash" }
+serde = { version = "1.0", features = ["rc"] }
+serde_derive = "1.0"
+
+memmap2 = "0.2"
+glob = { version = "0.3" }
+ignore = "^0.4"
+
+flume = "^0.10"
+futures = "0.3"
+tokio = { version = "^1", features = ["fs", "rt", "sync", "parking_lot"] }
+
+itertools = "0.10"
+seahash = "4.0"

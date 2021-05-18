@@ -1,12 +1,12 @@
 #![allow(unused)]
 
-use crate::{
+use crate::files::{self, FileIndex};
+use libzerostash::{
     backends::Backend,
     chunks::ChunkPointer,
     compress,
     crypto::CryptoProvider,
-    files::{self, FileIndex},
-    object::*,
+    object::{self, WriteObject},
 };
 
 use flume as mpsc;
@@ -36,20 +36,13 @@ pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + 'a)>;
 pub async fn from_iter(
     max_file_handles: usize,
     iter: FileIterator<'_>,
-    backend: Arc<dyn Backend>,
-    crypto: impl CryptoProvider + 'static,
+    objreader: impl object::Reader + 'static,
     target: impl AsRef<Path>,
 ) {
     let (mut sender, receiver) = mpsc::bounded(2 * max_file_handles);
 
     let workers = (0..max_file_handles)
-        .map(|_| {
-            task::spawn(process_packet_loop(
-                receiver.clone(),
-                backend.clone(),
-                crypto.clone(),
-            ))
-        })
+        .map(|_| task::spawn(process_packet_loop(receiver.clone(), objreader.clone())))
         .collect::<Vec<_>>();
 
     for md in iter {
@@ -75,11 +68,7 @@ pub async fn from_iter(
     join_all(workers).await;
 }
 
-async fn process_packet_loop(
-    mut r: Receiver,
-    backend: Arc<dyn Backend>,
-    crypto: impl CryptoProvider,
-) {
+async fn process_packet_loop(mut r: Receiver, mut objreader: impl object::Reader + 'static) {
     // Since resources here are all managed by RAII, and they all
     // implement Drop, we can simply go through the Arc<_>s,
     // mmap them, open the corresponding objects to extract details,
@@ -120,15 +109,10 @@ async fn process_packet_loop(
 
         // This loop manages the object we're reading from
         for (objectid, cs) in object_ordered.into_iter() {
-            let object = backend.read_object(&objectid).expect("object read");
-
             // This loop will extract & decrypt & decompress from the object
             for (i, (start, cp)) in cs.into_iter().enumerate() {
                 let start = start as usize;
-                let mut cryptbuf: &mut [u8] = buffer.as_inner_mut();
-
-                let buf = crypto.decrypt_chunk(&mut cryptbuf, object.as_inner(), object.id(), &cp);
-                compress::decompress_into(buf, &mut mmap[start..], 0).unwrap();
+                objreader.read_chunk(cp, &mut mmap[start..]).unwrap();
             }
         }
     }

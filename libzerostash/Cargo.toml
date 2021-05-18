@@ -9,28 +9,26 @@ edition= "2018"
 
 [dependencies]
 blake2b_simd = "0.5"
-dashmap = "^4.0"
 getrandom = "0.2"
-glob = { version = "0.3" }
+ring = "0.16"
+rust-argon2 = "0.8"
+
+lz4_flex = { version = "0.8.0", default-features = false , features = ["frame"] }
+
+async-trait = { version = "^0.1" }
+dashmap = "^4.0"
+flume = "^0.10"
 itertools = "0.10"
 libc = "0.2"
 lru = "0.6"
-memmap2 = "0.2"
-ring = "0.16"
-rust-argon2 = "0.8"
-seahash = "4.0"
-secrecy = "0.7"
+thiserror = "1.0"
+
 serde = { version = "1.0", features = ["rc"] }
 serde_cbor = "^0.11.1"
 serde_derive = "1.0"
-thiserror = "1.0"
+
+secrecy = "0.7"
 zeroize = "1.1"
-ignore = "^0.4"
-tokio = { version = "^1", features = ["fs", "rt", "sync", "parking_lot"] }
-async-trait = { version = "^0.1" }
-flume = "^0.10"
-futures = "0.3"
-lz4_flex = { version = "0.8.0", default-features = false , features = ["frame"] }
 
 [dev-dependencies]
 criterion = "0.3"
