@@ -158,21 +158,20 @@ mod tests {
     // `store::recursive`
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_stats_add_up() {
-        use crate::chunks::*;
-        use crate::files::*;
-        use crate::object::test::*;
         use crate::stash::store;
+        use crate::*;
+        use libzerostash::object::test::*;
 
-        let mut cs = ChunkStore::default();
-        let mut fs = FileStore::default();
-        let mut s = NullStorage::default();
+        let mut index = FileStashIndex::default();
+        let s = NullStorage::default();
 
-        store::recursive(2, &mut cs, &mut fs, s, PATH_100).await;
+        std::env::set_current_dir("..").unwrap();
+        store::recursive(2, &mut index, s, PATH_100).await;
 
-        assert_eq!(100, fs.index().len());
+        assert_eq!(100, index.files.len());
         assert_eq!(
             1_024_000u64,
-            fs.index().iter().map(|f| f.key().size).sum::<u64>()
+            index.files.iter().map(|f| f.key().size).sum::<u64>()
         );
     }
 }

@@ -42,10 +42,9 @@ async fn main() {
     // but i can't be bothered to find it
     let (store_time, commit_time, ol, fl, cl, creuse_sum, creuse_cnt, ssize, tlen, tsize) = {
         let key = StashKey::open_stash(&key, &key).unwrap();
-        let mut repo = Stash::new(
+        let mut repo = Stash::<FileStashIndex>::with_default_index(
             Arc::new(backends::Directory::new(&output).unwrap()),
             key,
-            FileStashIndex::default(),
         );
 
         let store_start = Instant::now();
@@ -177,10 +176,9 @@ mod tests {
     const PATH: &str = "tests/data/10k_random_blob";
     const PATH_100: &str = "tests/data/100_random_1k";
     const SELFTEST_SIZE: usize = 100_000;
-    use ring::rand::*;
 
     fn rollsum_sum(buf: &[u8], ofs: usize, len: usize) -> u32 {
-        use libzerostash::rollsum::{BupSplit, Rollsum};
+        use libzerostash_files::rollsum::{BupSplit, Rollsum};
         let mut r = BupSplit::new();
         for count in ofs..len {
             r.roll(buf[count]);
@@ -188,11 +186,16 @@ mod tests {
         r.digest()
     }
 
+    fn set_test_cwd() {
+        if !std::path::Path::new(PATH).exists() {
+            std::env::set_current_dir("..").unwrap();
+        }
+    }
+
     #[bench]
     fn bup_rollsum(b: &mut test::Bencher) {
         let mut buf = [0; SELFTEST_SIZE];
-        let rand = SystemRandom::new();
-        rand.fill(&mut buf).unwrap();
+        getrandom::getrandom(&mut buf).unwrap();
 
         b.iter(|| {
             rollsum_sum(&buf, 0, SELFTEST_SIZE);
@@ -202,48 +205,60 @@ mod tests {
     #[bench]
     fn chunk_saturated_e2e(b: &mut test::Bencher) {
         use libzerostash::{backends::test::*, Stash, StashKey};
-        use std::{env::set_current_dir, sync::Arc};
+        use libzerostash_files::FileStashIndex;
+        use std::sync::Arc;
+
         let key = "abcdef1234567890abcdef1234567890";
         let key = StashKey::open_stash(&key, &key).unwrap();
-        let mut repo = Stash::new(Arc::new(NullBackend::default()), key);
-        set_current_dir("../libzerostash").unwrap();
+        let repo =
+            Stash::<FileStashIndex>::with_default_index(Arc::new(NullBackend::default()), key);
 
         let basic_rt = tokio::runtime::Runtime::new().unwrap();
 
+        set_test_cwd();
         // first build up the file index
-        basic_rt.block_on(repo.add_recursive(4, PATH_100)).unwrap();
+        basic_rt
+            .block_on(repo.index().add_recursive(&repo, 4, PATH_100))
+            .unwrap();
 
         b.iter(|| {
-            basic_rt.block_on(repo.add_recursive(4, PATH_100)).unwrap();
+            basic_rt
+                .block_on(repo.index().add_recursive(&repo, 4, PATH_100))
+                .unwrap();
         })
     }
 
     #[bench]
     fn chunk_e2e(b: &mut test::Bencher) {
         use libzerostash::{backends::test::*, Stash, StashKey};
-        use std::{env::set_current_dir, sync::Arc};
+        use libzerostash_files::FileStashIndex;
+        use std::sync::Arc;
+
         let key = "abcdef1234567890abcdef1234567890";
         let key = StashKey::open_stash(&key, &key).unwrap();
-        let mut repo = Stash::new(Arc::new(NullBackend::default()), key);
-
-        set_current_dir("../libzerostash").unwrap();
+        let repo =
+            Stash::<FileStashIndex>::with_default_index(Arc::new(NullBackend::default()), key);
 
         let basic_rt = tokio::runtime::Runtime::new().unwrap();
 
+        set_test_cwd();
         b.iter(|| {
-            basic_rt.block_on(repo.add_recursive(4, PATH_100)).unwrap();
+            basic_rt
+                .block_on(repo.index().add_recursive(&repo, 4, PATH_100))
+                .unwrap();
         })
     }
 
     #[bench]
     fn split_seasplit(b: &mut test::Bencher) {
-        use libzerostash::{rollsum::SeaSplit, splitter::FileSplitter};
+        use libzerostash_files::{rollsum::SeaSplit, splitter::FileSplitter};
         use memmap2::MmapOptions;
         use std::fs::File;
 
         let file = File::open(PATH).unwrap();
         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
+        set_test_cwd();
         b.iter(|| {
             FileSplitter::<SeaSplit>::new(&mmap)
                 .map(|(_, _, c)| c.len())
@@ -253,10 +268,11 @@ mod tests {
 
     #[bench]
     fn split_bupsplit(b: &mut test::Bencher) {
-        use libzerostash::{rollsum::BupSplit, splitter::FileSplitter};
+        use libzerostash_files::{rollsum::BupSplit, splitter::FileSplitter};
         use memmap2::MmapOptions;
         use std::fs::File;
 
+        set_test_cwd();
         let file = File::open(PATH).unwrap();
         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 

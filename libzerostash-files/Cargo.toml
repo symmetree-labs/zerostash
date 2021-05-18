@@ -18,3 +18,7 @@ tokio = { version = "^1", features = ["fs", "rt", "sync", "parking_lot"] }
 
 itertools = "0.10"
 seahash = "4.0"
+
+[dev-dependencies]
+getrandom = "0.2"
+tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"] }

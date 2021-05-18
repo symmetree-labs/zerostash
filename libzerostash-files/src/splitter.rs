@@ -44,7 +44,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    const PATH: &str = "tests/data/10k_random_blob";
+    const PATH: &str = "../tests/data/10k_random_blob";
 
     #[test]
     fn check_chunk_iterator_sum() {

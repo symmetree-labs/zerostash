@@ -264,10 +264,10 @@ mod tests {
         crypto.encrypt_object(&mut obj);
 
         let mut decrypted = WriteObject::default();
-        crypto.decrypt_object_into(&mut decrypted, &obj);
+        crypto.decrypt_object_into(decrypted.as_inner_mut(), obj.as_inner(), obj.id());
 
         // do it again, because reusing target buffers is fair game
-        crypto.decrypt_object_into(&mut decrypted, &obj);
+        crypto.decrypt_object_into(decrypted.as_inner_mut(), obj.as_inner(), obj.id());
 
         assert_eq!(&decrypted.as_inner()[..len], &cleartext[..]);
     }
@@ -287,7 +287,7 @@ mod tests {
         let mut obj = WriteObject::default();
 
         let mut encrypted = cleartext.clone();
-        let tag = crypto.encrypt_chunk(&obj, hash, &mut encrypted);
+        let tag = crypto.encrypt_chunk(obj.id(), hash, &mut encrypted);
         let cp = RawChunkPointer {
             offs: 0,
             size: size as u32,

@@ -127,7 +127,7 @@ mod tests {
         use crate::backends;
         use crate::chunks::{self, ChunkPointer};
         use crate::crypto::{self, CryptoDigest};
-        use crate::meta::{self, MetaObjectField};
+        use crate::meta;
         use crate::object::ObjectId;
 
         use secrecy::Secret;
@@ -140,25 +140,25 @@ mod tests {
         let oid = ObjectId::new(&crypto);
         let mut mw = meta::Writer::new(oid, storage.clone(), crypto.clone()).unwrap();
 
-        let chunks = chunks::ChunkStore::default();
+        let chunks = chunks::ChunkIndex::default();
         chunks
-            .push(CryptoDigest::default(), || Ok(ChunkPointer::default()))
-            .unwrap();
+            .entry(CryptoDigest::default())
+            .or_insert_with(|| ChunkPointer::default());
 
-        mw.write_field(&chunks).await;
+        mw.write_field("chunks", &chunks).await;
         mw.seal_and_store().await;
 
         let mut mr = meta::Reader::new(storage, crypto);
-        let objects = mw.objects().get(&chunks::ChunkStore::key()).unwrap();
+        let objects = mw.objects().get("chunks").unwrap();
         assert_eq!(objects.len(), 1);
 
         for id in objects.iter() {
             mr.open(&id).await.unwrap();
         }
 
-        let mut chunks_restore = chunks::ChunkStore::default();
-        mr.read_into(&mut chunks_restore).await.unwrap();
+        let mut chunks_restore = chunks::ChunkIndex::default();
+        mr.read_into("chunks", &mut chunks_restore).await.unwrap();
 
-        assert_eq!(chunks_restore.index().len(), 1);
+        assert_eq!(chunks_restore.len(), 1);
     }
 }

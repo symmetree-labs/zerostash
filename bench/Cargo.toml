@@ -14,7 +14,7 @@ tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"] }
 num_cpus = "1"
 
 [dev-dependencies]
-ring = "*"
+getrandom = "*"
 memmap2 = "*"
 
 [[bin]]

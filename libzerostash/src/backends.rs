@@ -30,7 +30,7 @@ pub trait Backend: Send + Sync {
 
 #[derive(Clone)]
 pub struct Directory {
-    target: Arc<PathBuf>,
+    target: PathBuf,
     read_lru: Arc<Mutex<LruCache<ObjectId, Arc<ReadObject>>>>,
 }
 
@@ -38,7 +38,7 @@ impl Directory {
     pub fn new(target: impl AsRef<Path>) -> Result<Directory> {
         std::fs::create_dir_all(&target)?;
         Ok(Directory {
-            target: Arc::new(target.as_ref().into()),
+            target: target.as_ref().into(),
             read_lru: Arc::new(Mutex::new(LruCache::new(100))),
         })
     }

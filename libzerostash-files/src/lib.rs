@@ -24,44 +24,6 @@ pub struct FileStashIndex {
     files: files::FileIndex,
 }
 
-#[async_trait]
-impl Index for FileStashIndex {
-    async fn read_fields(
-        &mut self,
-        mut metareader: meta::Reader,
-        start_object: ObjectId,
-    ) -> Result<()> {
-        let mut next_object = Some(start_object);
-
-        while let Some(header) = match next_object {
-            Some(ref o) => Some(metareader.open(o).await?),
-            None => None,
-        } {
-            next_object = header.next_object();
-
-            match metareader.read_into("files", &mut self.files).await {
-                Ok(_) | Err(ReadError::NoField) => (),
-                Err(e) => return Err(e.into()),
-            };
-
-            match metareader.read_into("chunks", &mut self.chunks).await {
-                Ok(_) | Err(ReadError::NoField) => (),
-                Err(e) => return Err(e.into()),
-            };
-        }
-
-        Ok(())
-    }
-
-    async fn write_fields(&mut self, metawriter: &mut meta::Writer) -> Result<()> {
-        metawriter.write_field("files", &self.files).await;
-        metawriter.write_field("chunks", &self.chunks).await;
-        metawriter.seal_and_store().await;
-
-        Ok(())
-    }
-}
-
 impl FileStashIndex {
     pub fn list<'a>(&'a self, glob: &'a [impl AsRef<str>]) -> stash::restore::FileIterator<'a> {
         let matchers = glob
@@ -104,6 +66,44 @@ impl FileStashIndex {
     ) -> Result<()> {
         stash::restore::from_iter(threads, self.list(pattern), stash.object_reader()?, target)
             .await;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Index for FileStashIndex {
+    async fn read_fields(
+        &mut self,
+        mut metareader: meta::Reader,
+        start_object: ObjectId,
+    ) -> Result<()> {
+        let mut next_object = Some(start_object);
+
+        while let Some(header) = match next_object {
+            Some(ref o) => Some(metareader.open(o).await?),
+            None => None,
+        } {
+            next_object = header.next_object();
+
+            match metareader.read_into("files", &mut self.files).await {
+                Ok(_) | Err(ReadError::NoField) => (),
+                Err(e) => return Err(e.into()),
+            };
+
+            match metareader.read_into("chunks", &mut self.chunks).await {
+                Ok(_) | Err(ReadError::NoField) => (),
+                Err(e) => return Err(e.into()),
+            };
+        }
+
+        Ok(())
+    }
+
+    async fn write_fields(&mut self, metawriter: &mut meta::Writer) -> Result<()> {
+        metawriter.write_field("files", &self.files).await;
+        metawriter.write_field("chunks", &self.chunks).await;
+        metawriter.seal_and_store().await;
 
         Ok(())
     }

@@ -98,7 +98,6 @@ impl Rollsum for BupSplit {
 mod tests {
     const SELFTEST_SIZE: usize = 100_000;
     use super::WINDOWSIZE;
-    use ring::rand::*;
 
     fn rollsum_sum(buf: &[u8], ofs: usize, len: usize) -> u32 {
         use super::{BupSplit, Rollsum};
@@ -111,8 +110,7 @@ mod tests {
 
     fn setup() -> [u8; SELFTEST_SIZE] {
         let mut buf = [0; SELFTEST_SIZE];
-        let rand = SystemRandom::new();
-        rand.fill(&mut buf);
+        getrandom::getrandom(&mut buf).unwrap();
 
         buf
     }
