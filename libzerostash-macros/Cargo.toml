@@ -1,0 +1,12 @@
+[package]
+edition = "2018"
+name = "libzerostash-macros"
+version = "0.1.0"
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = "1"
+
+[lib]
+proc-macro = true

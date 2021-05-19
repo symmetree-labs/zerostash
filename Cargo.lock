@@ -641,6 +641,7 @@ dependencies = [
  "getrandom",
  "itertools",
  "libc",
+ "libzerostash-macros",
  "lru",
  "lz4_flex",
  "ring",

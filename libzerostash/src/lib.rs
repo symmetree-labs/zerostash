@@ -19,6 +19,7 @@ pub use crate::object::ObjectId;
 pub use crate::stash::Stash;
 
 pub use async_trait::async_trait;
+pub use libzerostash_macros::Index;
 
 // Use block size of 4MiB for now
 pub const BLOCK_SIZE: usize = 4 * 1024 * 1024;
