@@ -1,11 +1,8 @@
 #[macro_use]
 extern crate serde_derive;
 
+use libzerostash::chunks::ChunkIndex;
 use libzerostash::*;
-use libzerostash::{
-    chunks::ChunkIndex,
-    meta::{self, ReadError},
-};
 
 use std::path::Path;
 

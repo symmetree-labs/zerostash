@@ -1,11 +1,9 @@
 use crate::{
     backends::Backend,
-    index::Index,
-    meta,
+    crypto::StashKey,
+    index::{self, Index, ObjectIndex},
     object::{AEADReader, AEADWriter},
 };
-pub use crate::{crypto::StashKey, meta::ObjectIndex};
-
 use std::sync::Arc;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -33,7 +31,7 @@ impl<I: Index> Stash<I> {
 
     pub async fn read(&mut self) -> Result<&Self> {
         let metareader =
-            meta::Reader::new(self.backend.clone(), self.master_key.get_meta_crypto()?);
+            index::Reader::new(self.backend.clone(), self.master_key.get_meta_crypto()?);
         let start_object = self.master_key.root_object_id()?;
 
         self.index.read_fields(metareader, start_object).await?;
@@ -41,7 +39,7 @@ impl<I: Index> Stash<I> {
     }
 
     pub async fn commit(&mut self) -> Result<ObjectIndex> {
-        let mut mw = meta::Writer::new(
+        let mut mw = index::Writer::new(
             self.master_key.root_object_id()?,
             self.backend.clone(),
             self.master_key.get_meta_crypto()?,

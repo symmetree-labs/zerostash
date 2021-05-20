@@ -1,11 +1,12 @@
-use crate::backends::Backend;
-use crate::compress;
-use crate::crypto::{CryptoProvider, IndexKey};
-use crate::index::IndexField;
-use crate::meta::{
-    Encoder, Field, FieldOffset, FieldWriter, MetaObjectHeader, ObjectIndex, HEADER_SIZE,
+use super::{
+    Encoder, Field, FieldOffset, FieldWriter, Header, IndexField, ObjectIndex, HEADER_SIZE,
 };
-use crate::object::{ObjectId, WriteObject};
+use crate::{
+    backends::Backend,
+    compress,
+    crypto::{CryptoProvider, IndexKey},
+    object::{ObjectId, WriteObject},
+};
 
 use async_trait::async_trait;
 use serde::Serialize;
@@ -113,7 +114,7 @@ impl Writer {
         object.finalize(&self.crypto);
         let next_object_id = ObjectId::new(&self.crypto);
 
-        let object_header = MetaObjectHeader::new(
+        let object_header = Header::new(
             self.current_field.clone().map(|_| next_object_id),
             &self.offsets,
             end,

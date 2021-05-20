@@ -1,9 +1,10 @@
-use crate::backends::{Backend, BackendError};
-use crate::compress;
-use crate::crypto::{CryptoProvider, IndexKey};
-use crate::index::IndexField;
-use crate::meta::{MetaObjectHeader, ObjectIndex};
-use crate::object::{BlockBuffer, Object, ObjectId};
+use super::{Header, IndexField, ObjectIndex};
+use crate::{
+    backends::{Backend, BackendError},
+    compress,
+    crypto::{CryptoProvider, IndexKey},
+    object::{BlockBuffer, Object, ObjectId},
+};
 
 use thiserror::Error;
 
@@ -33,7 +34,7 @@ pub type Result<T> = std::result::Result<T, ReadError>;
 
 pub struct Reader {
     inner: Object<BlockBuffer>,
-    header: Option<MetaObjectHeader>,
+    header: Option<Header>,
     objects: ObjectIndex,
     backend: Arc<dyn Backend>,
     crypto: IndexKey,
@@ -50,7 +51,7 @@ impl Reader {
         }
     }
 
-    pub async fn open(&mut self, id: &ObjectId) -> Result<MetaObjectHeader> {
+    pub async fn open(&mut self, id: &ObjectId) -> Result<Header> {
         let obj = self.backend.read_object(id)?;
 
         self.inner.reset_cursor();

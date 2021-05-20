@@ -7,11 +7,9 @@ pub mod backends;
 pub mod chunks;
 pub mod compress;
 pub mod crypto;
-pub mod meta;
+pub mod index;
 pub mod object;
 pub mod stash;
-
-pub mod index;
 
 pub use crate::crypto::StashKey;
 pub use crate::index::Index;

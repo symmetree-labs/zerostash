@@ -1,5 +1,5 @@
 use crate::{files, rollsum::SeaSplit, splitter::FileSplitter};
-use libzerostash::object::{self, write_balancer::RoundRobinBalancer};
+use libzerostash::object::{self, write_balancer::RoundRobinBalancer, Writer};
 
 use flume as mpsc;
 use futures::future::join_all;
@@ -21,7 +21,7 @@ pub async fn recursive(
 ) {
     // make sure the input and output queues are generous
     let (mut sender, receiver) = mpsc::bounded(worker_count * 2);
-    let balancer = RoundRobinBalancer::new(objectstore, worker_count * 2).unwrap();
+    let mut balancer = RoundRobinBalancer::new(objectstore, worker_count * 2).unwrap();
 
     let workers = (0..worker_count)
         .map(|_| {
@@ -95,12 +95,12 @@ async fn process_file_loop(
 
         let splitter = FileSplitter::<SeaSplit>::new(&mmap);
         let chunks = splitter.map(|(start, hash, data)| {
-            let writer = writer.clone();
+            let mut writer = writer.clone();
             let chunkindex = chunkindex.clone();
             let data = data.to_vec();
 
             task::spawn_blocking(move || {
-                let store = || writer.write(&hash, &data);
+                let store = || writer.write_chunk(&hash, &data);
                 (
                     start,
                     chunkindex

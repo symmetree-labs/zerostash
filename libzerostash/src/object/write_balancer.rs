@@ -24,8 +24,10 @@ impl<W: 'static + Writer> RoundRobinBalancer<W> {
             writers,
         })
     }
+}
 
-    pub fn write(&self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
+impl<W: 'static + Writer> Writer for RoundRobinBalancer<W> {
+    fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
         let mut writer = self.dequeue.recv().unwrap();
         let result = writer.write_chunk(hash, data);
         self.enqueue.send(writer).unwrap();
@@ -33,7 +35,7 @@ impl<W: 'static + Writer> RoundRobinBalancer<W> {
         result
     }
 
-    pub fn flush(&self) -> Result<()> {
+    fn flush(&mut self) -> Result<()> {
         for _ in 0..self.writers {
             let mut writer = self.dequeue.recv().unwrap();
             writer.flush()?;

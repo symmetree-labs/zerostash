@@ -87,7 +87,7 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
 
             quote! {
             match metareader.read_into(#field_name_str, &mut self.#field_name).await {
-                Ok(_) | Err(ReadError::NoField) => (),
+                Ok(_) | Err(libzerostash::index::ReadError::NoField) => (),
                 Err(e) => return Err(e.into()),
             };
             }
@@ -99,18 +99,18 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
 
     {
         Ok(quote! {
-        use libzerostash::{Index, async_trait};
+        use libzerostash::async_trait;
             #[automatically_derived]
             impl #impl_generics #st_name #ty_generics #where_clause {
                 #getters
             }
 
         #[async_trait]
-        impl Index for #impl_generics #st_name #ty_generics #where_clause {
+        impl libzerostash::Index for #impl_generics #st_name #ty_generics #where_clause {
                 async fn read_fields(
             &mut self,
-            mut metareader: meta::Reader,
-            start_object: ObjectId,
+            mut metareader: libzerostash::index::Reader,
+            start_object: libzerostash::ObjectId,
                 ) -> Result<()> {
             let mut next_object = Some(start_object);
 
@@ -125,7 +125,7 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
             Ok(())
                 }
 
-                async fn write_fields(&mut self, metawriter: &mut meta::Writer) -> Result<()> {
+                async fn write_fields(&mut self, metawriter: &mut libzerostash::index::Writer) -> Result<()> {
             #writers
 
             metawriter.seal_and_store().await;

@@ -1,76 +1,61 @@
 use crate::{
-    meta::{self, FieldReader, FieldWriter},
-    object::ObjectId,
+    compress,
+    object::{ObjectId, WriteObject},
+};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+    io::Cursor,
 };
 
 use async_trait::async_trait;
-use dashmap::{DashMap, DashSet};
 use serde::{de::DeserializeOwned, Serialize};
 
-use std::{cmp::Eq, hash::Hash, sync::Arc};
+mod fields;
+mod header;
+mod reader;
+mod writer;
 
-#[async_trait]
-pub trait IndexField {
-    type Item: DeserializeOwned;
+pub use fields::*;
+pub use header::*;
+pub use reader::{ReadError, Reader};
+pub use writer::{WriteError, Writer};
 
-    async fn serialize(&self, mw: &mut impl FieldWriter);
-    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>);
-}
+type Encoder = compress::Encoder<WriteObject>;
+type Decoder<'b> =
+    serde_cbor::Deserializer<serde_cbor::de::IoRead<compress::Decoder<Cursor<&'b [u8]>>>>;
+pub type ObjectIndex = HashMap<Field, HashSet<ObjectId>>;
 
 #[async_trait]
 pub trait Index {
     async fn read_fields(
         &mut self,
-        metareader: meta::Reader,
+        metareader: reader::Reader,
         start_object: ObjectId,
     ) -> Result<(), Box<dyn std::error::Error>>;
 
     async fn write_fields(
         &mut self,
-        metareader: &mut meta::Writer,
+        metareader: &mut writer::Writer,
     ) -> Result<(), Box<dyn std::error::Error>>;
 }
 
-pub trait Value: Serialize + DeserializeOwned + Send + Sync {}
-pub trait Key: Serialize + DeserializeOwned + Eq + Hash + Send + Sync {}
-
-impl<T> Value for T where T: Serialize + DeserializeOwned + Send + Sync {}
-impl<T> Key for T where T: Serialize + DeserializeOwned + Eq + Hash + Send + Sync {}
-
-pub type Set<V> = Arc<DashSet<V>>;
-
 #[async_trait]
-impl<V: Key> IndexField for Set<V> {
-    type Item = V;
-
-    async fn serialize(&self, mw: &mut impl FieldWriter) {
-        for f in self.iter() {
-            mw.write_next(f.key()).await;
-        }
-    }
-
-    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
-        while let Ok(item) = mw.read_next().await {
-            self.insert(item);
-        }
-    }
+pub trait FieldWriter: Send {
+    async fn write_next(&mut self, obj: impl Serialize + Send + 'async_trait);
 }
 
-pub type Map<K, V> = Arc<DashMap<K, V>>;
+#[async_trait]
+pub trait FieldReader<T>: Send {
+    async fn read_next(&mut self) -> Result<T, Box<dyn Error>>;
+}
 
 #[async_trait]
-impl<K: Key, V: Value> IndexField for Map<K, V> {
-    type Item = (K, V);
-
-    async fn serialize(&self, mw: &mut impl FieldWriter) {
-        for r in self.iter() {
-            mw.write_next((r.key(), r.value())).await;
-        }
-    }
-
-    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
-        while let Ok((hash, pointer)) = mw.read_next().await {
-            self.insert(hash, pointer);
-        }
+impl<'b, T> FieldReader<T> for Decoder<'b>
+where
+    T: DeserializeOwned,
+{
+    async fn read_next(&mut self) -> Result<T, Box<dyn Error>> {
+        Ok(T::deserialize(self)?)
     }
 }
