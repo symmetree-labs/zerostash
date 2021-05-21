@@ -187,9 +187,11 @@ mod tests {
     }
 
     fn set_test_cwd() {
-        if !std::path::Path::new(PATH).exists() {
-            std::env::set_current_dir("..").unwrap();
-        }
+        std::env::set_current_dir(format!(
+            "{}/..",
+            std::env::var("CARGO_MANIFEST_DIR").unwrap()
+        ))
+        .unwrap();
     }
 
     #[bench]
@@ -255,10 +257,10 @@ mod tests {
         use memmap2::MmapOptions;
         use std::fs::File;
 
+        set_test_cwd();
         let file = File::open(PATH).unwrap();
         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
-        set_test_cwd();
         b.iter(|| {
             FileSplitter::<SeaSplit>::new(&mmap)
                 .map(|(_, _, c)| c.len())
