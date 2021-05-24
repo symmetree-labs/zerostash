@@ -9,7 +9,7 @@ use thiserror::Error;
 use zeroize::Zeroize;
 
 pub const CRYPTO_DIGEST_SIZE: usize = 32;
-pub type CryptoDigest = [u8; CRYPTO_DIGEST_SIZE];
+pub type Digest = [u8; CRYPTO_DIGEST_SIZE];
 pub type Tag = [u8; 16];
 type Nonce = [u8; 12];
 type Key = Secret<[u8; CRYPTO_DIGEST_SIZE]>;
@@ -24,8 +24,9 @@ pub enum CryptoError {
 }
 pub type Result<T> = std::result::Result<T, CryptoError>;
 
-pub fn chunk_hash(content: &[u8]) -> CryptoDigest {
-    let mut output = CryptoDigest::default();
+#[inline]
+pub fn chunk_hash(content: &[u8]) -> Digest {
+    let mut output = Digest::default();
 
     output.copy_from_slice(
         Blake2::new()
@@ -42,7 +43,7 @@ pub trait Random {
 }
 
 pub trait CryptoProvider: Random + Send + Sync + Clone {
-    fn encrypt_chunk(&self, object_id: &ObjectId, hash: &CryptoDigest, data: &mut [u8]) -> Tag;
+    fn encrypt_chunk(&self, object_id: &ObjectId, hash: &Digest, data: &mut [u8]) -> Tag;
     fn encrypt_object(&self, object: &mut WriteObject);
 
     fn decrypt_chunk<'buf>(
@@ -95,13 +96,15 @@ impl ObjectOperations {
 }
 
 impl Random for ObjectOperations {
+    #[inline]
     fn fill(&self, buf: &mut [u8]) {
         getrandom(buf).unwrap()
     }
 }
 
 impl CryptoProvider for ObjectOperations {
-    fn encrypt_chunk(&self, object_id: &ObjectId, hash: &CryptoDigest, data: &mut [u8]) -> Tag {
+    #[inline]
+    fn encrypt_chunk(&self, object_id: &ObjectId, hash: &Digest, data: &mut [u8]) -> Tag {
         let aead = get_aead(derive_chunk_key(&self.key, hash));
         let tag = aead
             .seal_in_place_separate_tag(
@@ -116,6 +119,7 @@ impl CryptoProvider for ObjectOperations {
         t
     }
 
+    #[inline]
     fn encrypt_object(&self, object: &mut WriteObject) {
         let aead = get_aead(self.key.clone());
 
@@ -130,6 +134,7 @@ impl CryptoProvider for ObjectOperations {
         object.write_tag(tag.as_ref());
     }
 
+    #[inline]
     fn decrypt_chunk<'buf>(
         &self,
         target: &'buf mut [u8],
@@ -159,6 +164,7 @@ impl CryptoProvider for ObjectOperations {
         &mut target[..size]
     }
 
+    #[inline]
     fn decrypt_object_into(&self, target: &mut [u8], source: &[u8], source_id: &ObjectId) {
         target.copy_from_slice(source);
 
@@ -176,7 +182,7 @@ fn get_aead(key: Key) -> aead::LessSafeKey {
 }
 
 #[inline]
-fn derive_chunk_key(key_src: &Key, hash: &CryptoDigest) -> Key {
+fn derive_chunk_key(key_src: &Key, hash: &Digest) -> Key {
     let mut key = *key_src.expose_secret();
     for i in 0..key.len() {
         key[i] ^= hash[i];

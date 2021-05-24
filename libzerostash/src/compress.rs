@@ -1,7 +1,8 @@
 use lz4_flex::frame::{BlockMode, BlockSize, FrameInfo};
 pub use lz4_flex::{
     block::{
-        compress_into, decompress_into, get_maximum_output_size, CompressError, DecompressError,
+        compress_into, decompress, decompress_into, get_maximum_output_size, CompressError,
+        DecompressError,
     },
     frame::{FrameDecoder as Decoder, FrameEncoder as Encoder},
 };

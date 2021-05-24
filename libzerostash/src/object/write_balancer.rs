@@ -1,5 +1,5 @@
 use super::{Result, Writer};
-use crate::{chunks::ChunkPointer, crypto::CryptoDigest};
+use crate::{chunks::ChunkPointer, crypto::Digest};
 
 use flume as mpsc;
 
@@ -27,7 +27,7 @@ impl<W: 'static + Writer> RoundRobinBalancer<W> {
 }
 
 impl<W: 'static + Writer> Writer for RoundRobinBalancer<W> {
-    fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
+    fn write_chunk(&mut self, hash: &Digest, data: &[u8]) -> Result<ChunkPointer> {
         let mut writer = self.dequeue.recv().unwrap();
         let result = writer.write_chunk(hash, data);
         self.enqueue.send(writer).unwrap();

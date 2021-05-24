@@ -1,15 +1,15 @@
-use super::{ObjectId, Result, WriteObject};
+use super::{ObjectError, ObjectId, Result, WriteObject};
 use crate::{
     backends::Backend,
     chunks::{ChunkPointer, RawChunkPointer},
     compress,
-    crypto::{ChunkKey, CryptoDigest, CryptoProvider},
+    crypto::{ChunkKey, CryptoProvider, Digest},
 };
 
 use std::sync::Arc;
 
 pub trait Writer: Send + Clone {
-    fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer>;
+    fn write_chunk(&mut self, hash: &Digest, data: &[u8]) -> Result<ChunkPointer>;
     fn flush(&mut self) -> Result<()>;
 }
 
@@ -46,8 +46,15 @@ impl Clone for AEADWriter {
 }
 
 impl Writer for AEADWriter {
-    fn write_chunk(&mut self, hash: &CryptoDigest, data: &[u8]) -> Result<ChunkPointer> {
+    fn write_chunk(&mut self, hash: &Digest, data: &[u8]) -> Result<ChunkPointer> {
         let size = compress::get_maximum_output_size(data.len());
+        if size >= self.object.capacity() {
+            return Err(ObjectError::ChunkTooLarge {
+                size,
+                max_size: self.object.capacity(),
+            });
+        }
+
         let mut offs = self.object.position();
         if offs + size > self.object.capacity() {
             self.flush()?;
@@ -55,7 +62,6 @@ impl Writer for AEADWriter {
         }
 
         let oid = *self.object.id();
-
         let (size, tag) = {
             let buffer = self.object.tail_mut();
             let size = compress::compress_into(&data, buffer, 0)?;

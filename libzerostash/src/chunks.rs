@@ -1,4 +1,4 @@
-use crate::crypto::{CryptoDigest, Tag};
+use crate::crypto::{Digest, Tag};
 use crate::object::ObjectId;
 
 use std::sync::Arc;
@@ -8,9 +8,9 @@ pub struct RawChunkPointer {
     pub offs: u32,
     pub size: u32,
     pub file: ObjectId,
-    pub hash: CryptoDigest,
+    pub hash: Digest,
     pub tag: Tag,
 }
 
 pub type ChunkPointer = Arc<RawChunkPointer>;
-pub type ChunkIndex = crate::index::Map<CryptoDigest, ChunkPointer>;
+pub type ChunkIndex = crate::index::Map<Digest, ChunkPointer>;

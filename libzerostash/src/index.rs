@@ -66,7 +66,7 @@ mod tests {
     async fn can_deserialize_fields() {
         use crate::backends;
         use crate::chunks::{ChunkIndex, ChunkPointer};
-        use crate::crypto::{self, CryptoDigest};
+        use crate::crypto::{self, Digest};
         use crate::object::ObjectId;
 
         use secrecy::Secret;
@@ -81,7 +81,7 @@ mod tests {
 
         let chunks = ChunkIndex::default();
         chunks
-            .entry(CryptoDigest::default())
+            .entry(Digest::default())
             .or_insert_with(|| ChunkPointer::default());
 
         mw.write_field("chunks", &chunks).await;

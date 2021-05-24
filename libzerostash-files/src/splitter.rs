@@ -1,5 +1,5 @@
 use crate::rollsum::Rollsum;
-use libzerostash::crypto::{chunk_hash, CryptoDigest};
+use libzerostash::crypto::{chunk_hash, Digest};
 
 use std::marker::PhantomData;
 
@@ -26,7 +26,7 @@ impl<'file, RS> Iterator for FileSplitter<'file, RS>
 where
     RS: Rollsum,
 {
-    type Item = (u64, CryptoDigest, &'file [u8]);
+    type Item = (u64, Digest, &'file [u8]);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cur >= self.data.len() {

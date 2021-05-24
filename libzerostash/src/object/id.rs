@@ -1,11 +1,11 @@
-use crate::crypto::{CryptoDigest, Random};
+use crate::crypto::{Digest, Random};
 
 use itertools::Itertools;
 
 use std::string::ToString;
 
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ObjectId(CryptoDigest);
+pub struct ObjectId(Digest);
 
 impl ObjectId {
     #[inline(always)]
