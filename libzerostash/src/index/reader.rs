@@ -69,8 +69,7 @@ impl Reader {
         match self.header {
             None => Err(ReadError::NoHeader),
             Some(ref header) => {
-                let frame_start =
-                    header.get_offset(name.into()).ok_or(ReadError::NoField)? as usize;
+                let frame_start = header.get_offset(name).ok_or(ReadError::NoField)? as usize;
 
                 let buffer: &[u8] = self.inner.as_ref();
                 let decompress =

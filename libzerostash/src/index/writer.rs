@@ -1,3 +1,5 @@
+#![allow(clippy::large_enum_variant)]
+
 use super::{
     Encoder, Field, FieldOffset, FieldWriter, Header, IndexField, ObjectIndex, HEADER_SIZE,
 };

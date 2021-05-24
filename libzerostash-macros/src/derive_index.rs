@@ -152,12 +152,10 @@ fn get_attr(attr: &Attribute) -> syn::Result<Option<NestedMeta>> {
         // `#[stash()]` without any arguments is a no-op
         0 => Ok(None),
         1 => Ok(Some(meta_list.nested[0].clone())),
-        _ => {
-            return Err(syn::Error::new_spanned(
-                meta_list.nested,
-                "currently only a single stash attribute is supported",
-            ));
-        }
+        _ => Err(syn::Error::new_spanned(
+            meta_list.nested,
+            "currently only a single stash attribute is supported",
+        )),
     }
 }
 
