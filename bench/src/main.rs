@@ -28,7 +28,7 @@ fn dir_stat(path: &str) -> (u64, usize) {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let threads = num_cpus::get() + 1;
+    let threads = num_cpus::get();
     let path = args().nth(1).unwrap();
     let output = args().nth(2).unwrap();
     let restore_to = args().nth(3).unwrap();

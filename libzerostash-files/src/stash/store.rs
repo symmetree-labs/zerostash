@@ -21,7 +21,7 @@ pub async fn recursive(
 ) {
     // make sure the input and output queues are generous
     let (mut sender, receiver) = mpsc::bounded(worker_count * 2);
-    let mut balancer = RoundRobinBalancer::new(objectstore, worker_count * 2).unwrap();
+    let mut balancer = RoundRobinBalancer::new(objectstore, worker_count).unwrap();
 
     let workers = (0..worker_count)
         .map(|_| {
@@ -35,7 +35,7 @@ pub async fn recursive(
 
     // it's probably not a good idea to have walker threads compete
     // with workers, so we don't need to scale this up so aggressively
-    walk_path(worker_count / 2, sender, path);
+    walk_path(worker_count / 4, sender, path);
 
     join_all(workers).await;
 
