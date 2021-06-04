@@ -1,8 +1,8 @@
 use crate::crypto::{Digest, Random};
 
-use itertools::Itertools;
+pub use hex::FromHexError;
 
-use std::string::ToString;
+use std::{convert::TryFrom, string::ToString};
 
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObjectId(Digest);
@@ -35,9 +35,17 @@ impl AsRef<[u8]> for ObjectId {
     }
 }
 
+impl TryFrom<&str> for ObjectId {
+    type Error = FromHexError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        hex::decode(value).map(Self::from_bytes)
+    }
+}
+
 impl ToString for ObjectId {
     #[inline(always)]
     fn to_string(&self) -> String {
-        format!("{:02x}", self.0.as_ref().iter().format(""))
+        hex::encode(self.0.as_ref())
     }
 }

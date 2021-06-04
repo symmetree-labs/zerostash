@@ -64,6 +64,20 @@ pub struct BlockBuffer(Box<[u8]>);
 pub struct ReadBuffer(ReadBufferInner);
 type ReadBufferInner = Box<dyn AsRef<[u8]> + Send + Sync + 'static>;
 
+impl<RO> From<RO> for WriteObject
+where
+    RO: AsRef<ReadObject>,
+{
+    fn from(rwr: RO) -> WriteObject {
+        let rw = rwr.as_ref();
+
+        Object::with_id(
+            rw.id,
+            BlockBuffer(rw.buffer.as_ref().to_vec().into_boxed_slice()),
+        )
+    }
+}
+
 impl<WO> From<WO> for ReadObject
 where
     WO: AsRef<WriteObject>,

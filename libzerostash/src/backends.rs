@@ -1,14 +1,15 @@
-use crate::object::{Object, ObjectId, ReadBuffer, ReadObject, WriteObject};
+use crate::object::{ObjectId, ReadObject, WriteObject};
 
-use lru::LruCache;
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-};
-use thiserror::Error;
+pub use anyhow::Context;
+use std::{io, sync::Arc};
 
-#[derive(Error, Debug)]
+mod directory;
+pub use directory::Directory;
+
+#[cfg(feature = "s3")]
+pub mod s3;
+
+#[derive(thiserror::Error, Debug)]
 pub enum BackendError {
     #[error("IO error: {source}")]
     Io {
@@ -16,9 +17,14 @@ pub enum BackendError {
         source: io::Error,
     },
     #[error("No object found")]
-    NoObjectFound,
+    NotFound { id: ObjectId },
     #[error("Can't create object")]
     Create,
+    #[error("Backend Error: {source}")]
+    Generic {
+        #[from]
+        source: anyhow::Error,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, BackendError>;
@@ -26,49 +32,17 @@ pub type Result<T> = std::result::Result<T, BackendError>;
 pub trait Backend: Send + Sync {
     fn write_object(&self, object: &WriteObject) -> Result<()>;
     fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>>;
-}
 
-#[derive(Clone)]
-pub struct Directory {
-    target: PathBuf,
-    read_lru: Arc<Mutex<LruCache<ObjectId, Arc<ReadObject>>>>,
-}
-
-impl Directory {
-    pub fn new(target: impl AsRef<Path>) -> Result<Directory> {
-        std::fs::create_dir_all(&target)?;
-        Ok(Directory {
-            target: target.as_ref().into(),
-            read_lru: Arc::new(Mutex::new(LruCache::new(100))),
-        })
-    }
-}
-
-impl Backend for Directory {
-    fn write_object(&self, object: &WriteObject) -> Result<()> {
-        let filename = self.target.join(object.id().to_string());
-        fs::write(filename, object.as_inner())?;
+    fn preload(&self, _objects: &[ObjectId]) -> Result<()> {
         Ok(())
     }
 
-    fn read_object(&self, id: &ObjectId) -> Result<Arc<ReadObject>> {
-        let lru = {
-            let mut lock = self.read_lru.lock().unwrap();
-            lock.get(id).cloned()
-        };
+    fn delete(&self, _objects: &[ObjectId]) -> Result<()> {
+        Ok(())
+    }
 
-        match lru {
-            Some(buffer) => Ok(buffer),
-            None => {
-                let filename = self.target.join(id.to_string());
-                let file = fs::read(&filename)?;
-                let obj = Arc::new(Object::with_id(*id, ReadBuffer::new(file)));
-
-                self.read_lru.lock().unwrap().put(*id, obj.clone());
-
-                Ok(obj)
-            }
-        }
+    fn sync(&self) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -93,7 +67,7 @@ pub mod test {
                 .lock()
                 .unwrap()
                 .get(id)
-                .ok_or(BackendError::NoObjectFound)
+                .ok_or(BackendError::NotFound { id: *id })
                 .map(Arc::clone)
         }
     }

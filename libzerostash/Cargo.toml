@@ -7,6 +7,10 @@ license = "GPL-3.0"
 build = "build.rs"
 edition= "2018"
 
+[features]
+default = ["s3"]
+s3 = ["rusoto_core", "rusoto_s3", "tokio"]
+
 [dependencies]
 blake2b_simd = "0.5"
 getrandom = "0.2"
@@ -18,10 +22,11 @@ lz4_flex = { version = "0.8.0", default-features = false , features = ["frame"] 
 async-trait = { version = "^0.1" }
 dashmap = "^4.0"
 flume = "^0.10"
-itertools = "0.10"
 libc = "0.2"
 lru = "0.6"
 thiserror = "1.0"
+anyhow = "1.0"
+hex = "0.4"
 
 serde = { version = "1.0", features = ["rc"] }
 serde_cbor = "^0.11.1"
@@ -31,6 +36,10 @@ secrecy = "0.7"
 zeroize = "1.1"
 
 libzerostash-macros = { path = "../libzerostash-macros" }
+
+rusoto_core = { version="0.46", default_features=false, features=["rustls"], optional = true }
+rusoto_s3 = { version="0.46", default_features=false, features=["rustls"], optional = true }
+tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"] }
