@@ -10,7 +10,7 @@ pub struct RoundRobinBalancer<W> {
     writers: usize,
 }
 
-impl<W: 'static + Writer> RoundRobinBalancer<W> {
+impl<W: 'static + Writer + Clone> RoundRobinBalancer<W> {
     pub fn new(writer: W, writers: usize) -> Result<Self> {
         let (enqueue, dequeue) = mpsc::bounded(writers);
 

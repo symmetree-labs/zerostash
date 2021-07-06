@@ -2,11 +2,7 @@ use crate::{
     compress,
     object::{ObjectId, WriteObject},
 };
-use std::{
-    collections::{HashMap, HashSet},
-    error::Error,
-    io::Cursor,
-};
+use std::{error::Error, io::Cursor};
 
 use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
@@ -22,40 +18,30 @@ pub use reader::{ReadError, Reader};
 pub use writer::{WriteError, Writer};
 
 type Encoder = compress::Encoder<WriteObject>;
-type Decoder<'b> =
-    serde_cbor::Deserializer<serde_cbor::de::IoRead<compress::Decoder<Cursor<&'b [u8]>>>>;
-pub type ObjectIndex = HashMap<Field, HashSet<ObjectId>>;
+type Decoder = serde_cbor::Deserializer<serde_cbor::de::IoRead<compress::Decoder<Cursor<Vec<u8>>>>>;
+pub type ObjectIndex = Map<Field, Set<ObjectId>>;
 
-#[async_trait]
-pub trait Index {
-    async fn read_fields(
-        &mut self,
-        metareader: reader::Reader,
-        start_object: ObjectId,
-    ) -> Result<(), Box<dyn std::error::Error>>;
-
-    async fn write_fields(
-        &mut self,
-        metareader: &mut writer::Writer,
-    ) -> Result<(), Box<dyn std::error::Error>>;
+pub trait Index: Send + Sync {
+    fn store_all(&mut self) -> anyhow::Result<Vec<Access<Box<dyn Store>>>>;
+    fn load_all(&mut self) -> anyhow::Result<Vec<Access<Box<dyn Load>>>>;
 }
 
 #[async_trait]
 pub trait FieldWriter: Send {
-    async fn write_next(&mut self, obj: impl Serialize + Send + 'async_trait);
+    fn write_next(&mut self, obj: impl Serialize + Send);
 }
 
 #[async_trait]
 pub trait FieldReader<T>: Send {
-    async fn read_next(&mut self) -> Result<T, Box<dyn Error>>;
+    fn read_next(&mut self) -> Result<T, Box<dyn Error>>;
 }
 
 #[async_trait]
-impl<'b, T> FieldReader<T> for Decoder<'b>
+impl<T> FieldReader<T> for Decoder
 where
     T: DeserializeOwned,
 {
-    async fn read_next(&mut self) -> Result<T, Box<dyn Error>> {
+    fn read_next(&mut self) -> Result<T, Box<dyn Error>> {
         Ok(T::deserialize(self)?)
     }
 }

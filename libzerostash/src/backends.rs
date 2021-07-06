@@ -1,6 +1,6 @@
 use crate::object::{ObjectId, ReadObject, WriteObject};
 
-pub use anyhow::Context;
+use anyhow::Context;
 use std::{io, sync::Arc};
 
 mod directory;
@@ -46,6 +46,7 @@ pub trait Backend: Send + Sync {
     }
 }
 
+#[cfg(test)]
 pub mod test {
     use super::*;
     use std::{collections::HashMap, sync::Mutex};

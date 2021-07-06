@@ -1,58 +1,106 @@
-use super::{FieldReader, FieldWriter};
-use std::{cmp::Eq, hash::Hash, sync::Arc};
-
-use async_trait::async_trait;
-use dashmap::{DashMap, DashSet};
+use crate::{index, object};
 use serde::{de::DeserializeOwned, Serialize};
+use std::{cmp::Eq, hash::Hash, sync::Arc};
 
 pub trait Value: Serialize + DeserializeOwned + Send + Sync {}
 pub trait Key: Serialize + DeserializeOwned + Eq + Hash + Send + Sync {}
 
-#[async_trait]
-pub trait IndexField {
-    type Item: DeserializeOwned;
-
-    async fn serialize(&self, mw: &mut impl FieldWriter);
-    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>);
-}
-
 impl<T> Value for T where T: Serialize + DeserializeOwned + Send + Sync {}
 impl<T> Key for T where T: Serialize + DeserializeOwned + Eq + Hash + Send + Sync {}
 
-pub type Set<V> = Arc<DashSet<V>>;
+mod map;
+pub use map::Map;
 
-#[async_trait]
-impl<V: Key> IndexField for Set<V> {
-    type Item = V;
+mod set;
+pub use set::Set;
 
-    async fn serialize(&self, mw: &mut impl FieldWriter) {
-        for f in self.iter() {
-            mw.write_next(f.key()).await;
-        }
-    }
+pub trait Store {
+    /// Use a specified [`crate::object::Writer`] to execute the Store request
+    ///
+    /// Note that the provided default implementation leaves this as a
+    /// no-op.
+    ///
+    /// In general, if your Strategy is using an `object::Writer`, you
+    /// will want to override this implementation.
+    fn execute(&mut self, meta: Arc<index::Writer>, writer: &dyn object::Writer);
+}
 
-    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
-        while let Ok(item) = mw.read_next().await {
-            self.insert(item);
+pub enum QueryAction {
+    Take,
+    Skip,
+    Abort,
+}
+
+pub trait Query<I> {
+    fn execute(&mut self, predicate: impl Fn(I) -> QueryAction);
+}
+
+pub trait Load {
+    fn execute(&mut self);
+}
+
+#[non_exhaustive]
+pub struct Access<T> {
+    pub name: String,
+    pub strategy: T,
+}
+
+impl<T> Access<T> {
+    pub fn new(name: impl AsRef<str>, strategy: T) -> Self {
+        Access {
+            name: name.as_ref().to_string(),
+            strategy,
         }
     }
 }
 
-pub type Map<K, V> = Arc<DashMap<K, V>>;
-
-#[async_trait]
-impl<K: Key, V: Value> IndexField for Map<K, V> {
-    type Item = (K, V);
-
-    async fn serialize(&self, mw: &mut impl FieldWriter) {
-        for r in self.iter() {
-            mw.write_next((r.key(), r.value())).await;
+impl<T: Store + 'static> From<Access<Box<T>>> for Access<Box<dyn Store>> {
+    fn from(a: Access<Box<T>>) -> Self {
+        Access {
+            name: a.name,
+            strategy: a.strategy as Box<dyn Store>,
         }
     }
+}
 
-    async fn deserialize(&self, mw: &mut impl FieldReader<Self::Item>) {
-        while let Ok((hash, pointer)) = mw.read_next().await {
-            self.insert(hash, pointer);
+impl<T: Load + 'static> From<Access<Box<T>>> for Access<Box<dyn Load>> {
+    fn from(a: Access<Box<T>>) -> Self {
+        Access {
+            name: a.name,
+            strategy: a.strategy as Box<dyn Load>,
+        }
+    }
+}
+
+pub trait Strategy<T: Send>: Send {
+    fn for_field(field: &T) -> Self
+    where
+        Self: Sized;
+}
+
+// SparseField
+// start shere
+pub struct SparseField<Field> {
+    field: Field,
+}
+
+impl<T: Send + Clone> Strategy<T> for SparseField<T> {
+    fn for_field(field: &'_ T) -> Self {
+        SparseField {
+            field: field.clone(),
+        }
+    }
+}
+// LocalField
+// start shere
+pub struct LocalField<Field> {
+    field: Field,
+}
+
+impl<T: Send + Clone> Strategy<T> for LocalField<T> {
+    fn for_field(field: &T) -> Self {
+        LocalField {
+            field: field.clone(),
         }
     }
 }

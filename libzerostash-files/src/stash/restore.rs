@@ -4,8 +4,6 @@ use crate::files::{self, FileIndex};
 use libzerostash::{
     backends::Backend,
     chunks::ChunkPointer,
-    compress,
-    crypto::CryptoProvider,
     object::{self, WriteObject},
 };
 

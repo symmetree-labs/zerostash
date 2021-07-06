@@ -8,7 +8,7 @@ use crate::{
 
 use std::sync::Arc;
 
-pub trait Writer: Send + Clone {
+pub trait Writer: Send {
     fn write_chunk(&mut self, hash: &Digest, data: &[u8]) -> Result<ChunkPointer>;
     fn flush(&mut self) -> Result<()>;
 }
@@ -64,7 +64,7 @@ impl Writer for AEADWriter {
         let oid = *self.object.id();
         let (size, tag) = {
             let buffer = self.object.tail_mut();
-            let size = compress::compress_into(&data, buffer, 0)?;
+            let size = compress::compress_into(data, buffer, 0)?;
             let tag = self.crypto.encrypt_chunk(&oid, hash, &mut buffer[..size]);
 
             (size, tag)

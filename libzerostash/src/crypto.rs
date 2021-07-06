@@ -8,11 +8,12 @@ use secrecy::{ExposeSecret, Secret};
 use thiserror::Error;
 use zeroize::Zeroize;
 
-pub const CRYPTO_DIGEST_SIZE: usize = 32;
-pub type Digest = [u8; CRYPTO_DIGEST_SIZE];
-pub type Tag = [u8; 16];
+const CRYPTO_DIGEST_SIZE: usize = 32;
 type Nonce = [u8; 12];
 type Key = Secret<[u8; CRYPTO_DIGEST_SIZE]>;
+
+pub type Digest = [u8; CRYPTO_DIGEST_SIZE];
+pub type Tag = [u8; 16];
 
 #[derive(Error, Debug)]
 pub enum CryptoError {
@@ -23,6 +24,22 @@ pub enum CryptoError {
     },
 }
 pub type Result<T> = std::result::Result<T, CryptoError>;
+
+pub struct StashKey {
+    master_key: Key,
+}
+
+pub trait Random {
+    fn fill(&self, buf: &mut [u8]);
+}
+
+#[derive(Clone)]
+pub struct ObjectOperations {
+    key: Key,
+}
+
+pub type IndexKey = ObjectOperations;
+pub type ChunkKey = ObjectOperations;
 
 #[inline]
 pub fn chunk_hash(content: &[u8]) -> Digest {
@@ -38,11 +55,7 @@ pub fn chunk_hash(content: &[u8]) -> Digest {
     output
 }
 
-pub trait Random {
-    fn fill(&self, buf: &mut [u8]);
-}
-
-pub trait CryptoProvider: Random + Send + Sync + Clone {
+pub(crate) trait CryptoProvider: Random + Send + Sync + Clone {
     fn encrypt_chunk(&self, object_id: &ObjectId, hash: &Digest, data: &mut [u8]) -> Tag;
     fn encrypt_object(&self, object: &mut WriteObject);
 
@@ -55,10 +68,6 @@ pub trait CryptoProvider: Random + Send + Sync + Clone {
     ) -> &'buf mut [u8];
 
     fn decrypt_object_into(&self, target: &mut [u8], source: &[u8], source_id: &ObjectId);
-}
-
-pub struct StashKey {
-    master_key: Key,
 }
 
 impl StashKey {
@@ -80,14 +89,6 @@ impl StashKey {
         derive_subkey(&self.master_key, b"_0s_obj_").map(ObjectOperations::new)
     }
 }
-
-#[derive(Clone)]
-pub struct ObjectOperations {
-    key: Key,
-}
-
-pub type IndexKey = ObjectOperations;
-pub type ChunkKey = ObjectOperations;
 
 impl ObjectOperations {
     pub fn new(key: Key) -> ObjectOperations {
@@ -240,7 +241,7 @@ fn derive_subkey(key: &Key, ctx: &[u8]) -> Result<Key> {
     outbuf.copy_from_slice(
         Blake2::new()
             .hash_length(CRYPTO_DIGEST_SIZE)
-            .key(&ctx)
+            .key(ctx)
             .hash(key.expose_secret())
             .as_bytes(),
     );

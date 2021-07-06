@@ -8,7 +8,7 @@ pub struct SizedPointer {
     data_size: usize,
 }
 
-pub fn write<T: Serialize, W: 'static + Writer>(
+pub fn write<'writer, T: Serialize, W: 'writer + Writer>(
     writer: &mut W,
     serialize: impl Fn(T) -> Result<Vec<u8>>,
     obj: T,

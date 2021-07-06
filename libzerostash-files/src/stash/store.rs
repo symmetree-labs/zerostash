@@ -16,7 +16,7 @@ type Receiver = mpsc::Receiver<DirEntry>;
 pub async fn recursive(
     worker_count: usize,
     index: &crate::FileStashIndex,
-    objectstore: impl object::Writer + 'static,
+    objectstore: impl object::Writer + Clone + 'static,
     path: impl AsRef<Path>,
 ) {
     // make sure the input and output queues are generous
@@ -45,10 +45,10 @@ pub async fn recursive(
 async fn process_file_loop(
     r: Receiver,
     index: crate::FileStashIndex,
-    writer: RoundRobinBalancer<impl object::Writer + 'static>,
+    writer: RoundRobinBalancer<impl object::Writer + Clone + 'static>,
 ) {
-    let fileindex = index.files();
-    let chunkindex = index.chunks();
+    let fileindex = &index.files;
+    let chunkindex = &index.chunks;
 
     while let Ok(file) = r.recv_async().await {
         let path = file.path().to_owned();
@@ -74,7 +74,7 @@ async fn process_file_loop(
         let metadata = osfile.metadata().await.unwrap();
         let mut entry = files::Entry::from_metadata(metadata, path).unwrap();
 
-        if index.files().contains(&entry) {
+        if fileindex.contains(&entry) {
             continue;
         }
 

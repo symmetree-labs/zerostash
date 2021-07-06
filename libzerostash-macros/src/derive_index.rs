@@ -58,39 +58,28 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
         .iter()
         .map(|f| {
             let method_name = Ident::new(&f.rename, Span::mixed_site());
+            let field_name_str = Lit::Str(LitStr::new(f.rename.as_str(), Span::mixed_site()));
             let field_name = &f.field.ident;
             let field_ty = &f.field.ty;
 
             Ok(quote! {
-                pub fn #method_name(&self) -> &#field_ty {
-                    &self.#field_name
+		#[inline]
+                pub fn #method_name(&'_ mut self) -> libzerostash::index::Access<Box<libzerostash::index::LocalField<#field_ty>>> {
+		    use libzerostash::index::{Strategy, Access};
+		    Access::new(
+			#field_name_str,
+			Box::new(libzerostash::index::LocalField::for_field(&mut self.#field_name))
+		    )
                 }
             })
         })
         .collect::<syn::Result<TokenStream>>()?;
 
-    let writers = fields
+    let strategies = fields
         .iter()
         .map(|f| {
             let field_name = &f.field.ident;
-            let field_name_str = Lit::Str(LitStr::new(f.rename.as_str(), Span::mixed_site()));
-
-            quote! { metawriter.write_field(#field_name_str, &self.#field_name).await; }
-        })
-        .collect::<TokenStream>();
-
-    let readers = fields
-        .iter()
-        .map(|f| {
-            let field_name = &f.field.ident;
-            let field_name_str = Lit::Str(LitStr::new(f.rename.as_str(), Span::mixed_site()));
-
-            quote! {
-            match metareader.read_into(#field_name_str, &mut self.#field_name).await {
-                Ok(_) | Err(libzerostash::index::ReadError::NoField) => (),
-                Err(e) => return Err(e.into()),
-            };
-            }
+            quote! { self.#field_name().into(), }
         })
         .collect::<TokenStream>();
 
@@ -99,38 +88,19 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
 
     {
         Ok(quote! {
-        use libzerostash::async_trait;
-            #[automatically_derived]
-            impl #impl_generics #st_name #ty_generics #where_clause {
-                #getters
-            }
+        #[automatically_derived]
+        impl #impl_generics #st_name #ty_generics #where_clause {
+            #getters
+        }
 
-        #[async_trait]
         impl libzerostash::Index for #impl_generics #st_name #ty_generics #where_clause {
-                async fn read_fields(
-            &mut self,
-            mut metareader: libzerostash::index::Reader,
-            start_object: libzerostash::ObjectId,
-                ) -> Result<()> {
-            let mut next_object = Some(start_object);
-
-            while let Some(header) = match next_object {
-                Some(ref o) => Some(metareader.open(o).await?),
-                None => None,
-            } {
-                next_object = header.next_object();
-                #readers
+            fn store_all(&'_ mut self) -> libzerostash::anyhow::Result<Vec<libzerostash::index::Access<Box<dyn libzerostash::index::Store>>>> {
+                Ok(vec![#strategies])
             }
 
-            Ok(())
-                }
-
-                async fn write_fields(&mut self, metawriter: &mut libzerostash::index::Writer) -> Result<()> {
-            #writers
-
-            metawriter.seal_and_store().await;
-            Ok(())
-                }
+            fn load_all(&'_ mut self) -> libzerostash::anyhow::Result<Vec<libzerostash::index::Access<Box<dyn libzerostash::index::Load>>>> {
+                Ok(vec![#strategies])
+            }
         }
         })
     }

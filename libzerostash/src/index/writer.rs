@@ -1,8 +1,6 @@
 #![allow(clippy::large_enum_variant)]
 
-use super::{
-    Encoder, Field, FieldOffset, FieldWriter, Header, IndexField, ObjectIndex, HEADER_SIZE,
-};
+use super::{Encoder, Field, FieldOffset, FieldWriter, Header, ObjectIndex, HEADER_SIZE};
 use crate::{
     backends::Backend,
     compress,
@@ -10,16 +8,61 @@ use crate::{
     object::{ObjectId, WriteObject},
 };
 
-use async_trait::async_trait;
 use serde::Serialize;
 use serde_cbor::ser::to_vec as serialize_to_vec;
 
-use std::collections::HashMap;
 use std::io::{self, Seek, SeekFrom, Write};
 use std::sync::Arc;
 
 pub type WriteError = io::Error;
 pub type Result<T> = std::result::Result<T, WriteError>;
+
+pub struct Transaction<'writer> {
+    writer: &'writer mut Writer,
+}
+
+impl<'writer> FieldWriter for Transaction<'writer> {
+    fn write_next(&mut self, obj: impl Serialize + Send) {
+        let writer = self.writer.encoder.writer().unwrap();
+        let capacity = writer.capacity();
+        let position = writer.position();
+
+        let record = serialize_to_vec(&obj).unwrap();
+
+        if capacity - position < compress::FRAME_BLOCK_SIZE.get_size() {
+            self.writer.seal_and_store();
+        }
+
+        if record.len() + position > capacity - 64 {
+            self.writer.seal_and_store();
+        }
+
+        self.writer
+            .encoder
+            .start()
+            .unwrap()
+            .write_all(&record)
+            .unwrap();
+    }
+}
+
+impl<'writer> Drop for Transaction<'writer> {
+    fn drop(&mut self) {
+        self.writer.current_field = None;
+
+        let object = self.writer.encoder.writer().unwrap();
+        let block_size = compress::FRAME_BLOCK_SIZE.get_size();
+        let skip = block_size - (object.position() - HEADER_SIZE) % block_size;
+
+        if skip + object.position() < object.capacity() {
+            let mut object = self.writer.encoder.finish().unwrap();
+            object.seek(SeekFrom::Current(skip as i64)).unwrap();
+            self.writer.encoder = WriteState::Parked(object);
+        } else {
+            self.writer.seal_and_store();
+        }
+    }
+}
 
 pub struct Writer {
     objects: ObjectIndex,
@@ -30,28 +73,7 @@ pub struct Writer {
     crypto: IndexKey,
 }
 
-#[async_trait]
-impl FieldWriter for Writer {
-    async fn write_next(&mut self, obj: impl Serialize + Send + 'async_trait) {
-        let writer = self.encoder.writer().unwrap();
-        let capacity = writer.capacity();
-        let position = writer.position();
-
-        let record = serialize_to_vec(&obj).unwrap();
-
-        if capacity - position < compress::FRAME_BLOCK_SIZE.get_size() {
-            self.seal_and_store().await;
-        }
-
-        if record.len() + position > capacity - 64 {
-            self.seal_and_store().await;
-        }
-
-        self.encoder.start().unwrap().write_all(&record).unwrap();
-    }
-}
-
-impl Writer {
+impl<'writer> Writer {
     pub fn new(
         root_object_id: ObjectId,
         backend: Arc<dyn Backend>,
@@ -65,7 +87,7 @@ impl Writer {
         Ok(Writer {
             encoder: WriteState::Parked(object),
             offsets: vec![],
-            objects: HashMap::new(),
+            objects: ObjectIndex::default(),
             current_field: None,
             backend,
             crypto,
@@ -76,7 +98,7 @@ impl Writer {
         &self.objects
     }
 
-    pub async fn write_field<F: IndexField>(&mut self, name: &str, obj: &F) {
+    pub fn transaction(&'writer mut self, name: &str) -> Transaction<'writer> {
         // book keeping
         self.offsets.push(FieldOffset(
             self.encoder.writer().unwrap().position() as u32,
@@ -92,23 +114,11 @@ impl Writer {
 
         // clean up
         self.current_field = Some(name.into());
-        obj.serialize(self).await;
-        self.current_field = None;
 
-        let object = self.encoder.writer().unwrap();
-        let block_size = compress::FRAME_BLOCK_SIZE.get_size();
-        let skip = block_size - (object.position() - HEADER_SIZE) % block_size;
-
-        if skip + object.position() < object.capacity() {
-            let mut object = self.encoder.finish().unwrap();
-            object.seek(SeekFrom::Current(skip as i64)).unwrap();
-            self.encoder = WriteState::Parked(object);
-        } else {
-            self.seal_and_store().await;
-        }
+        Transaction { writer: self }
     }
 
-    pub async fn seal_and_store(&mut self) {
+    pub fn seal_and_store(&mut self) {
         let mut object = self.encoder.finish().unwrap();
         let end = object.position();
 

@@ -1,15 +1,13 @@
 use crate::{
     backends::BackendError,
-    chunks::ChunkPointer,
     compress::{CompressError, DecompressError},
-    crypto::{Digest, Random, Tag},
+    crypto::{Random, Tag},
     BLOCK_SIZE,
 };
 
-use async_trait::async_trait;
 use thiserror::Error;
 
-use std::{io, mem::size_of, sync::Arc};
+use std::{io, mem::size_of};
 
 mod reader;
 pub use reader::{AEADReader, Reader};
@@ -376,6 +374,7 @@ impl<T> AsRef<Object<T>> for Object<T> {
     }
 }
 
+#[cfg(test)]
 pub mod test {
     use super::*;
 
