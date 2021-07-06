@@ -1,4 +1,4 @@
-use libzerostash::{chunks::ChunkPointer, index};
+use infinitree::{chunks::ChunkPointer, index};
 
 use std::{error::Error, fs, path::Path, sync::Arc, time::UNIX_EPOCH};
 

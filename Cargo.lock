@@ -807,6 +807,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "infinitree"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake2b_simd",
+ "dashmap",
+ "flume",
+ "getrandom",
+ "hex",
+ "infinitree-macros",
+ "libc",
+ "lru",
+ "lz4_flex",
+ "ring",
+ "rusoto_core",
+ "rusoto_s3",
+ "rust-argon2",
+ "secrecy",
+ "serde",
+ "serde_cbor",
+ "serde_derive",
+ "thiserror",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
+name = "infinitree-core"
+version = "0.1.0"
+
+[[package]]
+name = "infinitree-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "instant"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -850,62 +892,6 @@ name = "libc"
 version = "0.2.97"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12b8adadd720df158f4d70dfe7ccc6adb0472d7c55ca83445f6a5ab3e36f8fb6"
-
-[[package]]
-name = "libzerostash"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "blake2b_simd",
- "dashmap",
- "flume",
- "getrandom",
- "hex",
- "libc",
- "libzerostash-macros",
- "lru",
- "lz4_flex",
- "ring",
- "rusoto_core",
- "rusoto_s3",
- "rust-argon2",
- "secrecy",
- "serde",
- "serde_cbor",
- "serde_derive",
- "thiserror",
- "tokio",
- "zeroize",
-]
-
-[[package]]
-name = "libzerostash-files"
-version = "0.1.0"
-dependencies = [
- "flume",
- "futures",
- "getrandom",
- "glob",
- "ignore",
- "itertools",
- "libzerostash",
- "memmap2 0.2.3",
- "seahash",
- "serde",
- "serde_derive",
- "tokio",
-]
-
-[[package]]
-name = "libzerostash-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "lock_api"
@@ -2189,8 +2175,7 @@ dependencies = [
  "abscissa_tokio",
  "anyhow",
  "clap",
- "libzerostash",
- "libzerostash-files",
+ "infinitree",
  "num_cpus",
  "once_cell",
  "rpassword",
@@ -2198,6 +2183,7 @@ dependencies = [
  "serde",
  "toml",
  "xdg",
+ "zerostash-files",
 ]
 
 [[package]]
@@ -2205,10 +2191,28 @@ name = "zerostash-bench"
 version = "0.1.0"
 dependencies = [
  "getrandom",
- "libzerostash",
- "libzerostash-files",
+ "infinitree",
  "memmap2 0.3.0",
  "num_cpus",
  "tokio",
  "walkdir",
+ "zerostash-files",
+]
+
+[[package]]
+name = "zerostash-files"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "futures",
+ "getrandom",
+ "glob",
+ "ignore",
+ "infinitree",
+ "itertools",
+ "memmap2 0.2.3",
+ "seahash",
+ "serde",
+ "serde_derive",
+ "tokio",
 ]

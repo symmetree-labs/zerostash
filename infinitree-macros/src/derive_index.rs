@@ -64,11 +64,11 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
 
             Ok(quote! {
 		#[inline]
-                pub fn #method_name(&'_ mut self) -> libzerostash::index::Access<Box<libzerostash::index::LocalField<#field_ty>>> {
-		    use libzerostash::index::{Strategy, Access};
+                pub fn #method_name(&'_ mut self) -> infinitree::index::Access<Box<infinitree::index::LocalField<#field_ty>>> {
+		    use infinitree::index::{Strategy, Access};
 		    Access::new(
 			#field_name_str,
-			Box::new(libzerostash::index::LocalField::for_field(&mut self.#field_name))
+			Box::new(infinitree::index::LocalField::for_field(&mut self.#field_name))
 		    )
                 }
             })
@@ -93,12 +93,12 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
             #getters
         }
 
-        impl libzerostash::Index for #impl_generics #st_name #ty_generics #where_clause {
-            fn store_all(&'_ mut self) -> libzerostash::anyhow::Result<Vec<libzerostash::index::Access<Box<dyn libzerostash::index::Store>>>> {
+        impl infinitree::Index for #impl_generics #st_name #ty_generics #where_clause {
+            fn store_all(&'_ mut self) -> infinitree::anyhow::Result<Vec<infinitree::index::Access<Box<dyn infinitree::index::Store>>>> {
                 Ok(vec![#strategies])
             }
 
-            fn load_all(&'_ mut self) -> libzerostash::anyhow::Result<Vec<libzerostash::index::Access<Box<dyn libzerostash::index::Load>>>> {
+            fn load_all(&'_ mut self) -> infinitree::anyhow::Result<Vec<infinitree::index::Access<Box<dyn infinitree::index::Load>>>> {
                 Ok(vec![#strategies])
             }
         }

@@ -7,8 +7,9 @@ lto = true
 [workspace]
 members = [
     "bench",
-    "libzerostash",
-    "libzerostash-files",
-    "libzerostash-macros",
+    "infinitree",
+    "infinitree-core",
+    "infinitree-macros",
+    "zerostash-files",
     "zerostash",
 ]

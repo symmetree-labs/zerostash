@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use crate::files::{self, FileIndex};
-use libzerostash::{
+use infinitree::{
     backends::Backend,
     chunks::ChunkPointer,
     object::{self, WriteObject},

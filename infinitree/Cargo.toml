@@ -1,8 +1,8 @@
 [package]
-name = "libzerostash"
+name = "infinitree"
 version = "0.1.0"
-authors = ["Peter Parkanyi <me@rhapsodhy.hu>"]
-repository = "https://github.com/rsdy/zerostash"
+authors = ["Peter Parkanyi <p@symmetree.dev>"]
+repository = "https://github.com/symmetree-labs/infinitree"
 license = "GPL-3.0"
 build = "build.rs"
 edition= "2018"
@@ -35,7 +35,7 @@ serde_derive = "1.0"
 secrecy = "0.7"
 zeroize = "1.1"
 
-libzerostash-macros = { path = "../libzerostash-macros" }
+infinitree-macros = { path = "../infinitree-macros" }
 
 rusoto_core = { version="0.46", default_features=false, features=["rustls"], optional = true }
 rusoto_s3 = { version="0.46", default_features=false, features=["rustls"], optional = true }

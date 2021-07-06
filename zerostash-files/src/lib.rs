@@ -1,8 +1,8 @@
 #[macro_use]
 extern crate serde_derive;
 
-use libzerostash::chunks::ChunkIndex;
-use libzerostash::*;
+use infinitree::chunks::ChunkIndex;
+use infinitree::*;
 
 use std::path::Path;
 

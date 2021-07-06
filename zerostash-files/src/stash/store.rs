@@ -1,5 +1,5 @@
 use crate::{files, rollsum::SeaSplit, splitter::FileSplitter};
-use libzerostash::object::{self, write_balancer::RoundRobinBalancer, Writer};
+use infinitree::object::{self, write_balancer::RoundRobinBalancer, Writer};
 
 use flume as mpsc;
 use futures::future::join_all;

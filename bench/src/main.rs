@@ -1,8 +1,8 @@
 #![deny(clippy::all)]
 #![cfg_attr(test, feature(test))]
 
-use libzerostash::{backends, object, Stash, StashKey};
-use libzerostash_files::FileStashIndex;
+use infinitree::{backends, object, Stash, StashKey};
+use zerostash_files::FileStashIndex;
 
 use std::collections::{HashMap, HashSet};
 use std::env::args;
