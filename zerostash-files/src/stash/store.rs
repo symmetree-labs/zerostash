@@ -15,7 +15,7 @@ type Receiver = mpsc::Receiver<DirEntry>;
 #[allow(unused)]
 pub async fn recursive(
     worker_count: usize,
-    index: &crate::FileStashIndex,
+    index: &crate::Files,
     objectstore: impl object::Writer + Clone + 'static,
     path: impl AsRef<Path>,
 ) {
@@ -44,7 +44,7 @@ pub async fn recursive(
 
 async fn process_file_loop(
     r: Receiver,
-    index: crate::FileStashIndex,
+    index: crate::Files,
     writer: RoundRobinBalancer<impl object::Writer + Clone + 'static>,
 ) {
     let fileindex = &index.files;
@@ -162,7 +162,7 @@ mod tests {
         use crate::*;
         use libzerostash::object::test::*;
 
-        let mut index = FileStashIndex::default();
+        let mut index = Files::default();
         let s = NullStorage::default();
 
         std::env::set_current_dir("..").unwrap();

@@ -1,20 +1,25 @@
+#![forbid(unsafe_code)]
 #![deny(clippy::all)]
 
 #[macro_use]
 extern crate serde_derive;
 
 pub mod backends;
-pub mod chunks;
 pub(crate) mod compress;
-pub mod crypto;
 pub mod index;
 pub mod object;
-pub mod stash;
 
-pub use crate::crypto::StashKey;
+mod chunks;
+mod crypto;
+mod tree;
+
+pub use crate::backends::Backend;
 pub use crate::index::Index;
 pub use crate::object::ObjectId;
-pub use crate::stash::Stash;
+
+pub use chunks::ChunkPointer;
+pub use crypto::{chunk_hash, ChunkKey, Digest, IndexKey, Key};
+pub use tree::Infinitree;
 
 pub use anyhow;
 pub use infinitree_macros::Index;

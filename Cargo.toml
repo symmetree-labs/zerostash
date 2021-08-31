@@ -1,14 +1,13 @@
 [profile.release]
 panic = "abort"
 lto = true
-# debug = true
-# opt-level = 2
+#debug = true
+#opt-level = 3
 				   
 [workspace]
 members = [
     "bench",
     "infinitree",
-    "infinitree-core",
     "infinitree-macros",
     "zerostash-files",
     "zerostash",

@@ -1,8 +1,7 @@
 #[macro_use]
 extern crate serde_derive;
 
-use infinitree::chunks::ChunkIndex;
-use infinitree::*;
+use infinitree::{index::ChunkIndex, *};
 
 use std::path::Path;
 
@@ -11,17 +10,17 @@ pub mod rollsum;
 pub mod splitter;
 mod stash;
 
-use files::FileIndex;
+use files::FileSet;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Clone, Default, Index)]
-pub struct FileStashIndex {
-    chunks: ChunkIndex,
-    files: FileIndex,
+pub struct Files {
+    pub chunks: ChunkIndex,
+    pub files: FileSet,
 }
 
-impl FileStashIndex {
+impl Files {
     pub fn list<'a>(&'a self, glob: &'a [impl AsRef<str>]) -> stash::restore::FileIterator<'a> {
         let matchers = glob
             .iter()
@@ -37,7 +36,7 @@ impl FileStashIndex {
 
     pub async fn add_recursive(
         &self,
-        stash: &Stash<FileStashIndex>,
+        stash: &Infinitree<Files>,
         threads: usize,
         path: impl AsRef<Path>,
     ) -> Result<()> {
@@ -48,7 +47,7 @@ impl FileStashIndex {
 
     pub async fn restore_by_glob(
         &self,
-        stash: &Stash<FileStashIndex>,
+        stash: &Infinitree<Files>,
         threads: usize,
         pattern: &[impl AsRef<str>],
         target: impl AsRef<Path>,

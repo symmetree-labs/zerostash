@@ -1,6 +1,5 @@
 #![allow(clippy::large_enum_variant)]
-
-use super::{Encoder, Field, FieldOffset, FieldWriter, Header, ObjectIndex, HEADER_SIZE};
+use super::{Encoder, FieldOffset, FieldWriter, Header, HEADER_SIZE};
 use crate::{
     backends::Backend,
     compress,
@@ -11,11 +10,11 @@ use crate::{
 use serde::Serialize;
 use serde_cbor::ser::to_vec as serialize_to_vec;
 
-use std::io::{self, Seek, SeekFrom, Write};
-use std::sync::Arc;
-
-pub type WriteError = io::Error;
-pub type Result<T> = std::result::Result<T, WriteError>;
+use std::{
+    io::{self, Seek, SeekFrom, Write},
+    mem,
+    sync::Arc,
+};
 
 pub struct Transaction<'writer> {
     writer: &'writer mut Writer,
@@ -48,7 +47,17 @@ impl<'writer> FieldWriter for Transaction<'writer> {
 
 impl<'writer> Drop for Transaction<'writer> {
     fn drop(&mut self) {
-        self.writer.current_field = None;
+        eprintln!(
+            "dropping transaction: {} {}",
+            self.writer.encoder.writer().unwrap().id().to_string(),
+            self.writer.encoder.writer().unwrap().position()
+        );
+
+        // unwrap here can't fail because a transaction implies
+        // `current_field = Some(_)`
+        self.writer
+            .offsets
+            .push(mem::take(&mut self.writer.current_field).unwrap());
 
         let object = self.writer.encoder.writer().unwrap();
         let block_size = compress::FRAME_BLOCK_SIZE.get_size();
@@ -64,17 +73,19 @@ impl<'writer> Drop for Transaction<'writer> {
     }
 }
 
-pub struct Writer {
-    objects: ObjectIndex,
+pub(crate) type Result<T> = std::result::Result<T, io::Error>;
+pub(crate) struct Writer {
     offsets: Vec<FieldOffset>,
     encoder: WriteState,
-    current_field: Option<Field>,
+    current_objects: Vec<ObjectId>,
+    current_field: Option<FieldOffset>,
+
     backend: Arc<dyn Backend>,
     crypto: IndexKey,
 }
 
 impl<'writer> Writer {
-    pub fn new(
+    pub(crate) fn new(
         root_object_id: ObjectId,
         backend: Arc<dyn Backend>,
         crypto: IndexKey,
@@ -87,67 +98,89 @@ impl<'writer> Writer {
         Ok(Writer {
             encoder: WriteState::Parked(object),
             offsets: vec![],
-            objects: ObjectIndex::default(),
+            current_objects: vec![],
             current_field: None,
             backend,
             crypto,
         })
     }
 
-    pub fn objects(&self) -> &ObjectIndex {
-        &self.objects
+    pub(crate) fn resume(
+        object: WriteObject,
+        offsets: Vec<FieldOffset>,
+        backend: Arc<dyn Backend>,
+        crypto: IndexKey,
+    ) -> Self {
+        Writer {
+            encoder: WriteState::Parked(object),
+            offsets,
+            current_objects: vec![],
+            current_field: None,
+            backend,
+            crypto,
+        }
     }
 
-    pub fn transaction(&'writer mut self, name: &str) -> Transaction<'writer> {
-        // book keeping
-        self.offsets.push(FieldOffset(
-            self.encoder.writer().unwrap().position() as u32,
-            name.into(),
-        ));
+    pub(crate) fn transaction_objects(&self) -> &Vec<ObjectId> {
+        &self.current_objects
+    }
 
-        self.objects
-            .entry(name.into())
-            .or_default()
-            .insert(*self.encoder.writer().unwrap().id());
+    pub(crate) fn transaction(&'writer mut self, name: &str) -> Transaction<'writer> {
+        let oid = *self.encoder.writer().unwrap().id();
+
+        self.current_objects.clear();
+        self.current_objects.push(oid);
 
         self.encoder.start().unwrap();
 
-        // clean up
-        self.current_field = Some(name.into());
+        self.current_field = Some(FieldOffset {
+            offset: self.encoder.writer().unwrap().position() as u32,
+            name: name.into(),
+            next: None,
+        });
+        eprintln!(
+            "starting transaction: {} {:?}",
+            oid.to_string(),
+            self.current_field
+        );
 
         Transaction { writer: self }
     }
 
-    pub fn seal_and_store(&mut self) {
+    pub(crate) fn seal_and_store(&mut self) {
         let mut object = self.encoder.finish().unwrap();
+        let next_object_id = ObjectId::new(&self.crypto);
         let end = object.position();
 
-        // fill the end of the object with random & other stuff
-        object.finalize(&self.crypto);
-        let next_object_id = ObjectId::new(&self.crypto);
+        if let Some(ref mut f) = &mut self.current_field {
+            let mut field_ref = f.clone();
+            field_ref.next = Some(next_object_id);
 
-        let object_header = Header::new(
-            self.current_field.clone().map(|_| next_object_id),
-            &self.offsets,
+            self.offsets.push(field_ref);
+
+            // this is for the `next` object to be picked up
+            f.offset = HEADER_SIZE as u32;
+        }
+
+        eprintln!(
+            "sealing {}; size: {}, {:?}",
+            object.id().to_string(),
             end,
+            self.offsets
         );
+        let object_header = Header::new(&self.offsets, end);
         let header_bytes = serialize_to_vec(&object_header).expect("failed to write header");
 
         // ok, this is pretty rough, but it also shouldn't happen, so yolo
         assert!(header_bytes.len() < HEADER_SIZE);
         object.write_head(&header_bytes);
 
+        // fill the end of the object with random & other stuff
+        object.finalize(&self.crypto);
+
         // encrypt & store
         self.crypto.encrypt_object(&mut object);
         self.backend.write_object(&object).unwrap();
-
-        // track which objects are holding what kind of data
-        for fo in self.offsets.drain(..) {
-            self.objects
-                .entry(fo.as_field())
-                .or_default()
-                .insert(*object.id());
-        }
 
         // start cleaning up and bookkeeping
         object.set_id(next_object_id);
@@ -155,13 +188,9 @@ impl<'writer> Writer {
         // re-initialize the object
         object.clear();
         object.seek(SeekFrom::Start(HEADER_SIZE as u64)).unwrap();
-        self.encoder = WriteState::Parked(object);
 
-        // make sure we register the currently written field in the new object
-        if let Some(f) = &self.current_field {
-            self.offsets
-                .push(FieldOffset::new(HEADER_SIZE as u32, f.to_owned()));
-        }
+        self.encoder = WriteState::Parked(object);
+        self.offsets.clear();
     }
 }
 

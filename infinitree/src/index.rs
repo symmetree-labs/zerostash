@@ -1,59 +1,168 @@
+//! Working with the index of an Infinitree.
+//!
+//! # Index objects and regular objects
+//!
+//! # Efficient use of indexes
+//!
+//! # Customizing storage strategies
+
 use crate::{
     compress,
+    crypto::Digest,
     object::{ObjectId, WriteObject},
+    ChunkPointer,
 };
+use serde::{de::DeserializeOwned, Serialize};
 use std::{error::Error, io::Cursor};
 
-use async_trait::async_trait;
-use serde::{de::DeserializeOwned, Serialize};
-
-mod fields;
+pub mod fields;
 mod header;
-mod reader;
-mod writer;
+pub mod reader;
+pub mod writer;
 
 pub use fields::*;
 pub use header::*;
-pub use reader::{ReadError, Reader};
-pub use writer::{WriteError, Writer};
+pub use reader::ReadError;
+
+pub(crate) use reader::Reader;
+pub(crate) use writer::Writer;
+
+/// A collection to store object lists for fields
+pub(crate) type ObjectIndex = Map<Field, Vec<ObjectId>>;
+
+/// A collection to find a hash using a chunk location pointer
+pub type ChunkIndex = Map<Digest, ChunkPointer>;
 
 type Encoder = compress::Encoder<WriteObject>;
 type Decoder = serde_cbor::Deserializer<serde_cbor::de::IoRead<compress::Decoder<Cursor<Vec<u8>>>>>;
-pub type ObjectIndex = Map<Field, Set<ObjectId>>;
 
+/// Any structure that is usable as an Index
+///
+/// The two mandatory functions, [`store_all`](Index::store_all) and
+/// [`load_all`][Index::load_all] are automatically generated if the
+/// [`derive@crate::Index`] macro is used to derive this trait.
+///
+/// Generally an index will allow you to work with its fields
+/// independently and in-memory, and the functions of this trait will
+/// only help accessing backing storage. The [`Access`] instances wrap
+/// each field in a way that an [`Infinitree`](crate::Infinitree) can work with.
 pub trait Index: Send + Sync {
+    /// Generate an [`Access`] wrapper for each field in the `Index`.
+    ///
+    /// You should normally use the [`Index`](derive@crate::Index) derive macro to generate this.
     fn store_all(&mut self) -> anyhow::Result<Vec<Access<Box<dyn Store>>>>;
+
+    /// Generate an [`Access`] wrapper for each field in the `Index`.
+    ///
+    /// You should normally use the [`Index`](derive@crate::Index) derive macro to generate this.
     fn load_all(&mut self) -> anyhow::Result<Vec<Access<Box<dyn Load>>>>;
 }
 
-#[async_trait]
+pub(crate) trait IndexExt: Index {
+    fn load_all_from(
+        &mut self,
+        oid: ObjectId,
+        index: &mut Reader,
+        object: &mut dyn crate::object::Reader,
+    ) -> anyhow::Result<()> {
+        for mut action in self.load_all()?.drain(..) {
+            self.load(oid, index, object, &mut action);
+        }
+        Ok(())
+    }
+
+    fn commit(
+        &mut self,
+        index: &mut Writer,
+        object: &mut dyn crate::object::Writer,
+    ) -> anyhow::Result<ObjectIndex> {
+        let oi_update =
+            self.store_all()?
+                .drain(..)
+                .fold(ObjectIndex::default(), |oi, mut action| {
+                    oi.insert(
+                        action.name.clone(),
+                        self.store(index, object, &mut action).to_vec(),
+                    );
+                    oi
+                });
+
+        index.seal_and_store();
+        Ok(oi_update)
+    }
+
+    fn store<'indexwriter>(
+        &self,
+        index: &'indexwriter mut Writer,
+        object: &mut dyn crate::object::Writer,
+        field: &mut Access<Box<dyn Store>>,
+    ) -> &'indexwriter [ObjectId] {
+        field
+            .strategy
+            .execute(index.transaction(&field.name), object);
+
+        index.transaction_objects()
+    }
+
+    fn load(
+        &self,
+        oid: ObjectId,
+        index: &mut Reader,
+        object: &mut dyn crate::object::Reader,
+        field: &mut Access<Box<dyn Load>>,
+    ) {
+        field
+            .strategy
+            .execute(index.transaction(&field.name, &oid).unwrap(), object);
+    }
+
+    fn query<K>(
+        &self,
+        oid: ObjectId,
+        index: &mut Reader,
+        object: &mut dyn crate::object::Reader,
+        mut field: Access<Box<impl Query<Key = K>>>,
+        pred: impl Fn(&K) -> QueryAction,
+    ) {
+        field
+            .strategy
+            .execute(index.transaction(&field.name, &oid).unwrap(), object, pred);
+    }
+}
+
+impl<T> IndexExt for T where T: Index {}
+
+/// Allows serializing an individual records of an infinite collection.
+///
+/// Implemented by a [`writer::Transaction`]. There's no need to implement this yourself.
 pub trait FieldWriter: Send {
+    /// Write the next `obj` into the index
     fn write_next(&mut self, obj: impl Serialize + Send);
 }
 
-#[async_trait]
-pub trait FieldReader<T>: Send {
-    fn read_next(&mut self) -> Result<T, Box<dyn Error>>;
+/// Allows deserializing an infinite collection by reading records one by one.
+///
+/// Implemented by a [`reader::Transaction`]. There's no need to implement this yourself.
+pub trait FieldReader: Send {
+    /// Read the next available record from storage.
+    fn read_next<T: DeserializeOwned>(&mut self) -> Result<T, Box<dyn Error>>;
 }
 
-#[async_trait]
-impl<T> FieldReader<T> for Decoder
-where
-    T: DeserializeOwned,
-{
-    fn read_next(&mut self) -> Result<T, Box<dyn Error>> {
+impl FieldReader for Decoder {
+    fn read_next<T: DeserializeOwned>(&mut self) -> Result<T, Box<dyn Error>> {
         Ok(T::deserialize(self)?)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    #[tokio::test]
-    async fn can_deserialize_fields() {
+    #[test]
+    fn can_deserialize_fields() {
         use crate::backends;
-        use crate::chunks::{ChunkIndex, ChunkPointer};
         use crate::crypto::{self, Digest};
+        use crate::index::*;
         use crate::object::ObjectId;
+        use crate::ChunkPointer;
 
         use secrecy::Secret;
         use std::sync::Arc;
@@ -70,19 +179,29 @@ mod tests {
             .entry(Digest::default())
             .or_insert_with(|| ChunkPointer::default());
 
-        mw.write_field("chunks", &chunks).await;
-        mw.seal_and_store().await;
+        Store::execute(
+            &mut LocalField::for_field(&chunks),
+            mw.transaction("chunks"),
+            &crate::object::AEADWriter::new(storage.clone(), crypto.clone()),
+        );
 
-        let mut mr = super::Reader::new(storage, crypto);
-        let objects = mw.objects().get("chunks").unwrap();
+        mw.seal_and_store();
+        let objects = mw.transaction_objects();
         assert_eq!(objects.len(), 1);
 
-        for id in objects.iter() {
-            mr.open(&id).await.unwrap();
-        }
+        let chunks_restore = ChunkIndex::default();
+        let reader = crate::object::AEADReader::new(storage.clone(), crypto.clone());
 
-        let mut chunks_restore = ChunkIndex::default();
-        mr.read_into("chunks", &mut chunks_restore).await.unwrap();
+        // this runs once according to the assert above
+        for id in objects.iter() {
+            Load::execute(
+                &mut LocalField::for_field(&chunks_restore),
+                super::Reader::new(storage.clone(), crypto.clone())
+                    .transaction("chunks", id)
+                    .unwrap(),
+                &reader,
+            );
+        }
 
         assert_eq!(chunks_restore.len(), 1);
     }

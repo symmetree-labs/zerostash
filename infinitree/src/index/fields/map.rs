@@ -1,17 +1,52 @@
-use super::{Key, Load, LocalField, Query, QueryAction, SparseField, Store, Value};
-use crate::{index, object};
+use super::{reader, writer, Key, LocalField, Query, QueryAction, SparseField, Store, Value};
+use crate::{
+    index,
+    index::{FieldReader, FieldWriter},
+    object::{self, ObjectError},
+};
 use dashmap::DashMap;
 use std::sync::Arc;
 
+/// A multithreaded map implementation that can be freely copied and
+/// used with internal mutability across all operations.
 pub type Map<K, V> = Arc<DashMap<K, V>>;
 
-impl<'index, K, V> Query<K> for LocalField<Map<K, V>>
+impl<'index, K, V> Store for LocalField<Map<K, V>>
 where
     K: Key,
     V: Value,
 {
-    fn execute(&mut self, predicate: impl Fn(K) -> QueryAction) {
-        todo!()
+    fn execute(&mut self, mut transaction: writer::Transaction, _object: &mut dyn object::Writer) {
+        for r in self.field.iter() {
+            transaction.write_next((r.key(), r.value()));
+        }
+    }
+}
+
+impl<'index, K, V> Query for LocalField<Map<K, V>>
+where
+    K: Key,
+    V: Value,
+{
+    type Key = K;
+
+    fn execute(
+        &mut self,
+        mut transaction: index::reader::Transaction,
+        _object: &mut dyn object::Reader,
+        predicate: impl Fn(&K) -> QueryAction,
+    ) {
+        while let Ok((key, value)) = transaction.read_next() {
+            use QueryAction::*;
+
+            match (predicate)(&key) {
+                Take => {
+                    self.field.insert(key, value);
+                }
+                Skip => (),
+                Abort => break,
+            }
+        }
     }
 }
 
@@ -20,53 +55,56 @@ where
     K: Key,
     V: Value,
 {
-    fn execute(&mut self, _meta: Arc<index::Writer>, _writer: &dyn object::Writer) {
-        todo!()
+    fn execute(&mut self, mut transaction: writer::Transaction, writer: &mut dyn object::Writer) {
+        for r in self.field.iter() {
+            let ptr = object::serializer::write(
+                writer,
+                |x| {
+                    serde_cbor::to_vec(x).map_err(|e| ObjectError::Serialize {
+                        source: Box::new(e),
+                    })
+                },
+                r.value(),
+            )
+            .unwrap();
+            transaction.write_next((r.key(), ptr));
+        }
     }
 }
 
-impl<K, V> Query<K> for SparseField<Map<K, V>>
+impl<K, V> Query for SparseField<Map<K, V>>
 where
     K: Key,
     V: Value,
 {
-    fn execute(&mut self, predicate: impl Fn(K) -> QueryAction) {
-        todo!()
+    type Key = K;
+
+    fn execute(
+        &mut self,
+        mut transaction: reader::Transaction,
+        object: &mut dyn object::Reader,
+        predicate: impl Fn(&K) -> QueryAction,
+    ) {
+        while let Ok((key, ptr)) = transaction.read_next() {
+            use QueryAction::*;
+
+            match (predicate)(&key) {
+                Take => {
+                    let value = object::serializer::read(
+                        object,
+                        |x| {
+                            serde_cbor::from_slice(x).map_err(|e| ObjectError::Deserialize {
+                                source: Box::new(e),
+                            })
+                        },
+                        ptr,
+                    )
+                    .unwrap();
+                    self.field.insert(key, value);
+                }
+                Skip => (),
+                Abort => break,
+            }
+        }
     }
 }
-
-impl<'index, K, V> Store for LocalField<Map<K, V>>
-where
-    K: Key,
-    V: Value,
-{
-    fn execute(&mut self, _meta: Arc<index::Writer>, _writer: &dyn object::Writer) {
-        todo!()
-    }
-}
-
-impl<'index, K, V> Load for LocalField<Map<K, V>>
-where
-    K: Key,
-    V: Value,
-{
-    fn execute(&mut self) {
-        todo!()
-    }
-}
-
-// impl<K: Key, V: Value> IndexField for Map<K, V> {
-//     type Item = (K, V);
-
-//     async fn serialize(&self, mw: &mut impl FieldWriter) {
-//         for r in self.iter() {
-//             mw.write_next((r.key(), r.value()));
-//         }
-//     }
-
-//     async fn deserialize(&self, mw: &mut impl FieldReader<'_, Self::Item>) {
-//         while let Ok((hash, pointer)) = mw.read_next() {
-//             self.insert(hash, pointer);
-//         }
-//     }
-// }

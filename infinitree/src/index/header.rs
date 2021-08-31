@@ -4,52 +4,67 @@ use crate::object::ObjectId;
 pub(crate) const HEADER_SIZE: usize = 512;
 
 pub(crate) type Field = String;
+
+/// The offset of a field's LZ4 stream from the beginning of an object
+///
+/// This type allows listing all fields contained in an index object
+/// inside the header.
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct FieldOffset(pub(crate) u32, pub(crate) Field);
+pub struct FieldOffset {
+    pub(crate) offset: u32,
+    pub(crate) name: Field,
+    pub(crate) next: Option<ObjectId>,
+}
 
 impl From<&FieldOffset> for u32 {
     fn from(fo: &FieldOffset) -> u32 {
-        fo.0
+        fo.offset
     }
 }
 
 impl FieldOffset {
-    pub(crate) fn new(offs: u32, f: Field) -> Self {
-        FieldOffset(offs, f)
-    }
-
     pub(crate) fn as_field(&self) -> Field {
-        self.1.to_owned()
+        self.name.to_owned()
     }
 }
 
+/// The header of an index object.
+///
+/// The structure allows versioning of internal structure, and may be
+/// extended in the future.
+///
+/// There's usually no need to instantiate a `Header` in your
+/// application unless you know what you're doing.
+///
+/// For more information about how headers control
+/// serialization/deserialization, please look at the [`index`](super)
+/// module's documentation.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Header {
     V1 {
-        next_object: Option<ObjectId>,
         offsets: Vec<FieldOffset>,
         end: usize,
     },
 }
 
 impl Header {
-    pub(crate) fn new(
-        next_object: Option<ObjectId>,
-        offsets: impl AsRef<[FieldOffset]>,
-        end: usize,
-    ) -> Self {
+    pub(crate) fn new(offsets: impl AsRef<[FieldOffset]>, end: usize) -> Self {
         Header::V1 {
             offsets: offsets.as_ref().to_vec(),
-            next_object,
             end,
         }
     }
 
-    pub fn next_object(&self) -> Option<ObjectId> {
+    pub fn next_object(&self, field: &str) -> Option<ObjectId> {
         match self {
-            Header::V1 {
-                ref next_object, ..
-            } => *next_object,
+            Header::V1 { ref offsets, .. } => {
+                for fo in offsets.iter() {
+                    if fo.as_field() == field {
+                        return fo.next;
+                    }
+                }
+                None
+            }
         }
     }
 

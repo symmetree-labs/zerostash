@@ -32,13 +32,13 @@ serde = { version = "1.0", features = ["rc"] }
 serde_cbor = "^0.11.1"
 serde_derive = "1.0"
 
-secrecy = "0.7"
-zeroize = "1.1"
+secrecy = "0.8"
+zeroize = "^1"
 
-infinitree-macros = { path = "../infinitree-macros" }
+infinitree-macros = { path = "../infinitree-macros"}
 
-rusoto_core = { version="0.46", default_features=false, features=["rustls"], optional = true }
-rusoto_s3 = { version="0.46", default_features=false, features=["rustls"], optional = true }
+rusoto_core = { version="0.47", default_features=false, features=["rustls"], optional = true }
+rusoto_s3 = { version="0.47", default_features=false, features=["rustls"], optional = true }
 tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"], optional = true }
 
 [dev-dependencies]

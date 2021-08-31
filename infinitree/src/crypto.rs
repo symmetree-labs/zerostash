@@ -1,5 +1,7 @@
-use crate::chunks::RawChunkPointer;
-use crate::object::{ObjectId, WriteObject};
+use crate::{
+    chunks::RawChunkPointer,
+    object::{ObjectId, WriteObject},
+};
 
 use blake2b_simd::blake2bp::Params as Blake2;
 use getrandom::getrandom;
@@ -10,7 +12,7 @@ use zeroize::Zeroize;
 
 const CRYPTO_DIGEST_SIZE: usize = 32;
 type Nonce = [u8; 12];
-type Key = Secret<[u8; CRYPTO_DIGEST_SIZE]>;
+type RawKey = Secret<[u8; CRYPTO_DIGEST_SIZE]>;
 
 pub type Digest = [u8; CRYPTO_DIGEST_SIZE];
 pub type Tag = [u8; 16];
@@ -25,8 +27,8 @@ pub enum CryptoError {
 }
 pub type Result<T> = std::result::Result<T, CryptoError>;
 
-pub struct StashKey {
-    master_key: Key,
+pub struct Key {
+    master_key: RawKey,
 }
 
 pub trait Random {
@@ -35,7 +37,7 @@ pub trait Random {
 
 #[derive(Clone)]
 pub struct ObjectOperations {
-    key: Key,
+    key: RawKey,
 }
 
 pub type IndexKey = ObjectOperations;
@@ -70,10 +72,10 @@ pub(crate) trait CryptoProvider: Random + Send + Sync + Clone {
     fn decrypt_object_into(&self, target: &mut [u8], source: &[u8], source_id: &ObjectId);
 }
 
-impl StashKey {
-    pub fn open_stash(username: impl AsRef<str>, password: impl AsRef<str>) -> Result<StashKey> {
+impl Key {
+    pub fn from_credentials(username: impl AsRef<str>, password: impl AsRef<str>) -> Result<Key> {
         derive_argon2(username.as_ref().as_bytes(), password.as_ref().as_bytes())
-            .map(|k| StashKey { master_key: k })
+            .map(|k| Key { master_key: k })
     }
 
     pub(crate) fn root_object_id(&self) -> Result<ObjectId> {
@@ -81,17 +83,17 @@ impl StashKey {
             .map(|k| ObjectId::from_bytes(k.expose_secret()))
     }
 
-    pub(crate) fn get_meta_crypto(&self) -> Result<IndexKey> {
+    pub(crate) fn get_meta_key(&self) -> Result<IndexKey> {
         derive_subkey(&self.master_key, b"_0s_meta").map(ObjectOperations::new)
     }
 
-    pub(crate) fn get_object_crypto(&self) -> Result<ChunkKey> {
+    pub(crate) fn get_object_key(&self) -> Result<ChunkKey> {
         derive_subkey(&self.master_key, b"_0s_obj_").map(ObjectOperations::new)
     }
 }
 
 impl ObjectOperations {
-    pub fn new(key: Key) -> ObjectOperations {
+    pub fn new(key: RawKey) -> ObjectOperations {
         ObjectOperations { key }
     }
 }
@@ -176,14 +178,14 @@ impl CryptoProvider for ObjectOperations {
 }
 
 #[inline]
-fn get_aead(key: Key) -> aead::LessSafeKey {
+fn get_aead(key: RawKey) -> aead::LessSafeKey {
     let key =
         aead::UnboundKey::new(&aead::CHACHA20_POLY1305, key.expose_secret()).expect("bad key");
     aead::LessSafeKey::new(key)
 }
 
 #[inline]
-fn derive_chunk_key(key_src: &Key, hash: &Digest) -> Key {
+fn derive_chunk_key(key_src: &RawKey, hash: &Digest) -> RawKey {
     let mut key = *key_src.expose_secret();
     for i in 0..key.len() {
         key[i] ^= hash[i];
@@ -214,7 +216,7 @@ fn get_chunk_nonce(object_id: &ObjectId, data_size: u32) -> aead::Nonce {
     aead::Nonce::assume_unique_for_key(nonce)
 }
 
-fn derive_argon2(salt_raw: &[u8], password: &[u8]) -> Result<Key> {
+fn derive_argon2(salt_raw: &[u8], password: &[u8]) -> Result<RawKey> {
     let salt = Blake2::new().hash_length(16).hash(salt_raw);
 
     let mut result = argon2::hash_raw(
@@ -234,7 +236,7 @@ fn derive_argon2(salt_raw: &[u8], password: &[u8]) -> Result<Key> {
     Ok(Secret::new(outbuf))
 }
 
-fn derive_subkey(key: &Key, ctx: &[u8]) -> Result<Key> {
+fn derive_subkey(key: &RawKey, ctx: &[u8]) -> Result<RawKey> {
     assert!(ctx.len() < 16);
 
     let mut outbuf = [0; CRYPTO_DIGEST_SIZE];

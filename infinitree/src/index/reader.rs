@@ -9,8 +9,10 @@ use crate::{
 use serde::de::DeserializeOwned;
 use thiserror::Error;
 
-use std::io::{self, Cursor};
-use std::{marker::PhantomData, sync::Arc};
+use std::{
+    io::{self, Cursor},
+    sync::Arc,
+};
 
 #[derive(Error, Debug)]
 pub enum ReadError {
@@ -35,7 +37,8 @@ pub enum ReadError {
 }
 pub type Result<T> = std::result::Result<T, ReadError>;
 
-pub struct Reader {
+#[derive(Clone)]
+pub(crate) struct Reader {
     inner: Object<BlockBuffer>,
     header: Option<Header>,
     backend: Arc<dyn Backend>,
@@ -43,7 +46,7 @@ pub struct Reader {
 }
 
 impl Reader {
-    pub fn new(backend: Arc<dyn Backend>, crypto: IndexKey) -> Self {
+    pub(crate) fn new(backend: Arc<dyn Backend>, crypto: IndexKey) -> Self {
         Reader {
             inner: Object::default(),
             header: None,
@@ -52,7 +55,7 @@ impl Reader {
         }
     }
 
-    pub fn open(&mut self, id: &ObjectId) -> Result<Header> {
+    pub(crate) fn open(&mut self, id: &ObjectId) -> Result<Header> {
         let obj = self.backend.read_object(id)?;
 
         self.header = None;
@@ -67,7 +70,12 @@ impl Reader {
         self.header.clone().ok_or(ReadError::NoHeader)
     }
 
-    pub fn field<T: DeserializeOwned>(&self, name: &str) -> Result<Decoder> {
+    pub(crate) fn field(&self, name: &str) -> Result<Decoder> {
+        eprintln!(
+            "reading field {} from {}",
+            name,
+            self.inner.id().to_string()
+        );
         match self.header {
             None => Err(ReadError::NoHeader),
             Some(ref header) => {
@@ -82,46 +90,51 @@ impl Reader {
             }
         }
     }
+
+    pub(crate) fn transaction(
+        &self,
+        field: impl Into<String>,
+        id: &ObjectId,
+    ) -> Result<Transaction> {
+        Transaction::new(self.clone(), field.into(), id)
+    }
 }
 
-pub struct LinkedReader<T> {
+pub struct Transaction {
     reader: Reader,
     field: String,
     decoder: Decoder,
     header: Header,
-    _phantom: PhantomData<T>,
 }
 
-impl<T> LinkedReader<T>
-where
-    T: DeserializeOwned + Send,
-{
+impl Transaction {
     fn new(mut reader: Reader, field: String, id: &ObjectId) -> Result<Self> {
         let header = reader.open(id)?;
-        let decoder = reader.field::<T>(&field)?;
+        let decoder = reader.field(&field)?;
 
-        Ok(LinkedReader {
+        Ok(Self {
             reader,
             field,
             header,
             decoder,
-            _phantom: PhantomData,
         })
     }
 }
 
-impl<T> FieldReader<T> for LinkedReader<T>
-where
-    T: DeserializeOwned + Send,
-{
-    fn read_next(&mut self) -> std::result::Result<T, Box<dyn std::error::Error>> {
+impl FieldReader for Transaction {
+    fn read_next<T: DeserializeOwned>(
+        &mut self,
+    ) -> std::result::Result<T, Box<dyn std::error::Error>> {
         let next = self.decoder.read_next();
         match next {
             Ok(val) => Ok(val),
             Err(_) => {
-                let next_object = &self.header.next_object().ok_or(ReadError::EndOfList)?;
+                let next_object = &self
+                    .header
+                    .next_object(&self.field)
+                    .ok_or(ReadError::EndOfList)?;
                 self.header = self.reader.open(next_object)?;
-                self.decoder = self.reader.field::<T>(&self.field)?;
+                self.decoder = self.reader.field(&self.field)?;
 
                 self.decoder.read_next()
             }

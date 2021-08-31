@@ -1,5 +1,5 @@
 use super::{Result, Writer};
-use crate::{chunks::ChunkPointer, crypto::Digest};
+use crate::{crypto::Digest, ChunkPointer};
 
 use flume as mpsc;
 

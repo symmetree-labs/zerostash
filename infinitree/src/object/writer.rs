@@ -1,9 +1,9 @@
 use super::{ObjectError, ObjectId, Result, WriteObject};
 use crate::{
     backends::Backend,
-    chunks::{ChunkPointer, RawChunkPointer},
     compress,
     crypto::{ChunkKey, CryptoProvider, Digest},
+    ChunkPointer,
 };
 
 use std::sync::Arc;
@@ -72,13 +72,7 @@ impl Writer for AEADWriter {
 
         *self.object.position_mut() += size;
 
-        Ok(Arc::new(RawChunkPointer {
-            offs: offs as u32,
-            size: size as u32,
-            file: oid,
-            hash: *hash,
-            tag,
-        }))
+        Ok(ChunkPointer::new(offs as u32, size as u32, oid, *hash, tag))
     }
 
     fn flush(&mut self) -> Result<()> {

@@ -1,9 +1,8 @@
 #![allow(unused)]
 
-use crate::files::{self, FileIndex};
+use crate::files::{self, FileSet};
 use infinitree::{
     backends::Backend,
-    chunks::ChunkPointer,
     object::{self, WriteObject},
 };
 
@@ -34,7 +33,7 @@ pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + 'a)>;
 pub async fn from_iter(
     max_file_handles: usize,
     iter: FileIterator<'_>,
-    objreader: impl object::Reader + 'static,
+    objreader: impl object::Reader + Clone + 'static,
     target: impl AsRef<Path>,
 ) {
     let (mut sender, receiver) = mpsc::bounded(2 * max_file_handles);
@@ -94,7 +93,7 @@ async fn process_packet_loop(mut r: Receiver, mut objreader: impl object::Reader
             .iter()
             .cloned()
             .fold(HashMap::new(), |mut a, c| {
-                a.entry(c.1.file).or_insert_with(Vec::new).push(c);
+                a.entry(*c.1.object_id()).or_insert_with(Vec::new).push(c);
                 a
             });
 

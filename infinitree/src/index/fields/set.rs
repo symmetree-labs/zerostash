@@ -1,49 +1,50 @@
-use super::{Key, Load, LocalField, Query, QueryAction, SparseField, Store, Value};
-use crate::{index, object};
+use super::{Key, LocalField, Query, QueryAction, Store};
+use crate::{
+    index::{self, FieldReader, FieldWriter},
+    object,
+};
 use dashmap::DashSet;
 use std::sync::Arc;
 
 pub type Set<V> = Arc<DashSet<V>>;
 
-impl<'index, K> Query<K> for LocalField<Set<K>>
-where
-    K: Key,
-{
-    fn execute(&mut self, predicate: impl Fn(K) -> QueryAction) {
-        todo!()
-    }
-}
-
-impl<'index, K> Load for LocalField<Set<K>>
-where
-    K: Key,
-{
-    fn execute(&mut self) {
-        todo!()
-    }
-}
-
 impl<'index, K> Store for LocalField<Set<K>>
 where
     K: Key,
 {
-    fn execute(&mut self, meta: Arc<index::Writer>, writer: &dyn object::Writer) {
-        todo!()
+    fn execute(
+        &mut self,
+        mut transaction: index::writer::Transaction,
+        _writer: &mut dyn object::Writer,
+    ) {
+        for f in self.field.iter() {
+            transaction.write_next(f.key());
+        }
     }
 }
 
-// impl<V: Key> IndexField for Set<V> {
-//     type Item = V;
+impl<'index, K> Query for LocalField<Set<K>>
+where
+    K: Key,
+{
+    type Key = K;
 
-//     async fn serialize(&self, mw: &mut impl FieldWriter) {
-//         for f in self.iter() {
-//             mw.write_next(f.key());
-//         }
-//     }
+    fn execute(
+        &mut self,
+        mut transaction: index::reader::Transaction,
+        _object: &mut dyn object::Reader,
+        predicate: impl Fn(&K) -> QueryAction,
+    ) {
+        while let Ok(item) = transaction.read_next() {
+            use QueryAction::*;
 
-//     async fn deserialize(&self, mw: &mut impl FieldReader<'_, Self::Item>) {
-//         while let Ok(item) = mw.read_next() {
-//             self.insert(item);
-//         }
-//     }
-// }
+            match (predicate)(&item) {
+                Take => {
+                    self.field.insert(item);
+                }
+                Skip => (),
+                Abort => break,
+            }
+        }
+    }
+}

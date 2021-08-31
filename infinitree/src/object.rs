@@ -376,16 +376,18 @@ impl<T> AsRef<Object<T>> for Object<T> {
 
 #[cfg(test)]
 pub mod test {
+    use crate::{ChunkPointer, Digest};
+
     use super::*;
+    use std::sync::Arc;
 
     #[derive(Clone, Default)]
     pub struct NullStorage(Arc<std::sync::Mutex<usize>>);
 
-    #[async_trait]
     impl Writer for NullStorage {
         fn write_chunk(&mut self, _hash: &Digest, data: &[u8]) -> Result<ChunkPointer> {
             *self.0.lock().unwrap() += data.len();
-            Ok(Arc::default())
+            Ok(ChunkPointer::default())
         }
 
         fn flush(&mut self) -> Result<()> {

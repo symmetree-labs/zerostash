@@ -1,14 +1,10 @@
 #![deny(clippy::all)]
 #![cfg_attr(test, feature(test))]
 
-use infinitree::{backends, object, Stash, StashKey};
-use zerostash_files::FileStashIndex;
+use infinitree::{backends, Infinitree, Key};
+use zerostash_files::Files;
 
-use std::collections::{HashMap, HashSet};
-use std::env::args;
-use std::fs::metadata;
-use std::sync::Arc;
-use std::time::Instant;
+use std::{collections::HashMap, env::args, fs::metadata, sync::Arc, time::Instant};
 
 fn mb(m: f64) -> f64 {
     m / 1024.0 / 1024.0
@@ -38,13 +34,13 @@ async fn main() {
     let _ = std::fs::remove_dir_all(&output);
     let _ = std::fs::remove_dir_all(&restore_to);
 
+    let key = || Key::from_credentials(&key, &key).unwrap();
     // i am really, truly sorry for this. there must be a better way,
     // but i can't be bothered to find it
     let (store_time, commit_time, ol, fl, cl, creuse_sum, creuse_cnt, ssize, tlen, tsize) = {
-        let key = StashKey::open_stash(&key, &key).unwrap();
-        let mut repo = Stash::<FileStashIndex>::with_default_index(
+        let mut repo = Infinitree::<Files>::empty(
             Arc::new(backends::Directory::new(&output).unwrap()),
-            key,
+            (key)(),
         );
 
         let store_start = Instant::now();
@@ -55,23 +51,23 @@ async fn main() {
         let store_time = store_start.elapsed();
 
         let commit_start = Instant::now();
-        let mobjects = repo.commit().await.unwrap();
+        repo.commit().unwrap();
         let commit_time = commit_start.elapsed();
 
-        let objects = mobjects
-            .values()
-            .flatten()
-            .collect::<HashSet<&object::ObjectId>>();
+        // let objects = mobjects
+        //     .values()
+        //     .flatten()
+        //     .collect::<HashSet<&object::ObjectId>>();
 
-        let ol = objects.len();
-        let fl = repo.index().files().len();
-        let cl = repo.index().chunks().len();
+        let ol = 0; // objects.len();
+        let fl = repo.index().files.len();
+        let cl = repo.index().chunks.len();
         let (creuse_sum, creuse_cnt) = {
             let mut chunk_reuse = HashMap::new();
-            for f in repo.index().files().iter() {
+            for f in repo.index().files.iter() {
                 f.chunks
                     .iter()
-                    .for_each(|(_, c)| *chunk_reuse.entry(c.hash).or_insert(0u32) += 1)
+                    .for_each(|(_, c)| *chunk_reuse.entry(*c.hash()).or_insert(0u32) += 1)
             }
 
             (
@@ -82,7 +78,7 @@ async fn main() {
 
         let ssize = {
             let mut data_size = 0.0f64;
-            for f in repo.index().files().iter() {
+            for f in repo.index().files.iter() {
                 data_size += f.size as f64
             }
             data_size
@@ -137,15 +133,14 @@ async fn main() {
     );
 
     {
-        let key = StashKey::open_stash(&key, &key).unwrap();
-        let mut repo = Stash::new(
+        let mut repo: Infinitree<Files> = Infinitree::open(
             Arc::new(backends::Directory::new(&output).unwrap()),
-            key,
-            FileStashIndex::default(),
-        );
+            (key)(),
+        )
+        .unwrap();
 
         let read_start = Instant::now();
-        repo.read().await.unwrap();
+        repo.load_all().unwrap();
         let read_time = read_start.elapsed();
         println!("repo open: {}", read_time.as_secs_f64());
 
@@ -178,7 +173,7 @@ mod tests {
     const SELFTEST_SIZE: usize = 100_000;
 
     fn rollsum_sum(buf: &[u8], ofs: usize, len: usize) -> u32 {
-        use libzerostash_files::rollsum::{BupSplit, Rollsum};
+        use zerostash_files::rollsum::{BupSplit, Rollsum};
         let mut r = BupSplit::new();
         for count in ofs..len {
             r.roll(buf[count]);
@@ -206,14 +201,13 @@ mod tests {
 
     #[bench]
     fn chunk_saturated_e2e(b: &mut test::Bencher) {
-        use libzerostash::{backends::test::*, Stash, StashKey};
-        use libzerostash_files::FileStashIndex;
+        use infinitree::{backends::test::*, Infinitree, Key};
         use std::sync::Arc;
+        use zerostash_files::Files;
 
         let key = "abcdef1234567890abcdef1234567890";
-        let key = StashKey::open_stash(&key, &key).unwrap();
-        let repo =
-            Stash::<FileStashIndex>::with_default_index(Arc::new(NullBackend::default()), key);
+        let key = Key::from_credentials(&key, &key).unwrap();
+        let repo = Infinitree::<Files>::empty(Arc::new(NullBackend::default()), key);
 
         let basic_rt = tokio::runtime::Runtime::new().unwrap();
 
@@ -232,14 +226,13 @@ mod tests {
 
     #[bench]
     fn chunk_e2e(b: &mut test::Bencher) {
-        use libzerostash::{backends::test::*, Stash, StashKey};
-        use libzerostash_files::FileStashIndex;
+        use infinitree::{backends::test::*, Infinitree, Key};
         use std::sync::Arc;
+        use zerostash_files::Files;
 
         let key = "abcdef1234567890abcdef1234567890";
-        let key = StashKey::open_stash(&key, &key).unwrap();
-        let repo =
-            Stash::<FileStashIndex>::with_default_index(Arc::new(NullBackend::default()), key);
+        let key = Key::from_credentials(&key, &key).unwrap();
+        let repo = Infinitree::<Files>::empty(Arc::new(NullBackend::default()), key);
 
         let basic_rt = tokio::runtime::Runtime::new().unwrap();
 
@@ -253,9 +246,9 @@ mod tests {
 
     #[bench]
     fn split_seasplit(b: &mut test::Bencher) {
-        use libzerostash_files::{rollsum::SeaSplit, splitter::FileSplitter};
         use memmap2::MmapOptions;
         use std::fs::File;
+        use zerostash_files::{rollsum::SeaSplit, splitter::FileSplitter};
 
         set_test_cwd();
         let file = File::open(PATH).unwrap();
@@ -270,9 +263,9 @@ mod tests {
 
     #[bench]
     fn split_bupsplit(b: &mut test::Bencher) {
-        use libzerostash_files::{rollsum::BupSplit, splitter::FileSplitter};
         use memmap2::MmapOptions;
         use std::fs::File;
+        use zerostash_files::{rollsum::BupSplit, splitter::FileSplitter};
 
         set_test_cwd();
         let file = File::open(PATH).unwrap();

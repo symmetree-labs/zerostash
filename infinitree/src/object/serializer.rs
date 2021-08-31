@@ -1,5 +1,5 @@
 use super::{Reader, Result, Writer};
-use crate::chunks::ChunkPointer;
+use crate::ChunkPointer;
 use serde::{de::DeserializeOwned, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -8,7 +8,7 @@ pub struct SizedPointer {
     data_size: usize,
 }
 
-pub fn write<'writer, T: Serialize, W: 'writer + Writer>(
+pub fn write<'writer, T: Serialize, W: 'writer + Writer + ?Sized>(
     writer: &mut W,
     serialize: impl Fn(T) -> Result<Vec<u8>>,
     obj: T,
@@ -21,7 +21,7 @@ pub fn write<'writer, T: Serialize, W: 'writer + Writer>(
     Ok(SizedPointer { chunk, data_size })
 }
 
-pub fn read<T: DeserializeOwned, R: Reader>(
+pub fn read<T: DeserializeOwned, R: Reader + ?Sized>(
     reader: &mut R,
     deserialize: impl Fn(&[u8]) -> Result<T>,
     pointer: SizedPointer,
