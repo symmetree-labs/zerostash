@@ -45,6 +45,14 @@ impl Clone for AEADWriter {
     }
 }
 
+impl Drop for AEADWriter {
+    fn drop(&mut self) {
+        if self.object.position() > 0 {
+            self.flush().unwrap();
+        }
+    }
+}
+
 impl Writer for AEADWriter {
     fn write_chunk(&mut self, hash: &Digest, data: &[u8]) -> Result<ChunkPointer> {
         let size = compress::get_maximum_output_size(data.len());

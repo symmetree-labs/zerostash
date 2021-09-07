@@ -10,8 +10,6 @@ use crate::{
 use anyhow::{Context, Result};
 use std::sync::Arc;
 
-//pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
 #[derive(Default, crate::Index)]
 struct RootIndex {
     objects: ObjectIndex,

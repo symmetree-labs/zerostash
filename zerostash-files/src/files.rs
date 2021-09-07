@@ -1,8 +1,14 @@
 use infinitree::{index, ChunkPointer};
 
-use std::{error::Error, fs, path::Path, sync::Arc, time::UNIX_EPOCH};
+use std::{
+    error::Error,
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::UNIX_EPOCH,
+};
 
-pub type FileSet = index::Set<Arc<Entry>>;
+pub type FileSet = index::Map<PathBuf, Arc<Entry>>;
 
 #[derive(Hash, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct Entry {

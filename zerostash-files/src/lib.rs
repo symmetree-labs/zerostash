@@ -17,6 +17,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[derive(Clone, Default, Index)]
 pub struct Files {
     pub chunks: ChunkIndex,
+    #[infinitree(strategy = "infinitree::index::SparseField")]
     pub files: FileSet,
 }
 

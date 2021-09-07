@@ -80,7 +80,7 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
 
             Ok(quote! {
 		#[inline]
-                pub fn #method_name(&'_ mut self) -> #infinitree_crate::index::Access<Box<#infinitree_crate::index::LocalField<#field_ty>>> {
+                pub fn #method_name(&'_ mut self) -> #infinitree_crate::index::Access<Box<#strategy<#field_ty>>> {
 		    use #infinitree_crate::index::{Strategy, Access};
 		    Access::new(
 			#field_name_str,
@@ -145,7 +145,7 @@ fn get_attr(attr: &Attribute) -> syn::Result<Option<NestedMeta>> {
     }
 }
 
-fn get_strategy_attr(attr: &Attribute) -> syn::Result<Option<Ident>> {
+fn get_strategy_attr(attr: &Attribute) -> syn::Result<Option<syn::Type>> {
     let name_value = match get_attr(attr)? {
         Some(NestedMeta::Meta(Meta::NameValue(nv))) => nv,
         _ => return Ok(None),
@@ -159,7 +159,9 @@ fn get_strategy_attr(attr: &Attribute) -> syn::Result<Option<Ident>> {
     }
 
     match &name_value.lit {
-        Lit::Str(s) => syn::parse_str(&s.value()).map_err(|e| syn::Error::new_spanned(s, e)),
+        Lit::Str(s) => syn::parse_str(&s.value())
+            .map(Some)
+            .map_err(|e| syn::Error::new_spanned(s, e)),
         lit => Err(syn::Error::new_spanned(lit, "")),
     }
 }
