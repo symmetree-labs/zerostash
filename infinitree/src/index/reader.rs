@@ -3,7 +3,9 @@ use crate::{
     backends::{Backend, BackendError},
     compress,
     crypto::{CryptoProvider, IndexKey},
+    deserialize_from_slice,
     object::{BlockBuffer, Object, ObjectId},
+    Deserializer,
 };
 
 use serde::de::DeserializeOwned;
@@ -64,18 +66,11 @@ impl Reader {
         self.crypto
             .decrypt_object_into(self.inner.as_mut(), obj.as_inner(), obj.id());
 
-        let mut de = serde_cbor::Deserializer::from_slice(self.inner.as_ref()).into_iter();
-
-        self.header = de.next().ok_or(ReadError::InvalidHeader)?.ok();
+        self.header = deserialize_from_slice(&self.inner).map_err(|_| ReadError::InvalidHeader)?;
         self.header.clone().ok_or(ReadError::NoHeader)
     }
 
     pub(crate) fn field(&self, name: &str) -> Result<Decoder> {
-        eprintln!(
-            "reading field {} from {}",
-            name,
-            self.inner.id().to_string()
-        );
         match self.header {
             None => Err(ReadError::NoHeader),
             Some(ref header) => {
@@ -85,7 +80,7 @@ impl Reader {
                 let decompress =
                     compress::destream(Cursor::new(buffer[frame_start..header.end()].to_vec()));
 
-                let reader = serde_cbor::Deserializer::from_reader(decompress);
+                let reader = Deserializer::new(decompress);
                 Ok(reader)
             }
         }

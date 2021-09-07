@@ -29,7 +29,7 @@ anyhow = "1.0"
 hex = "0.4"
 
 serde = { version = "1.0", features = ["rc"] }
-serde_cbor = "^0.11.1"
+rmp-serde = "^0.15"
 serde_derive = "1.0"
 
 secrecy = "0.8"

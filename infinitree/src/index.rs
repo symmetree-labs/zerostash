@@ -34,7 +34,8 @@ pub(crate) type ObjectIndex = Map<Field, Vec<ObjectId>>;
 pub type ChunkIndex = Map<Digest, ChunkPointer>;
 
 type Encoder = compress::Encoder<WriteObject>;
-type Decoder = serde_cbor::Deserializer<serde_cbor::de::IoRead<compress::Decoder<Cursor<Vec<u8>>>>>;
+type Decoder =
+    crate::Deserializer<rmp_serde::decode::ReadReader<compress::Decoder<Cursor<Vec<u8>>>>>;
 
 /// Any structure that is usable as an Index
 ///
@@ -182,7 +183,7 @@ mod tests {
         Store::execute(
             &mut LocalField::for_field(&chunks),
             mw.transaction("chunks"),
-            &crate::object::AEADWriter::new(storage.clone(), crypto.clone()),
+            &mut crate::object::AEADWriter::new(storage.clone(), crypto.clone()),
         );
 
         mw.seal_and_store();
@@ -190,7 +191,7 @@ mod tests {
         assert_eq!(objects.len(), 1);
 
         let chunks_restore = ChunkIndex::default();
-        let reader = crate::object::AEADReader::new(storage.clone(), crypto.clone());
+        let mut reader = crate::object::AEADReader::new(storage.clone(), crypto.clone());
 
         // this runs once according to the assert above
         for id in objects.iter() {
@@ -199,7 +200,7 @@ mod tests {
                 super::Reader::new(storage.clone(), crypto.clone())
                     .transaction("chunks", id)
                     .unwrap(),
-                &reader,
+                &mut reader,
             );
         }
 

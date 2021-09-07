@@ -60,7 +60,7 @@ where
             let ptr = object::serializer::write(
                 writer,
                 |x| {
-                    serde_cbor::to_vec(x).map_err(|e| ObjectError::Serialize {
+                    crate::serialize_to_vec(x).map_err(|e| ObjectError::Serialize {
                         source: Box::new(e),
                     })
                 },
@@ -93,7 +93,7 @@ where
                     let value = object::serializer::read(
                         object,
                         |x| {
-                            serde_cbor::from_slice(x).map_err(|e| ObjectError::Deserialize {
+                            crate::deserialize_from_slice(x).map_err(|e| ObjectError::Deserialize {
                                 source: Box::new(e),
                             })
                         },

@@ -5,10 +5,10 @@ use crate::{
     compress,
     crypto::{CryptoProvider, IndexKey},
     object::{ObjectId, WriteObject},
+    serialize_to_vec,
 };
 
 use serde::Serialize;
-use serde_cbor::ser::to_vec as serialize_to_vec;
 
 use std::{
     io::{self, Seek, SeekFrom, Write},
