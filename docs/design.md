@@ -65,7 +65,7 @@ mobject stores records as LZ4 streams with 64k block size, with
 records aligned to multiples of 64k.
 
 The header contains a list of records and their offset from the start
-of the file, serialized using CBOR. The 512-byte header limits the 
+of the file, serialized using msgpack. The 512-byte header limits the 
 number of records a mobject can contain, which looks like a reasonable
 tradeoff at this time. In the future, the header can be extended in a
 backwards compatible way.
@@ -74,7 +74,7 @@ This is what a metadata object looks like:
 
 | Offset         | Content                               |
 | ------         | -------                               |
-| 0              | CBOR-encoded header                   |
+| 0              | msgpack-encoded header                   |
 | `512`          | `LZ4_stream(field 1)`                 |
 | `512 + 64k`    | `... LZ4_stream(field 1) + 0 padding` |
 | `512 + 128k`   | `LZ4_stream(field 2)`                 |
