@@ -10,6 +10,7 @@ edition= "2018"
 [features]
 default = ["s3"]
 s3 = ["rusoto_core", "rusoto_s3", "tokio"]
+test = []
 
 [dependencies]
 blake2b_simd = "0.5"

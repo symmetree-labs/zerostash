@@ -46,7 +46,7 @@ pub trait Backend: Send + Sync {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 pub mod test {
     use super::*;
     use std::{collections::HashMap, sync::Mutex};
