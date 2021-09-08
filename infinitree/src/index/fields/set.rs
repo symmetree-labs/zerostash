@@ -1,4 +1,4 @@
-use super::{Key, LocalField, Query, QueryAction, Store};
+use super::{Key, LocalField, QueryAction, Select, Store};
 use crate::{
     index::{self, FieldReader, FieldWriter},
     object,
@@ -23,7 +23,7 @@ where
     }
 }
 
-impl<'index, K> Query for LocalField<Set<K>>
+impl<'index, K> Select for LocalField<Set<K>>
 where
     K: Key,
 {

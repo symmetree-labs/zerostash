@@ -2,7 +2,10 @@ use dashmap::mapref::entry::Entry;
 
 use crate::{
     index::{
-        self, Access, Index, IndexExt, Load, ObjectIndex, Query, QueryAction, Serialized, Store,
+        self,
+        fields::{self, QueryIterator},
+        Access, Collection, Index, IndexExt, Load, ObjectIndex, QueryAction, Select, Serialized,
+        Store,
     },
     object::{AEADReader, AEADWriter},
     Backend, Key, ObjectId,
@@ -168,9 +171,9 @@ impl<I: Index> Infinitree<I> {
         Ok(())
     }
 
-    pub fn query<K>(
+    pub fn select<K>(
         &self,
-        field: Access<Box<impl Query<Key = K>>>,
+        field: Access<Box<impl Select<Key = K>>>,
         pred: impl Fn(&K) -> QueryAction,
     ) -> Result<()> {
         self.index.query(
@@ -183,6 +186,34 @@ impl<I: Index> Infinitree<I> {
         );
         Ok(())
     }
+
+    // pub fn query<K, O, Q>(
+    //     &self,
+    //     mut field: Access<Box<Q>>,
+    //     pred: impl Fn(&K) -> QueryAction + 'static,
+    // ) -> Result<impl Iterator<Item = O>>
+    // where
+    //     for<'de> <Q as fields::Collection>::Serialized: serde::Deserialize<'de>,
+    //     Q: Collection<Key = K, Item = O>,
+    // {
+    //     let index = self.meta_reader()?;
+    //     let mut object = self.object_reader()?;
+    //     let iter = QueryIterator::new(
+    //         index
+    //             .transaction(
+    //                 &field.name,
+    //                 &self
+    //                     .query_start_object(&field.name)
+    //                     .context("Empty index")?,
+    //             )
+    //             .unwrap(),
+    //         &mut object,
+    //         Box::new(pred),
+    //         field.strategy.as_mut(),
+    //     );
+
+    //     Ok(QueryIteratorOwned { object, iter })
+    // }
 
     fn meta_writer(&self, start_object: ObjectId) -> Result<index::Writer> {
         Ok(index::Writer::new(

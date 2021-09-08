@@ -1,8 +1,10 @@
-use super::{reader, writer, Key, LocalField, Query, QueryAction, SparseField, Store, Value};
+use super::{
+    reader, writer, Collection, Key, LocalField, QueryAction, Select, SparseField, Store, Value,
+};
 use crate::{
     index,
     index::{FieldReader, FieldWriter},
-    object::{self, ObjectError},
+    object::{self, serializer::SizedPointer, ObjectError},
 };
 use dashmap::DashMap;
 use std::sync::Arc;
@@ -23,30 +25,25 @@ where
     }
 }
 
-impl<'index, K, V> Query for LocalField<Map<K, V>>
+impl<'index, K, V> Collection for LocalField<Map<K, V>>
 where
     K: Key,
     V: Value,
 {
     type Key = K;
+    type Serialized = (K, V);
+    type Item = (K, V);
 
-    fn execute(
-        &mut self,
-        mut transaction: index::reader::Transaction,
-        _object: &mut dyn object::Reader,
-        predicate: impl Fn(&K) -> QueryAction,
-    ) {
-        while let Ok((key, value)) = transaction.read_next() {
-            use QueryAction::*;
+    fn key(from: &Self::Serialized) -> &Self::Key {
+        &from.0
+    }
 
-            match (predicate)(&key) {
-                Take => {
-                    self.field.insert(key, value);
-                }
-                Skip => (),
-                Abort => break,
-            }
-        }
+    fn load(from: Self::Serialized, _object: &mut dyn object::Reader) -> Self::Item {
+        from
+    }
+
+    fn insert(&mut self, record: Self::Item) {
+        self.field.insert(record.0, record.1);
     }
 }
 
@@ -72,39 +69,37 @@ where
     }
 }
 
-impl<K, V> Query for SparseField<Map<K, V>>
+impl<'index, K, V> Collection for SparseField<Map<K, V>>
 where
     K: Key,
     V: Value,
 {
     type Key = K;
+    type Serialized = (K, SizedPointer);
+    type Item = (K, V);
 
-    fn execute(
-        &mut self,
-        mut transaction: reader::Transaction,
-        object: &mut dyn object::Reader,
-        predicate: impl Fn(&K) -> QueryAction,
-    ) {
-        while let Ok((key, ptr)) = transaction.read_next() {
-            use QueryAction::*;
+    fn key(from: &Self::Serialized) -> &Self::Key {
+        &from.0
+    }
 
-            match (predicate)(&key) {
-                Take => {
-                    let value = object::serializer::read(
-                        object,
-                        |x| {
-                            crate::deserialize_from_slice(x).map_err(|e| ObjectError::Deserialize {
-                                source: Box::new(e),
-                            })
-                        },
-                        ptr,
-                    )
-                    .unwrap();
-                    self.field.insert(key, value);
-                }
-                Skip => (),
-                Abort => break,
-            }
-        }
+    fn load(from: Self::Serialized, object: &mut dyn object::Reader) -> Self::Item {
+        let (key, ptr) = from;
+
+        let value = object::serializer::read(
+            object,
+            |x| {
+                crate::deserialize_from_slice(x).map_err(|e| ObjectError::Deserialize {
+                    source: Box::new(e),
+                })
+            },
+            ptr,
+        )
+        .unwrap();
+
+        (key, value)
+    }
+
+    fn insert(&mut self, record: Self::Item) {
+        self.field.insert(record.0, record.1);
     }
 }

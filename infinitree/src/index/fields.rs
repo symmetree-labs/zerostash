@@ -23,6 +23,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{
     cmp::Eq,
     hash::Hash,
+    marker::PhantomData,
     ops::{Deref, DerefMut},
 };
 
@@ -85,18 +86,19 @@ pub trait Load {
 
 impl<K, T> Load for T
 where
-    T: Query<Key = K>,
+    T: Select<Key = K>,
 {
+    #[inline(always)]
     fn execute(&mut self, transaction: reader::Transaction, object: &mut dyn object::Reader) {
-        Query::execute(self, transaction, object, |_| QueryAction::Take)
+        Select::execute(self, transaction, object, |_| QueryAction::Take)
     }
 }
 
-/// Load data from the index field into memory based on a predicate.
+/// Load data into memory where a predicate indicates it's needed
 ///
-/// This trait is usually implemented on a type that also implements
+/// This trait should be implemented on a type that also implements
 /// [`Strategy`], and _not_ on the field directly.
-pub trait Query {
+pub trait Select {
     /// The key that the predicate will use to decide whether to pull
     /// more data into memory.
     type Key;
@@ -112,6 +114,103 @@ pub trait Query {
         object: &mut dyn object::Reader,
         predicate: impl Fn(&Self::Key) -> QueryAction,
     );
+}
+
+/// Query an index field, but do not automatically load it into memory
+///
+/// To allow lazily loading data from e.g. a [`SparseField`] when
+/// relevant, a predicate is taken that controls the iterator.
+///
+/// This trait should be implemented on a type that also implements
+/// [`Strategy`], and _not_ on the field directly.
+pub trait Collection {
+    /// The key that the predicate will use to decide whether to pull
+    /// more data into memory.
+    type Key;
+
+    /// The serialized record format. This type will typically
+    /// implement [`serde::Serialize`]
+    type Serialized: DeserializeOwned;
+
+    /// This is equivalent to `Iterator::Item`, and should contain a
+    /// full record that can be inserted into the in-memory store.
+    type Item;
+
+    /// This function is called when initializing an iterator. It will
+    /// typically read one-off book keeping information from the
+    /// header of the field transaction.
+    fn load_head(
+        &mut self,
+        _transaction: &mut reader::Transaction,
+        _object: &mut dyn object::Reader,
+    ) {
+    }
+
+    /// Get the key based on the deserialized data. You want this to
+    /// be a reference that's easy to derive from the serialized data.
+    fn key(from: &Self::Serialized) -> &Self::Key;
+
+    /// Load the full record, and return it
+    fn load(from: Self::Serialized, object: &mut dyn object::Reader) -> Self::Item;
+
+    /// Store the deserialized record in the collection
+    fn insert(&mut self, record: Self::Item);
+}
+
+pub struct QueryIterator<'reader, T, F> {
+    transaction: reader::Transaction,
+    object: &'reader mut dyn object::Reader,
+    predicate: F,
+    _fieldtype: PhantomData<T>,
+}
+
+impl<'reader, T, K, O, F> QueryIterator<'reader, T, F>
+where
+    T: Collection<Key = K, Item = O>,
+    F: Fn(&K) -> QueryAction,
+{
+    pub fn new(
+        mut transaction: reader::Transaction,
+        object: &'reader mut dyn object::Reader,
+        predicate: F,
+        field: &mut T,
+    ) -> Self {
+        field.load_head(&mut transaction, object);
+        Self {
+            transaction,
+            object,
+            predicate,
+            _fieldtype: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<O> {
+        while let Ok(item) = self.transaction.read_next::<T::Serialized>() {
+            use QueryAction::*;
+
+            match (self.predicate)(T::key(&item)) {
+                Take => return Some(T::load(item, self.object)),
+                Skip => continue,
+                Abort => return None,
+            }
+        }
+
+        None
+    }
+}
+
+impl<'reader, T, K, O, F> Iterator for QueryIterator<'reader, T, F>
+where
+    T: Collection<Key = K, Item = O>,
+    F: Fn(&K) -> QueryAction + 'static,
+{
+    type Item = O;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next()
+    }
 }
 
 /// Result of a query predicate.
@@ -140,6 +239,7 @@ pub struct Access<T> {
 impl<T> Access<T> {
     /// Create a new wrapper that binds a stringy field name to an
     /// access strategy
+    #[inline(always)]
     pub fn new(name: impl AsRef<str>, strategy: T) -> Self {
         Access {
             name: name.as_ref().to_string(),
@@ -149,6 +249,7 @@ impl<T> Access<T> {
 }
 
 impl<T: Store + 'static> From<Access<Box<T>>> for Access<Box<dyn Store>> {
+    #[inline(always)]
     fn from(a: Access<Box<T>>) -> Self {
         Access {
             name: a.name,
@@ -158,6 +259,7 @@ impl<T: Store + 'static> From<Access<Box<T>>> for Access<Box<dyn Store>> {
 }
 
 impl<T: Load + 'static> From<Access<Box<T>>> for Access<Box<dyn Load>> {
+    #[inline(always)]
     fn from(a: Access<Box<T>>) -> Self {
         Access {
             name: a.name,
@@ -182,6 +284,7 @@ pub struct SparseField<Field> {
 }
 
 impl<T: Send + Clone> Strategy<T> for SparseField<T> {
+    #[inline(always)]
     fn for_field(field: &'_ T) -> Self {
         SparseField {
             field: field.clone(),
@@ -195,9 +298,30 @@ pub struct LocalField<Field> {
 }
 
 impl<T: Send + Clone> Strategy<T> for LocalField<T> {
+    #[inline(always)]
     fn for_field(field: &T) -> Self {
         LocalField {
             field: field.clone(),
+        }
+    }
+}
+
+impl<T> Select for T
+where
+    T: Collection,
+{
+    type Key = T::Key;
+
+    #[inline(always)]
+    fn execute(
+        &mut self,
+        transaction: reader::Transaction,
+        object: &mut dyn object::Reader,
+        predicate: impl Fn(&Self::Key) -> QueryAction,
+    ) {
+        let mut iter = QueryIterator::new(transaction, object, predicate, self);
+        while let Some(item) = iter.next() {
+            self.insert(item);
         }
     }
 }
@@ -231,12 +355,14 @@ impl<T: Clone> Clone for Serialized<T> {
 impl<T> Deref for Serialized<T> {
     type Target = T;
 
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
 impl<T> DerefMut for Serialized<T> {
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -246,6 +372,7 @@ impl<T> Store for LocalField<Serialized<T>>
 where
     T: Serialize + Sync,
 {
+    #[inline(always)]
     fn execute(&mut self, mut transaction: writer::Transaction, _object: &mut dyn object::Writer) {
         transaction.write_next(&*self.field);
     }
@@ -255,6 +382,7 @@ impl<T> Load for LocalField<Serialized<T>>
 where
     T: DeserializeOwned,
 {
+    #[inline(always)]
     fn execute(&mut self, mut transaction: reader::Transaction, _object: &mut dyn object::Reader) {
         *self.field = transaction.read_next().unwrap();
     }

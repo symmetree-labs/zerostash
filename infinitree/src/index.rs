@@ -122,7 +122,7 @@ pub(crate) trait IndexExt: Index {
         oid: ObjectId,
         index: &mut Reader,
         object: &mut dyn crate::object::Reader,
-        mut field: Access<Box<impl Query<Key = K>>>,
+        mut field: Access<Box<impl Select<Key = K>>>,
         pred: impl Fn(&K) -> QueryAction,
     ) {
         field
