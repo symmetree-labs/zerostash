@@ -121,22 +121,22 @@ So the process will use 4 threads to back up the current directory to
 Some extremely unscientific measurements on my desktop about performance:
 
 ```
-stats for path (zerostash), seconds: 0.858766666
- * files: 6039,
- * chunks: 11923,
- * data size: 944.7876815795898
- * throughput: 1049.340371665645
- * objects: 113
- * output size: 452
- * compression ratio: 0.47841436633075224
- * meta dump time: 0.04159675
+stats for path (zerostash), seconds: 5.5137755
+ * files: 17537,
+ * chunks: 20214,
+ * data size: 4595.727987289429
+ * throughput: 811.6916038413024
+ * objects: 240
+ * output size: 960
+ * compression ratio: 0.2088896476586749
+ * meta dump time: 0.148138416
  * meta object count: 0
- * chunk reuse: 13574/11923 = 1.1384718611087814
+ * chunk reuse: 56332/20214 = 2.7867814386069063
 
-repo open: 0.066267333
-restore time: 0.607659875
-throughput packed: 670.6955805232899
-throughput unpacked: 1401.913545505036
+repo open: 0.167177541
+restore time: 2.529952291
+throughput packed: 379.45379579491845
+throughput unpacked: 1816.5275304353274
 ```
 
 ## Design
