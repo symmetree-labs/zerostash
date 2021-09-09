@@ -70,7 +70,7 @@ fn merge_object_index(base: ObjectIndex, changeset: ObjectIndex) {
             key.to_owned(),
             || value.clone(),
             |_, v| {
-                let v_mut = Arc::make_mut(v);
+                let v_mut = Arc::get_mut(v).unwrap();
                 v_mut.extend(value.iter());
                 v_mut.dedup();
             },
