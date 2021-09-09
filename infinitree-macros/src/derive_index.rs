@@ -80,7 +80,7 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
 
             Ok(quote! {
 		#[inline]
-                pub fn #method_name(&'_ mut self) -> #infinitree_crate::index::Access<Box<#strategy<#field_ty>>> {
+                pub fn #method_name(&'_ self) -> #infinitree_crate::index::Access<Box<#strategy<#field_ty>>> {
 		    use #infinitree_crate::index::{Strategy, Access};
 		    Access::new(
 			#field_name_str,
