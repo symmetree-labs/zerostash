@@ -13,7 +13,7 @@ use crate::{
     ChunkPointer,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::{error::Error, io::Cursor};
+use std::{error::Error, io::Cursor, sync::Arc};
 
 pub mod fields;
 mod header;
@@ -28,7 +28,7 @@ pub(crate) use reader::Reader;
 pub(crate) use writer::Writer;
 
 /// A collection to store object lists for fields
-pub(crate) type ObjectIndex = Map<Field, Vec<ObjectId>>;
+pub(crate) type ObjectIndex = Map<Field, Arc<Vec<ObjectId>>>;
 
 /// A collection to find a hash using a chunk location pointer
 pub type ChunkIndex = Map<Digest, ChunkPointer>;
@@ -83,7 +83,7 @@ pub(crate) trait IndexExt: Index {
                 .fold(ObjectIndex::default(), |oi, mut action| {
                     oi.insert(
                         action.name.clone(),
-                        self.store(index, object, &mut action).to_vec(),
+                        self.store(index, object, &mut action).to_vec().into(),
                     );
                     oi
                 });

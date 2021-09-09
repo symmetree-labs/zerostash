@@ -3,10 +3,10 @@ use crate::{
     index::{self, FieldReader, FieldWriter},
     object,
 };
-use dashmap::DashSet;
+use scc::HashMap;
 use std::sync::Arc;
 
-pub type Set<V> = Arc<DashSet<V>>;
+pub type Set<K> = Arc<HashMap<K, ()>>;
 
 impl<'index, K> Store for LocalField<Set<K>>
 where

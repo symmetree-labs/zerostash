@@ -1,17 +1,14 @@
-use super::{
-    reader, writer, Collection, Key, LocalField, QueryAction, Select, SparseField, Store, Value,
-};
+use super::{writer, Collection, Key, LocalField, SparseField, Store, Value};
 use crate::{
-    index,
-    index::{FieldReader, FieldWriter},
+    index::FieldWriter,
     object::{self, serializer::SizedPointer, ObjectError},
 };
-use dashmap::DashMap;
+use scc::HashMap;
 use std::sync::Arc;
 
 /// A multithreaded map implementation that can be freely copied and
 /// used with internal mutability across all operations.
-pub type Map<K, V> = Arc<DashMap<K, V>>;
+pub type Map<K, V> = Arc<HashMap<K, V>>;
 
 impl<'index, K, V> Store for LocalField<Map<K, V>>
 where
@@ -19,9 +16,9 @@ where
     V: Value,
 {
     fn execute(&mut self, mut transaction: writer::Transaction, _object: &mut dyn object::Writer) {
-        for r in self.field.iter() {
-            transaction.write_next((r.key(), r.value()));
-        }
+        self.field.for_each(|k, v| {
+            transaction.write_next((k, v));
+        })
     }
 }
 
@@ -53,7 +50,7 @@ where
     V: Value,
 {
     fn execute(&mut self, mut transaction: writer::Transaction, writer: &mut dyn object::Writer) {
-        for r in self.field.iter() {
+        self.field.for_each(|key, value| {
             let ptr = object::serializer::write(
                 writer,
                 |x| {
@@ -61,11 +58,11 @@ where
                         source: Box::new(e),
                     })
                 },
-                r.value(),
+                value,
             )
             .unwrap();
-            transaction.write_next((r.key(), ptr));
-        }
+            transaction.write_next((key, ptr));
+        })
     }
 }
 

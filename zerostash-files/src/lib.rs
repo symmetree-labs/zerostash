@@ -1,7 +1,10 @@
 #[macro_use]
 extern crate serde_derive;
 
-use infinitree::{index::ChunkIndex, *};
+use infinitree::{
+    index::{ChunkIndex, QueryAction},
+    *,
+};
 
 use std::path::Path;
 
@@ -22,17 +25,29 @@ pub struct Files {
 }
 
 impl Files {
-    pub fn list<'a>(&'a self, glob: &'a [impl AsRef<str>]) -> stash::restore::FileIterator<'a> {
+    fn list<'a>(
+        &'a self,
+        stash: &Infinitree<Files>,
+        glob: &'a [impl AsRef<str>],
+    ) -> stash::restore::FileIterator<'a> {
         let matchers = glob
             .iter()
             .map(|g| glob::Pattern::new(g.as_ref()).unwrap())
             .collect::<Vec<glob::Pattern>>();
-        let base_iter = self.files.iter().map(|r| r.clone());
 
-        match glob.len() {
-            i if i == 0 => Box::new(base_iter),
-            _ => Box::new(base_iter.filter(move |f| matchers.iter().any(|m| m.matches(&f.name)))),
-        }
+        use QueryAction::{Skip, Take};
+        Box::new(
+            stash
+                .query(self.files(), move |fname| {
+                    if matchers.iter().any(|m| m.matches(&fname.to_string_lossy())) {
+                        Take
+                    } else {
+                        Skip
+                    }
+                })
+                .unwrap()
+                .map(|(_, v)| v),
+        )
     }
 
     pub async fn add_recursive(
@@ -53,8 +68,13 @@ impl Files {
         pattern: &[impl AsRef<str>],
         target: impl AsRef<Path>,
     ) -> Result<()> {
-        stash::restore::from_iter(threads, self.list(pattern), stash.object_reader()?, target)
-            .await;
+        stash::restore::from_iter(
+            threads,
+            self.list(stash, pattern),
+            stash.object_reader()?,
+            target,
+        )
+        .await;
 
         Ok(())
     }

@@ -17,15 +17,10 @@
 //! To learn more about index internals, see the module documentation
 //! in the [`index`](super) module.
 
-use super::{reader, writer, FieldReader, FieldWriter};
+use super::{reader, writer, FieldReader};
 use crate::object;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    cmp::Eq,
-    hash::Hash,
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
-};
+use std::{cmp::Eq, hash::Hash};
 
 /// A marker trait for values that can be serialized and used as a
 /// value for an index field.
@@ -46,8 +41,14 @@ impl<T> Key for T where T: Serialize + DeserializeOwned + Eq + Hash + Send + Syn
 mod map;
 pub use map::Map;
 
-mod set;
-pub use set::Set;
+// mod set;
+// pub use set::Set;
+
+mod query;
+pub use query::*;
+
+mod serialized;
+pub use serialized::Serialized;
 
 /// Store data into the index.
 ///
@@ -157,72 +158,6 @@ pub trait Collection {
     fn insert(&mut self, record: Self::Item);
 }
 
-pub struct QueryIterator<'reader, T, F> {
-    transaction: reader::Transaction,
-    object: &'reader mut dyn object::Reader,
-    predicate: F,
-    _fieldtype: PhantomData<T>,
-}
-
-impl<'reader, T, K, O, F> QueryIterator<'reader, T, F>
-where
-    T: Collection<Key = K, Item = O>,
-    F: Fn(&K) -> QueryAction,
-{
-    pub fn new(
-        mut transaction: reader::Transaction,
-        object: &'reader mut dyn object::Reader,
-        predicate: F,
-        field: &mut T,
-    ) -> Self {
-        field.load_head(&mut transaction, object);
-        Self {
-            transaction,
-            object,
-            predicate,
-            _fieldtype: PhantomData,
-        }
-    }
-
-    #[inline(always)]
-    fn next(&mut self) -> Option<O> {
-        while let Ok(item) = self.transaction.read_next::<T::Serialized>() {
-            use QueryAction::*;
-
-            match (self.predicate)(T::key(&item)) {
-                Take => return Some(T::load(item, self.object)),
-                Skip => continue,
-                Abort => return None,
-            }
-        }
-
-        None
-    }
-}
-
-impl<'reader, T, K, O, F> Iterator for QueryIterator<'reader, T, F>
-where
-    T: Collection<Key = K, Item = O>,
-    F: Fn(&K) -> QueryAction + 'static,
-{
-    type Item = O;
-
-    #[inline(always)]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.next()
-    }
-}
-
-/// Result of a query predicate.
-pub enum QueryAction {
-    /// Pull the current value into memory.
-    Take,
-    /// Skip the current value and deserialize the next one.
-    Skip,
-    /// Abort the query and _don't_ pull the current value to memory.
-    Abort,
-}
-
 /// A wrapper to allow working with trait objects and `impl Trait`
 /// types when accessing the index field.
 #[non_exhaustive]
@@ -306,7 +241,7 @@ impl<T: Send + Clone> Strategy<T> for LocalField<T> {
     }
 }
 
-impl<T> Select for T
+impl<'iter, T> Select for T
 where
     T: Collection,
 {
@@ -323,67 +258,5 @@ where
         while let Some(item) = iter.next() {
             self.insert(item);
         }
-    }
-}
-
-pub struct Serialized<T> {
-    inner: T,
-}
-
-impl<T> From<T> for Serialized<T> {
-    fn from(inner: T) -> Self {
-        Self { inner }
-    }
-}
-
-impl<T: Default> Default for Serialized<T> {
-    fn default() -> Self {
-        Self {
-            inner: T::default(),
-        }
-    }
-}
-
-impl<T: Clone> Clone for Serialized<T> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl<T> Deref for Serialized<T> {
-    type Target = T;
-
-    #[inline(always)]
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<T> DerefMut for Serialized<T> {
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}
-
-impl<T> Store for LocalField<Serialized<T>>
-where
-    T: Serialize + Sync,
-{
-    #[inline(always)]
-    fn execute(&mut self, mut transaction: writer::Transaction, _object: &mut dyn object::Writer) {
-        transaction.write_next(&*self.field);
-    }
-}
-
-impl<T> Load for LocalField<Serialized<T>>
-where
-    T: DeserializeOwned,
-{
-    #[inline(always)]
-    fn execute(&mut self, mut transaction: reader::Transaction, _object: &mut dyn object::Reader) {
-        *self.field = transaction.read_next().unwrap();
     }
 }

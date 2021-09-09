@@ -22,6 +22,7 @@ lz4_flex = { version = "0.8.0", default-features = false , features = ["frame"] 
 
 async-trait = { version = "^0.1" }
 dashmap = "^4.0"
+scc = "0.5"
 flume = "^0.10"
 libc = "0.2"
 lru = "0.6"

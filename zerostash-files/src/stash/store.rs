@@ -4,13 +4,15 @@ use infinitree::object::{self, write_balancer::RoundRobinBalancer, Writer};
 use flume as mpsc;
 use futures::future::join_all;
 use ignore::{DirEntry, WalkBuilder};
-use memmap2::MmapOptions;
-use tokio::{fs, task};
+use memmap2::{Mmap, MmapOptions};
+use tokio::{fs, io::AsyncReadExt, task};
 
 use std::path::Path;
 
 type Sender = mpsc::Sender<DirEntry>;
 type Receiver = mpsc::Receiver<DirEntry>;
+
+const MAX_FILE_SIZE: usize = 16 * 1024 * 1024;
 
 #[allow(unused)]
 pub async fn recursive(
@@ -49,6 +51,7 @@ async fn process_file_loop(
 ) {
     let fileindex = &index.files;
     let chunkindex = &index.chunks;
+    let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
 
     while let Ok(file) = r.recv_async().await {
         let path = file.path().to_owned();
@@ -70,49 +73,42 @@ async fn process_file_loop(
             continue;
         }
 
-        let osfile = osfile.unwrap();
+        let mut osfile = osfile.unwrap();
         let metadata = osfile.metadata().await.unwrap();
         let mut entry = files::Entry::from_metadata(metadata, path.clone()).unwrap();
 
-        {
-            if let Some(in_store) = fileindex.get(&path) {
-                if in_store.value().as_ref() == &entry {
-                    continue;
-                }
+        if let Some(in_store) = fileindex.read(&path, |_, v| v.clone()) {
+            if in_store.as_ref() == &entry {
+                continue;
             }
         }
 
         if entry.size == 0 {
-            fileindex.insert(path, entry.into());
+            assert!(fileindex.insert(path, entry.into()).is_ok());
             continue;
         }
 
-        let mmap = unsafe {
-            // avoid an unnecessary fstat() by passing `len`
-            // directly from the previous call
-            MmapOptions::new()
-                .len(entry.size as usize)
-                .populate()
-                .map(&osfile.into_std().await)
-                .unwrap()
-        };
+        if entry.size < MAX_FILE_SIZE as u64 {
+            osfile.read_to_end(&mut buf).await.unwrap();
+        }
 
-        let splitter = FileSplitter::<SeaSplit>::new(&mmap);
+        let size = entry.size as usize;
+        let mut mmap = MmappedFile::new(size, osfile.into_std().await);
+
+        let splitter = if size < MAX_FILE_SIZE {
+            FileSplitter::<SeaSplit>::new(&buf[0..size])
+        } else {
+            FileSplitter::<SeaSplit>::new(mmap.open())
+        };
         let chunks = splitter.map(|(start, hash, data)| {
             let mut writer = writer.clone();
             let chunkindex = chunkindex.clone();
             let data = data.to_vec();
 
             task::spawn_blocking(move || {
-                let store = || writer.write_chunk(&hash, &data);
-                (
-                    start,
-                    chunkindex
-                        .entry(hash)
-                        .or_try_insert_with(store)
-                        .map(|r| r.value().clone())
-                        .unwrap(),
-                )
+                let store = || writer.write_chunk(&hash, &data).unwrap();
+                chunkindex.upsert(hash, store, |_, _| {});
+                (start, chunkindex.read(&hash, |_, v| v.clone()).unwrap())
             })
         });
 
@@ -120,7 +116,33 @@ async fn process_file_loop(
             .chunks
             .extend(join_all(chunks).await.into_iter().map(Result::unwrap));
 
-        fileindex.insert(path, entry.into());
+        assert!(fileindex.insert(path, entry.into()).is_ok());
+    }
+}
+
+struct MmappedFile {
+    mmap: Option<Mmap>,
+    len: usize,
+    _file: std::fs::File,
+}
+
+impl MmappedFile {
+    fn new(len: usize, _file: std::fs::File) -> Self {
+        Self {
+            mmap: None,
+            len,
+            _file,
+        }
+    }
+
+    fn open(&mut self) -> &[u8] {
+        self.mmap.get_or_insert(unsafe {
+            MmapOptions::new()
+                .len(self.len)
+                .populate()
+                .map(&self._file)
+                .unwrap()
+        })
     }
 }
 

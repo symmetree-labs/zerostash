@@ -22,6 +22,7 @@ impl Rollsum for SeaSplit {
         Self::default()
     }
 
+    #[inline(always)]
     fn find_offset(&mut self, buf: &[u8]) -> usize {
         self.0 = SeaHasher::default();
         let mut last = 0;

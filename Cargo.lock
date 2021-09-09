@@ -820,6 +820,7 @@ dependencies = [
  "rusoto_core",
  "rusoto_s3",
  "rust-argon2",
+ "scc",
  "secrecy 0.8.0",
  "serde",
  "serde_derive",
@@ -1445,6 +1446,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "scc"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37d602af27b0129ed0b3a9becec8c3eadca7c6e0d34bd7595c5fc012d015c0b6"
+dependencies = [
+ "scopeguard",
 ]
 
 [[package]]

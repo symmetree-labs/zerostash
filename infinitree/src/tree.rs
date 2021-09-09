@@ -1,9 +1,7 @@
-use dashmap::mapref::entry::Entry;
-
 use crate::{
     index::{
         self,
-        fields::{self, QueryIterator},
+        fields::{self, QueryIteratorOwned},
         Access, Collection, Index, IndexExt, Load, ObjectIndex, QueryAction, Select, Serialized,
         Store,
     },
@@ -67,20 +65,17 @@ fn open_root<I: Index>(
 fn merge_object_index(base: ObjectIndex, changeset: ObjectIndex) {
     // Note: This must be safe to unwrap, as we expect changeset to be
     // a unique object.
-    let changeset = Arc::try_unwrap(changeset).unwrap();
-    eprintln!("commit changeset: {:?}", &changeset);
-
-    for (key, value) in changeset.into_iter() {
-        match base.entry(key) {
-            Entry::Vacant(entry) => {
-                entry.insert(value);
-            }
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().extend(value.into_iter());
-                entry.get_mut().dedup();
-            }
-        }
-    }
+    changeset.for_each(|key, value| {
+        base.upsert(
+            key.to_owned(),
+            || value.clone(),
+            |_, v| {
+                let v_mut = Arc::make_mut(v);
+                v_mut.extend(value.iter());
+                v_mut.dedup();
+            },
+        )
+    });
 }
 
 impl<I: Index> Infinitree<I> {
@@ -98,13 +93,14 @@ impl<I: Index> Infinitree<I> {
         let mut object = self.object_reader()?; // TODO WTF
 
         for mut action in self.index.load_all()?.drain(..) {
-            for oid in self
-                .root
-                .objects
-                .get(&action.name)
-                .map(|x| x.value().clone())
-                .unwrap_or_default()
-                .drain(..)
+            for oid in Arc::make_mut(
+                &mut self
+                    .root
+                    .objects
+                    .read(&action.name, |_, v| v.clone())
+                    .unwrap_or_default(),
+            )
+            .drain(..)
             {
                 self.index.load(oid, &mut index, &mut object, &mut action);
             }
@@ -142,8 +138,8 @@ impl<I: Index> Infinitree<I> {
     fn query_start_object(&self, name: &str) -> Option<ObjectId> {
         self.root
             .objects
-            .get(name)
-            .and_then(|x| x.value().first().cloned())
+            .read(name, |_, v| v.first().cloned())
+            .flatten()
     }
 
     pub fn store(&self, field: impl Into<Access<Box<dyn Store>>>) -> Result<()> {
@@ -187,33 +183,33 @@ impl<I: Index> Infinitree<I> {
         Ok(())
     }
 
-    // pub fn query<K, O, Q>(
-    //     &self,
-    //     mut field: Access<Box<Q>>,
-    //     pred: impl Fn(&K) -> QueryAction + 'static,
-    // ) -> Result<impl Iterator<Item = O>>
-    // where
-    //     for<'de> <Q as fields::Collection>::Serialized: serde::Deserialize<'de>,
-    //     Q: Collection<Key = K, Item = O>,
-    // {
-    //     let index = self.meta_reader()?;
-    //     let mut object = self.object_reader()?;
-    //     let iter = QueryIterator::new(
-    //         index
-    //             .transaction(
-    //                 &field.name,
-    //                 &self
-    //                     .query_start_object(&field.name)
-    //                     .context("Empty index")?,
-    //             )
-    //             .unwrap(),
-    //         &mut object,
-    //         Box::new(pred),
-    //         field.strategy.as_mut(),
-    //     );
+    pub fn query<K, O, Q>(
+        &self,
+        mut field: Access<Box<Q>>,
+        pred: impl Fn(&K) -> QueryAction,
+    ) -> Result<impl Iterator<Item = O>>
+    where
+        for<'de> <Q as fields::Collection>::Serialized: serde::Deserialize<'de>,
+        Q: Collection<Key = K, Item = O>,
+    {
+        let index = self.meta_reader()?;
+        let object = self.object_reader()?;
+        let iter = QueryIteratorOwned::new(
+            index
+                .transaction(
+                    &field.name,
+                    &self
+                        .query_start_object(&field.name)
+                        .context("Empty index")?,
+                )
+                .unwrap(),
+            object,
+            pred,
+            field.strategy.as_mut(),
+        );
 
-    //     Ok(QueryIteratorOwned { object, iter })
-    // }
+        Ok(iter)
+    }
 
     fn meta_writer(&self, start_object: ObjectId) -> Result<index::Writer> {
         Ok(index::Writer::new(

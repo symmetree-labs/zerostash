@@ -64,11 +64,11 @@ async fn main() {
         let cl = repo.index().chunks.len();
         let (creuse_sum, creuse_cnt) = {
             let mut chunk_reuse = HashMap::new();
-            for f in repo.index().files.iter() {
+            repo.index().files.for_each(|_, f| {
                 f.chunks
                     .iter()
                     .for_each(|(_, c)| *chunk_reuse.entry(*c.hash()).or_insert(0u32) += 1)
-            }
+            });
 
             (
                 chunk_reuse.values().sum::<u32>() as f64,
@@ -78,9 +78,9 @@ async fn main() {
 
         let ssize = {
             let mut data_size = 0.0f64;
-            for f in repo.index().files.iter() {
-                data_size += f.size as f64
-            }
+            repo.index()
+                .files
+                .for_each(|_, f| data_size += f.size as f64);
             data_size
         };
 
@@ -151,7 +151,7 @@ async fn main() {
             .unwrap();
         let restore_time = restore_start.elapsed();
 
-        let total_time = (read_time + restore_time).as_secs_f64();
+        let total_time = restore_time.as_secs_f64();
 
         println!(
             r#"restore time: {}
