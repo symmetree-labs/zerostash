@@ -1,9 +1,7 @@
 use crate::crypto::{Digest, Tag};
 use crate::object::ObjectId;
 
-use std::sync::Arc;
-
-#[derive(Eq, PartialEq, Hash, Default, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Default, Serialize, Deserialize)]
 pub(crate) struct RawChunkPointer {
     pub offs: u32,
     pub size: u32,
@@ -13,18 +11,18 @@ pub(crate) struct RawChunkPointer {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Default, Serialize, Deserialize)]
-pub struct ChunkPointer(Arc<RawChunkPointer>);
+pub struct ChunkPointer(RawChunkPointer);
 
 impl ChunkPointer {
     #[inline(always)]
     pub(crate) fn new(offs: u32, size: u32, file: ObjectId, hash: Digest, tag: Tag) -> Self {
-        Self(Arc::new(RawChunkPointer {
+        Self(RawChunkPointer {
             offs,
             size,
             file,
             hash,
             tag,
-        }))
+        })
     }
 
     #[inline(always)]

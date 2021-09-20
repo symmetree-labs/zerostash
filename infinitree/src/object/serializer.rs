@@ -27,7 +27,7 @@ pub fn read<T: DeserializeOwned, R: Reader + ?Sized>(
     pointer: SizedPointer,
 ) -> Result<T> {
     let mut serialized = vec![0; pointer.data_size];
-    reader.read_chunk(pointer.chunk, &mut serialized)?;
+    reader.read_chunk(&pointer.chunk, &mut serialized)?;
 
     deserialize(&serialized)
 }

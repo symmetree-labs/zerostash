@@ -77,14 +77,14 @@ async fn process_file_loop(
         let metadata = osfile.metadata().await.unwrap();
         let mut entry = files::Entry::from_metadata(metadata, path.clone()).unwrap();
 
-        if let Some(in_store) = fileindex.read(&path, |_, v| v.clone()) {
+        if let Some(in_store) = fileindex.get(&path) {
             if in_store.as_ref() == &entry {
                 continue;
             }
         }
 
         if entry.size == 0 {
-            assert!(fileindex.insert(path, entry.into()).is_ok());
+            fileindex.insert(path, entry);
             continue;
         }
 
@@ -107,8 +107,8 @@ async fn process_file_loop(
 
             task::spawn_blocking(move || {
                 let store = || writer.write_chunk(&hash, &data).unwrap();
-                chunkindex.upsert(hash, store, |_, _| {});
-                (start, chunkindex.read(&hash, |_, v| v.clone()).unwrap())
+                let ptr = chunkindex.insert_with(hash, store);
+                (start, ptr)
             })
         });
 
@@ -116,7 +116,7 @@ async fn process_file_loop(
             .chunks
             .extend(join_all(chunks).await.into_iter().map(Result::unwrap));
 
-        assert!(fileindex.insert(path, entry.into()).is_ok());
+        fileindex.insert(path, entry);
     }
 }
 

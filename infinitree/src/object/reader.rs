@@ -9,7 +9,7 @@ use crate::{
 use std::sync::Arc;
 
 pub trait Reader: Send {
-    fn read_chunk(&mut self, pointer: ChunkPointer, target: &mut [u8]) -> Result<()>;
+    fn read_chunk(&mut self, pointer: &ChunkPointer, target: &mut [u8]) -> Result<()>;
 }
 
 #[derive(Clone)]
@@ -30,7 +30,7 @@ impl AEADReader {
 }
 
 impl Reader for AEADReader {
-    fn read_chunk(&mut self, pointer: ChunkPointer, target: &mut [u8]) -> Result<()> {
+    fn read_chunk(&mut self, pointer: &ChunkPointer, target: &mut [u8]) -> Result<()> {
         let object = self.backend.read_object(pointer.object_id())?;
         let mut cryptbuf: &mut [u8] = self.buffer.as_inner_mut();
 

@@ -8,7 +8,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-pub type FileSet = index::Map<PathBuf, Arc<Entry>>;
+pub type FileSet = index::Map<PathBuf, Entry>;
 
 #[derive(Hash, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct Entry {
@@ -22,7 +22,7 @@ pub struct Entry {
     pub readonly: bool,
     pub name: String,
 
-    pub chunks: Vec<(u64, ChunkPointer)>,
+    pub chunks: Vec<(u64, Arc<ChunkPointer>)>,
 }
 
 impl Entry {

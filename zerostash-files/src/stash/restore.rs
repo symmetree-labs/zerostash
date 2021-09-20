@@ -23,12 +23,12 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-type ThreadWork = (PathBuf, Arc<files::Entry>);
+type ThreadWork = (PathBuf, files::Entry);
 
 type Sender = mpsc::Sender<ThreadWork>;
 type Receiver = mpsc::Receiver<ThreadWork>;
 
-pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + 'a)>;
+pub type FileIterator<'a> = Box<(dyn Iterator<Item = files::Entry> + 'a)>;
 
 pub async fn from_iter(
     max_file_handles: usize,
@@ -109,7 +109,7 @@ async fn process_packet_loop(mut r: Receiver, mut objreader: impl object::Reader
             // This loop will extract & decrypt & decompress from the object
             for (i, (start, cp)) in cs.into_iter().enumerate() {
                 let start = start as usize;
-                objreader.read_chunk(cp, &mut mmap[start..]).unwrap();
+                objreader.read_chunk(&cp, &mut mmap[start..]).unwrap();
             }
         }
     }

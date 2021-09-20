@@ -66,15 +66,13 @@ fn merge_object_index(base: ObjectIndex, changeset: ObjectIndex) {
     // Note: This must be safe to unwrap, as we expect changeset to be
     // a unique object.
     changeset.for_each(|key, value| {
-        base.upsert(
-            key.to_owned(),
-            || value.clone(),
-            |_, v| {
-                let v_mut = Arc::get_mut(v).unwrap();
-                v_mut.extend(value.iter());
-                v_mut.dedup();
-            },
-        )
+        if let None = base.update_with(key, |_, v| {
+            let v_mut = Arc::get_mut(v).unwrap();
+            v_mut.extend(value.iter());
+            v_mut.dedup();
+        }) {
+            base.insert(key.to_owned(), value.to_owned());
+        }
     });
 }
 
@@ -93,14 +91,8 @@ impl<I: Index> Infinitree<I> {
         let mut object = self.object_reader()?; // TODO WTF
 
         for mut action in self.index.load_all()?.drain(..) {
-            for oid in Arc::make_mut(
-                &mut self
-                    .root
-                    .objects
-                    .read(&action.name, |_, v| v.clone())
-                    .unwrap_or_default(),
-            )
-            .drain(..)
+            for oid in Arc::make_mut(&mut self.root.objects.get(&action.name).unwrap_or_default())
+                .drain(..)
             {
                 self.index.load(oid, &mut index, &mut object, &mut action);
             }
@@ -138,7 +130,8 @@ impl<I: Index> Infinitree<I> {
     fn query_start_object(&self, name: &str) -> Option<ObjectId> {
         self.root
             .objects
-            .read(name, |_, v| v.first().cloned())
+            .get(name)
+            .map(|v| v.first().cloned())
             .flatten()
     }
 
