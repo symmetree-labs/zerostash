@@ -54,6 +54,8 @@ async fn process_file_loop(
     let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
 
     while let Ok(file) = r.recv_async().await {
+        buf.clear();
+
         let path = file.path().to_owned();
 
         if path
