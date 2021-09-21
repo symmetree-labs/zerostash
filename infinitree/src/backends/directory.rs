@@ -59,7 +59,7 @@ impl Directory {
         std::fs::create_dir_all(&target)?;
         Ok(Directory {
             target: target.as_ref().into(),
-            read_lru: Arc::new(Mutex::new(LruCache::new(550))),
+            read_lru: Arc::new(Mutex::new(LruCache::new(256))),
         })
     }
 
