@@ -47,7 +47,7 @@ pub async fn recursive(
 async fn process_file_loop(
     r: Receiver,
     index: crate::Files,
-    writer: RoundRobinBalancer<impl object::Writer + Clone + 'static>,
+    mut writer: RoundRobinBalancer<impl object::Writer + Clone + 'static>,
 ) {
     let fileindex = &index.files;
     let chunkindex = &index.chunks;
@@ -101,20 +101,12 @@ async fn process_file_loop(
             FileSplitter::<SeaSplit>::new(mmap.open())
         };
         let chunks = splitter.map(|(start, hash, data)| {
-            let mut writer = writer.clone();
-            let chunkindex = chunkindex.clone();
-            let data = data.to_vec();
-
-            task::spawn_blocking(move || {
-                let store = || writer.write_chunk(&hash, &data).unwrap();
-                let ptr = chunkindex.insert_with(hash, store);
-                (start, ptr)
-            })
+            let store = || writer.write_chunk(&hash, &data).unwrap();
+            let ptr = chunkindex.insert_with(hash, store);
+            (start, ptr)
         });
 
-        entry
-            .chunks
-            .extend(join_all(chunks).await.into_iter().map(Result::unwrap));
+        entry.chunks.extend(chunks);
 
         fileindex.insert(path, entry);
     }
