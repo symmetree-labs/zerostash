@@ -8,7 +8,7 @@ infinitree = { path = "../infinitree" }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 
-memmap2 = "0.3"
+memmap2 = "0.5"
 glob = { version = "0.3" }
 ignore = "^0.4"
 
