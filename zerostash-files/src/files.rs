@@ -73,6 +73,16 @@ impl Entry {
             chunks: Vec::new(),
         })
     }
+
+    #[cfg(unix)]
+    pub fn restore_to(&self, file: &fs::File) -> Result<(), Box<dyn Error>> {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        file.set_len(self.size)?;
+        file.set_permissions(fs::Permissions::from_mode(self.unix_perm))?;
+
+        Ok(())
+    }
 }
 
 fn to_unix_mtime(m: &fs::Metadata) -> Result<(u64, u32), Box<dyn Error>> {

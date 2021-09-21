@@ -86,16 +86,7 @@ async fn process_packet_loop(mut r: Receiver, mut objreader: impl object::Reader
             .read(true)
             .open(filename)
             .unwrap();
-        fd.set_len(metadata.size).unwrap();
-
-        let object_ordered = metadata
-            .chunks
-            .iter()
-            .cloned()
-            .fold(HashMap::new(), |mut a, c| {
-                a.entry(*c.1.object_id()).or_insert_with(Vec::new).push(c);
-                a
-            });
+        metadata.restore_to(&fd).unwrap();
 
         let mut mmap = unsafe {
             MmapOptions::new()
@@ -104,13 +95,9 @@ async fn process_packet_loop(mut r: Receiver, mut objreader: impl object::Reader
                 .expect("mmap")
         };
 
-        // This loop manages the object we're reading from
-        for (objectid, cs) in object_ordered.into_iter() {
-            // This loop will extract & decrypt & decompress from the object
-            for (i, (start, cp)) in cs.into_iter().enumerate() {
-                let start = start as usize;
-                objreader.read_chunk(&cp, &mut mmap[start..]).unwrap();
-            }
+        for (start, cp) in metadata.chunks.iter() {
+            let start = *start as usize;
+            objreader.read_chunk(cp, &mut mmap[start..]).unwrap();
         }
     }
 }
