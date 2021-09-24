@@ -8,7 +8,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-pub type FileSet = index::Map<PathBuf, Entry>;
+pub type FileSet = index::VersionedMap<PathBuf, Entry>;
 
 #[derive(Hash, Clone, Serialize, Deserialize, Default)]
 pub struct Entry {
@@ -94,10 +94,7 @@ impl Entry {
     #[cfg(unix)]
     pub fn restore_to(&self, file: &fs::File) -> Result<(), Box<dyn Error>> {
         use std::{
-            os::unix::{
-                fs::{MetadataExt, PermissionsExt},
-                prelude::AsRawFd,
-            },
+            os::unix::{fs::PermissionsExt, prelude::AsRawFd},
             time::{Duration, SystemTime},
         };
 

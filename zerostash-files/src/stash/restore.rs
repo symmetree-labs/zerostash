@@ -23,12 +23,12 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-type ThreadWork = (PathBuf, files::Entry);
+type ThreadWork = (PathBuf, Arc<files::Entry>);
 
 type Sender = mpsc::Sender<ThreadWork>;
 type Receiver = mpsc::Receiver<ThreadWork>;
 
-pub type FileIterator<'a> = Box<(dyn Iterator<Item = files::Entry> + 'a)>;
+pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + 'a)>;
 
 pub async fn from_iter(
     max_file_handles: usize,

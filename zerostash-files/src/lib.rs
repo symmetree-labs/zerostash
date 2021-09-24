@@ -46,7 +46,7 @@ impl Files {
                     }
                 })
                 .unwrap()
-                .map(|(_, v)| v),
+                .map(|(_, v)| v.unwrap()),
         )
     }
 

@@ -1,38 +1,30 @@
-use super::{Collection, Key, LocalField, Map, SparseField, Store, Strategy, Value};
+use super::{Collection, Key, LocalField, SparseField, Store, Value};
 use crate::{
     index::{writer, FieldWriter},
     object::{self, serializer::SizedPointer, ObjectError},
 };
-use std::sync::Arc;
+use scc::HashMap;
+use std::{borrow::Borrow, cell::Cell, hash::Hash, sync::Arc};
 
 type RawAction<V> = Option<V>;
 type Action<V> = Option<Arc<V>>;
 
-fn store<V>(value: V) -> Action<V> {
-    Some(Arc::new(value))
+fn store<V>(value: impl Into<Arc<V>>) -> Action<V> {
+    Some(value.into())
 }
 
-#[derive(Clone)]
+fn store_if_none<V>(current: &mut Option<Arc<V>>, value: impl Into<Arc<V>>) {
+    current.get_or_insert(value.into());
+}
+
+#[derive(Clone, Default)]
 pub struct VersionedMap<K, V>
 where
     K: Key + 'static,
     V: Value + 'static,
 {
-    current: Map<K, Action<V>>,
-    base: Map<K, Action<V>>,
-}
-
-impl<K, V> Default for VersionedMap<K, V>
-where
-    K: Key,
-    V: Value,
-{
-    fn default() -> Self {
-        Self {
-            current: Map::default(),
-            base: Map::default(),
-        }
-    }
+    current: Arc<HashMap<K, Action<V>>>,
+    base: Arc<HashMap<K, Action<V>>>,
 }
 
 impl<K, V> VersionedMap<K, V>
@@ -42,23 +34,83 @@ where
 {
     /// Set or overwrite a value for the given key in the map
     #[inline(always)]
-    pub fn insert(&self, key: K, value: V) {
-        let new_value = store(value);
-        let new_ref = new_value.clone();
+    pub fn insert(&self, key: K, value: impl Into<Arc<V>>) -> Arc<V> {
+        match self.get(&key) {
+            Some(v) => v.clone(),
+            None => {
+                let new = value.into();
 
-        self.current.upsert(key, || new_value, |_, v| *v = new_ref);
+                self.current.upsert(
+                    key,
+                    || store(new.clone()),
+                    |_, v| store_if_none(v, new.clone()),
+                );
+                new
+            }
+        }
     }
 
     /// Call a function to set or overwrite the value at the given
     /// `key`
     #[inline(always)]
-    pub fn insert_with(&self, key: K, mut fun: impl FnMut() -> V) {
-        self.current.upsert(key, || store((fun)()), |_, _| {});
+    pub fn insert_with(&self, key: K, new: impl Fn() -> V) -> Arc<V> {
+        match self.get(&key) {
+            Some(v) => v.clone(),
+            None => {
+                let result = Cell::new(None);
+
+                self.current.upsert(
+                    key,
+                    || {
+                        let val = store(new());
+                        result.set(val.clone());
+                        val
+                    },
+                    |_, v| {
+                        *v = store(new());
+                        result.set(v.clone())
+                    },
+                );
+
+                // this will never panic, because callbacks guarantee it ends up being Some()
+                result.into_inner().unwrap()
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn update_with(&self, key: K, new: impl Fn(Arc<V>) -> V) -> Action<V> {
+        match self.get(&key) {
+            Some(existing) => {
+                let result = Cell::new(None);
+
+                self.current.upsert(
+                    key,
+                    || {
+                        let val = store(new(existing.clone()));
+                        result.set(val.clone());
+                        val
+                    },
+                    |_, v| {
+                        *v = store(new(v.as_ref().unwrap().clone()));
+                        result.set(v.clone())
+                    },
+                );
+
+                // this will never panic, because callbacks guarantee it ends up being Some()
+                result.into_inner()
+            }
+            None => None,
+        }
     }
 
     /// Returns the stored value for a key, or `None`
     #[inline(always)]
-    pub fn get(&self, key: &K) -> Option<Arc<V>> {
+    pub fn get<Q>(&self, key: &Q) -> Option<Arc<V>>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
         self.current
             .read(key, |_, v| v.clone())
             .or_else(|| self.base.read(key, |_, v| v.clone()))
@@ -137,26 +189,23 @@ where
     K: Key,
     V: Value,
 {
-    type Key = <LocalField<Map<K, Action<V>>> as Collection>::Key;
-    type Serialized = <LocalField<Map<K, Action<V>>> as Collection>::Serialized;
-    type Item = <LocalField<Map<K, Action<V>>> as Collection>::Item;
+    type Key = K;
+    type Serialized = (K, Action<V>);
+    type Item = (K, Action<V>);
 
     #[inline(always)]
     fn key(from: &Self::Serialized) -> &Self::Key {
-        <LocalField<Map<K, Action<V>>> as Collection>::key(from)
+        &from.0
     }
 
     #[inline(always)]
-    fn load(from: Self::Serialized, object: &mut dyn crate::object::Reader) -> Self::Item {
-        <LocalField<Map<K, Action<V>>> as Collection>::load(from, object)
+    fn load(from: Self::Serialized, _object: &mut dyn crate::object::Reader) -> Self::Item {
+        from
     }
 
     #[inline(always)]
     fn insert(&mut self, record: Self::Item) {
-        <LocalField<Map<K, Action<V>>> as Collection>::insert(
-            &mut LocalField::for_field(&self.field.base),
-            record,
-        )
+        debug_assert!(self.field.base.insert(record.0, record.1).is_ok());
     }
 }
 
@@ -192,15 +241,15 @@ where
     #[inline(always)]
     fn load(from: Self::Serialized, object: &mut dyn object::Reader) -> Self::Item {
         let value = match from.1 {
-            Some(value) => {
-                let value = object::serializer::read(
+            Some(ptr) => {
+                let value: V = object::serializer::read(
                     object,
                     |x| {
                         crate::deserialize_from_slice(x).map_err(|e| ObjectError::Deserialize {
                             source: Box::new(e),
                         })
                     },
-                    value,
+                    ptr,
                 )
                 .unwrap();
 

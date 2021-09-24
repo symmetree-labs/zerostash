@@ -50,6 +50,9 @@ pub use query::*;
 mod serialized;
 pub use serialized::Serialized;
 
+mod versioned;
+pub use versioned::VersionedMap;
+
 /// Store data into the index.
 ///
 /// This trait is usually implemented on a type that also implements
