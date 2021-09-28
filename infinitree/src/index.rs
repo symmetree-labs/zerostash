@@ -30,6 +30,12 @@ pub(crate) use writer::Writer;
 /// A collection to store object lists for fields
 pub(crate) type ObjectIndex = Map<Field, Vec<ObjectId>>;
 
+/// A representation of a generation within the tree
+pub(crate) type Generation = usize;
+
+/// A list of transactions, represented in order, for versions and fields
+pub(crate) type TransactionList = Vec<(Generation, Field, ObjectId)>;
+
 /// A collection to find a hash using a chunk location pointer
 pub type ChunkIndex = Map<Digest, ChunkPointer>;
 
@@ -114,7 +120,7 @@ pub(crate) trait IndexExt: Index {
     ) {
         field
             .strategy
-            .execute(index.transaction(&field.name, &oid).unwrap(), object);
+            .load(index, object, vec![(1, field.name.clone(), oid)]);
     }
 
     fn query<K>(
@@ -127,7 +133,7 @@ pub(crate) trait IndexExt: Index {
     ) {
         field
             .strategy
-            .execute(index.transaction(&field.name, &oid).unwrap(), object, pred);
+            .select(index, object, vec![(1, field.name.clone(), oid)], pred);
     }
 }
 

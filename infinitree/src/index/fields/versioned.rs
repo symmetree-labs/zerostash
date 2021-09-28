@@ -189,6 +189,7 @@ where
     K: Key,
     V: Value,
 {
+    type TransactionResolver = super::FullHistory;
     type Key = K;
     type Serialized = (K, Action<V>);
     type Item = (K, Action<V>);
@@ -227,10 +228,9 @@ where
     K: Key,
     V: Value,
 {
+    type TransactionResolver = super::FullHistory;
     type Key = K;
-
     type Serialized = (K, RawAction<SizedPointer>);
-
     type Item = (K, Action<V>);
 
     #[inline(always)]

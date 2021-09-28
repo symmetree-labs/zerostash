@@ -122,6 +122,7 @@ where
     K: Key,
     V: Value,
 {
+    type TransactionResolver = super::FirstOnly;
     type Key = K;
     type Serialized = (K, V);
     type Item = (K, V);
@@ -166,6 +167,7 @@ where
     K: Key,
     V: Value,
 {
+    type TransactionResolver = super::FirstOnly;
     type Key = K;
     type Serialized = (K, SizedPointer);
     type Item = (K, V);

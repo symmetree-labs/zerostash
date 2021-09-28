@@ -17,7 +17,7 @@
 //! To learn more about index internals, see the module documentation
 //! in the [`index`](super) module.
 
-use super::{reader, writer, FieldReader};
+use super::{reader, writer, Field, FieldReader, TransactionList};
 use crate::object;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{cmp::Eq, hash::Hash};
@@ -82,10 +82,22 @@ pub trait Store {
 pub trait Load {
     /// Execute a load action.
     ///
-    /// The `transaction` parameter is provided for strategies to
-    /// load values from the index, while the `object` is to load
-    /// values from the object pool.
-    fn execute(&mut self, transaction: reader::Transaction, object: &mut dyn object::Reader);
+    /// The `index` and `object` readers are provided to interact with
+    /// the indexes and the object pool, respectively.
+    ///
+    /// `transaction_list` can contain any list of transactions that
+    /// this loader should restore into memory.
+    ///
+    /// Note that this is decidedly not a type safe way to interact
+    /// with a collection, and therefore it is recommended that
+    /// `transaction_list` is prepared and sanitized for the field
+    /// that's being restored.
+    fn load(
+        &mut self,
+        index: &mut reader::Reader,
+        object: &mut dyn object::Reader,
+        transaction_list: TransactionList,
+    );
 }
 
 impl<K, T> Load for T
@@ -93,8 +105,15 @@ where
     T: Select<Key = K>,
 {
     #[inline(always)]
-    fn execute(&mut self, transaction: reader::Transaction, object: &mut dyn object::Reader) {
-        Select::execute(self, transaction, object, |_| QueryAction::Take)
+    fn load(
+        &mut self,
+        reader: &mut reader::Reader,
+        object: &mut dyn object::Reader,
+        transaction_list: TransactionList,
+    ) {
+        Select::select(self, reader, object, transaction_list, |_| {
+            QueryAction::Take
+        })
     }
 }
 
@@ -107,15 +126,23 @@ pub trait Select {
     /// more data into memory.
     type Key;
 
-    /// Execute a load action.
+    /// Load items into memory based on a predicate
     ///
-    /// The `transaction` parameter is provided for strategies to
-    /// load values from the index, while the `object` is to load
-    /// values from the object pool.
-    fn execute(
+    /// The `index` and `object` readers are provided to interact with
+    /// the indexes and the object pool, respectively.
+    ///
+    /// `transaction_list` can contain any list of transactions that
+    /// this loader should restore into memory.
+    ///
+    /// Note that this is decidedly not a type safe way to interact
+    /// with a collection, and therefore it is recommended that
+    /// `transaction_list` is prepared and sanitized for the field
+    /// that's being restored.
+    fn select(
         &mut self,
-        transaction: reader::Transaction,
+        index: &mut reader::Reader,
         object: &mut dyn object::Reader,
+        transaction_list: TransactionList,
         predicate: impl Fn(&Self::Key) -> QueryAction,
     );
 }
@@ -128,6 +155,18 @@ pub trait Select {
 /// This trait should be implemented on a type that also implements
 /// [`Strategy`], and _not_ on the field directly.
 pub trait Collection {
+    /// Use this resolving strategy to load the collection.
+    ///
+    /// Typically this will be one of two types:
+    ///
+    ///  * `FullHistory` if a collection requires
+    ///     crawling the full transaction history for an accurate
+    ///     representation after loading.
+    ///  * `LatestOnly` if the collection is not versioned and
+    ///     therefore there's no need to resolve the full the
+    ///     transaction list.
+    type TransactionResolver: TransactionResolver;
+
     /// The key that the predicate will use to decide whether to pull
     /// more data into memory.
     type Key;
@@ -159,6 +198,46 @@ pub trait Collection {
 
     /// Store the deserialized record in the collection
     fn insert(&mut self, record: Self::Item);
+}
+
+pub trait TransactionResolver {
+    fn resolve(
+        index: &mut reader::Reader,
+        transactions: TransactionList,
+    ) -> Box<dyn Iterator<Item = reader::Transaction> + '_>;
+}
+
+pub struct FullHistory;
+pub struct FirstOnly;
+
+#[inline(always)]
+fn full_history(
+    index: &mut reader::Reader,
+    transactions: TransactionList,
+) -> impl Iterator<Item = reader::Transaction> + '_ {
+    transactions
+        .into_iter()
+        .map(move |(gen, field, objectid)| index.transaction(field, &objectid).unwrap())
+}
+
+impl TransactionResolver for FullHistory {
+    #[inline(always)]
+    fn resolve(
+        index: &mut reader::Reader,
+        transactions: TransactionList,
+    ) -> Box<dyn Iterator<Item = reader::Transaction> + '_> {
+        Box::new(full_history(index, transactions))
+    }
+}
+
+impl TransactionResolver for FirstOnly {
+    #[inline(always)]
+    fn resolve(
+        index: &mut reader::Reader,
+        transactions: TransactionList,
+    ) -> Box<dyn Iterator<Item = reader::Transaction> + '_> {
+        Box::new(full_history(index, transactions).take(1))
+    }
 }
 
 /// A wrapper to allow working with trait objects and `impl Trait`
@@ -250,16 +329,18 @@ where
 {
     type Key = T::Key;
 
-    #[inline(always)]
-    fn execute(
+    fn select(
         &mut self,
-        transaction: reader::Transaction,
+        index: &mut reader::Reader,
         object: &mut dyn object::Reader,
+        transaction_list: TransactionList,
         predicate: impl Fn(&Self::Key) -> QueryAction,
     ) {
-        let mut iter = QueryIterator::new(transaction, object, predicate, self);
-        while let Some(item) = iter.next() {
-            self.insert(item);
+        for transaction in T::TransactionResolver::resolve(index, transaction_list) {
+            let mut iter = QueryIterator::new(transaction, object, &predicate, self);
+            while let Some(item) = iter.next() {
+                self.insert(item);
+            }
         }
     }
 }

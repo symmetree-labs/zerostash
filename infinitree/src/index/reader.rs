@@ -40,7 +40,7 @@ pub enum ReadError {
 pub type Result<T> = std::result::Result<T, ReadError>;
 
 #[derive(Clone)]
-pub(crate) struct Reader {
+pub struct Reader {
     inner: Object<BlockBuffer>,
     header: Option<Header>,
     backend: Arc<dyn Backend>,

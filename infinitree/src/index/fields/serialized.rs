@@ -1,4 +1,4 @@
-use super::{Load, LocalField, Store};
+use super::{FirstOnly, Load, LocalField, Store, TransactionResolver};
 use crate::{
     index::{reader, writer, FieldReader, FieldWriter},
     object,
@@ -68,8 +68,14 @@ impl<T> Load for LocalField<Serialized<T>>
 where
     T: DeserializeOwned,
 {
-    #[inline(always)]
-    fn execute(&mut self, mut transaction: reader::Transaction, _object: &mut dyn object::Reader) {
-        *self.field = transaction.read_next().unwrap();
+    fn load(
+        &mut self,
+        index: &mut reader::Reader,
+        object: &mut dyn object::Reader,
+        transaction_list: crate::index::TransactionList,
+    ) {
+        for mut transaction in FirstOnly::resolve(index, transaction_list) {
+            *self.field = transaction.read_next().unwrap();
+        }
     }
 }
