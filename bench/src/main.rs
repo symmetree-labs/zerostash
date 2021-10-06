@@ -51,7 +51,7 @@ async fn main() {
         let store_time = store_start.elapsed();
 
         let commit_start = Instant::now();
-        repo.commit().unwrap();
+        repo.commit(None).unwrap();
         let commit_time = commit_start.elapsed();
 
         // let objects = mobjects

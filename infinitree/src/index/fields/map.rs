@@ -110,7 +110,7 @@ where
     K: Key,
     V: Value,
 {
-    fn execute(&mut self, mut transaction: writer::Transaction, _object: &mut dyn object::Writer) {
+    fn execute(&mut self, transaction: &mut writer::Transaction, _object: &mut dyn object::Writer) {
         self.field.for_each(|k, v| {
             transaction.write_next((k, v));
         })
@@ -145,7 +145,7 @@ where
     K: Key,
     V: Value,
 {
-    fn execute(&mut self, mut transaction: writer::Transaction, writer: &mut dyn object::Writer) {
+    fn execute(&mut self, transaction: &mut writer::Transaction, writer: &mut dyn object::Writer) {
         self.field.for_each(|key, value| {
             let ptr = object::serializer::write(
                 writer,

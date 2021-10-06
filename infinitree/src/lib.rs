@@ -17,7 +17,7 @@ pub use crate::index::Index;
 pub use crate::object::ObjectId;
 
 pub use chunks::ChunkPointer;
-pub use crypto::{chunk_hash, ChunkKey, Digest, IndexKey, Key};
+pub use crypto::{secure_hash, ChunkKey, Digest, IndexKey, Key};
 pub use tree::Infinitree;
 
 pub use anyhow;

@@ -17,10 +17,10 @@
 //! To learn more about index internals, see the module documentation
 //! in the [`index`](super) module.
 
-use super::{reader, writer, Field, FieldReader, TransactionList};
+use super::{reader, writer, FieldReader, FieldWriter, TransactionList};
 use crate::object;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{cmp::Eq, hash::Hash};
+use std::{cmp::Eq, hash::Hash, sync::Arc};
 
 /// A marker trait for values that can be serialized and used as a
 /// value for an index field.
@@ -53,6 +53,8 @@ pub use serialized::Serialized;
 mod versioned;
 pub use versioned::VersionedMap;
 
+pub type List<T> = Arc<parking_lot::RwLock<Vec<T>>>;
+
 /// Store data into the index.
 ///
 /// This trait is usually implemented on a type that also implements
@@ -68,7 +70,7 @@ pub trait Store {
     ///
     /// Typically, the [`ChunkPointer`][crate::ChunkPointer] values returned by `object`
     /// should be stored in the index.
-    fn execute(&mut self, transaction: writer::Transaction, object: &mut dyn object::Writer);
+    fn execute(&mut self, transaction: &mut writer::Transaction, object: &mut dyn object::Writer);
 }
 
 /// Load all data from the index field into memory.
@@ -94,7 +96,7 @@ pub trait Load {
     /// that's being restored.
     fn load(
         &mut self,
-        index: &mut reader::Reader,
+        index: &reader::Reader,
         object: &mut dyn object::Reader,
         transaction_list: TransactionList,
     );
@@ -107,7 +109,7 @@ where
     #[inline(always)]
     fn load(
         &mut self,
-        reader: &mut reader::Reader,
+        reader: &reader::Reader,
         object: &mut dyn object::Reader,
         transaction_list: TransactionList,
     ) {
@@ -140,7 +142,7 @@ pub trait Select {
     /// that's being restored.
     fn select(
         &mut self,
-        index: &mut reader::Reader,
+        index: &reader::Reader,
         object: &mut dyn object::Reader,
         transaction_list: TransactionList,
         predicate: impl Fn(&Self::Key) -> QueryAction,
@@ -201,41 +203,41 @@ pub trait Collection {
 }
 
 pub trait TransactionResolver {
-    fn resolve(
-        index: &mut reader::Reader,
+    fn resolve<'r, R: 'r + AsRef<reader::Reader>>(
+        index: R,
         transactions: TransactionList,
-    ) -> Box<dyn Iterator<Item = reader::Transaction> + '_>;
+    ) -> Box<dyn Iterator<Item = reader::Transaction> + 'r>;
 }
 
 pub struct FullHistory;
 pub struct FirstOnly;
 
 #[inline(always)]
-fn full_history(
-    index: &mut reader::Reader,
+fn full_history<'r>(
+    index: impl AsRef<reader::Reader> + 'r,
     transactions: TransactionList,
-) -> impl Iterator<Item = reader::Transaction> + '_ {
+) -> impl Iterator<Item = reader::Transaction> + 'r {
     transactions
         .into_iter()
-        .map(move |(gen, field, objectid)| index.transaction(field, &objectid).unwrap())
+        .map(move |(_gen, field, objectid)| index.as_ref().transaction(field, &objectid).unwrap())
 }
 
 impl TransactionResolver for FullHistory {
     #[inline(always)]
-    fn resolve(
-        index: &mut reader::Reader,
+    fn resolve<'r, R: 'r + AsRef<reader::Reader>>(
+        index: R,
         transactions: TransactionList,
-    ) -> Box<dyn Iterator<Item = reader::Transaction> + '_> {
+    ) -> Box<dyn Iterator<Item = reader::Transaction> + 'r> {
         Box::new(full_history(index, transactions))
     }
 }
 
 impl TransactionResolver for FirstOnly {
     #[inline(always)]
-    fn resolve(
-        index: &mut reader::Reader,
+    fn resolve<'r, R: 'r + AsRef<reader::Reader>>(
+        index: R,
         transactions: TransactionList,
-    ) -> Box<dyn Iterator<Item = reader::Transaction> + '_> {
+    ) -> Box<dyn Iterator<Item = reader::Transaction> + 'r> {
         Box::new(full_history(index, transactions).take(1))
     }
 }
@@ -287,7 +289,7 @@ impl<T: Load + 'static> From<Access<Box<T>>> for Access<Box<dyn Load>> {
 
 /// Allows decoupling a storage strategy for index fields from the
 /// in-memory representation.
-pub trait Strategy<T: Send>: Send {
+pub trait Strategy<T: Send + Sync>: Send + Sync {
     /// Instantiate a new `Strategy`.
     fn for_field(field: &T) -> Self
     where
@@ -300,7 +302,7 @@ pub struct SparseField<Field> {
     field: Field,
 }
 
-impl<T: Send + Clone> Strategy<T> for SparseField<T> {
+impl<T: Send + Sync + Clone> Strategy<T> for SparseField<T> {
     #[inline(always)]
     fn for_field(field: &'_ T) -> Self {
         SparseField {
@@ -314,7 +316,7 @@ pub struct LocalField<Field> {
     field: Field,
 }
 
-impl<T: Send + Clone> Strategy<T> for LocalField<T> {
+impl<T: Send + Sync + Clone> Strategy<T> for LocalField<T> {
     #[inline(always)]
     fn for_field(field: &T) -> Self {
         LocalField {
@@ -331,16 +333,53 @@ where
 
     fn select(
         &mut self,
-        index: &mut reader::Reader,
+        index: &reader::Reader,
         object: &mut dyn object::Reader,
         transaction_list: TransactionList,
         predicate: impl Fn(&Self::Key) -> QueryAction,
     ) {
+        let predicate = Arc::new(predicate);
         for transaction in T::TransactionResolver::resolve(index, transaction_list) {
-            let mut iter = QueryIterator::new(transaction, object, &predicate, self);
+            let mut iter = QueryIterator::new(transaction, object, predicate.clone(), self);
             while let Some(item) = iter.next() {
                 self.insert(item);
             }
         }
+    }
+}
+
+impl<T> Store for LocalField<List<T>>
+where
+    T: Value,
+{
+    fn execute(&mut self, transaction: &mut writer::Transaction, _object: &mut dyn object::Writer) {
+        for v in self.field.read().iter() {
+            transaction.write_next(v);
+        }
+    }
+}
+
+impl<T> Collection for LocalField<List<T>>
+where
+    T: Value + Clone,
+{
+    type TransactionResolver = FirstOnly;
+
+    type Key = T;
+
+    type Serialized = T;
+
+    type Item = T;
+
+    fn key(from: &Self::Serialized) -> &Self::Key {
+        from
+    }
+
+    fn load(from: Self::Serialized, _object: &mut dyn object::Reader) -> Self::Item {
+        from
+    }
+
+    fn insert(&mut self, record: Self::Item) {
+        self.field.write().push(record);
     }
 }

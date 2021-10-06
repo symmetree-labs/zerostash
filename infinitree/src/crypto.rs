@@ -44,7 +44,7 @@ pub type IndexKey = ObjectOperations;
 pub type ChunkKey = ObjectOperations;
 
 #[inline]
-pub fn chunk_hash(content: &[u8]) -> Digest {
+pub fn secure_hash(content: &[u8]) -> Digest {
     let mut output = Digest::default();
 
     output.copy_from_slice(

@@ -27,11 +27,8 @@ pub use reader::ReadError;
 pub(crate) use reader::Reader;
 pub(crate) use writer::Writer;
 
-/// A collection to store object lists for fields
-pub(crate) type ObjectIndex = Map<Field, Vec<ObjectId>>;
-
 /// A representation of a generation within the tree
-pub(crate) type Generation = usize;
+pub(crate) type Generation = Digest;
 
 /// A list of transactions, represented in order, for versions and fields
 pub(crate) type TransactionList = Vec<(Generation, Field, ObjectId)>;
@@ -65,81 +62,7 @@ pub trait Index: Send + Sync {
     fn load_all(&mut self) -> anyhow::Result<Vec<Access<Box<dyn Load>>>>;
 }
 
-pub(crate) trait IndexExt: Index {
-    fn load_all_from(
-        &mut self,
-        oid: ObjectId,
-        index: &mut Reader,
-        object: &mut dyn crate::object::Reader,
-    ) -> anyhow::Result<()> {
-        for mut action in self.load_all()?.drain(..) {
-            self.load(oid, index, object, &mut action);
-        }
-        Ok(())
-    }
-
-    fn commit(
-        &mut self,
-        index: &mut Writer,
-        object: &mut dyn crate::object::Writer,
-    ) -> anyhow::Result<ObjectIndex> {
-        let oi_update =
-            self.store_all()?
-                .drain(..)
-                .fold(ObjectIndex::default(), |oi, mut action| {
-                    oi.insert(
-                        action.name.clone(),
-                        self.store(index, object, &mut action).to_vec(),
-                    );
-                    oi
-                });
-
-        index.seal_and_store();
-        Ok(oi_update)
-    }
-
-    fn store<'indexwriter>(
-        &self,
-        index: &'indexwriter mut Writer,
-        object: &mut dyn crate::object::Writer,
-        field: &mut Access<Box<dyn Store>>,
-    ) -> &'indexwriter [ObjectId] {
-        field
-            .strategy
-            .execute(index.transaction(&field.name), object);
-
-        index.transaction_objects()
-    }
-
-    fn load(
-        &self,
-        oid: ObjectId,
-        index: &mut Reader,
-        object: &mut dyn crate::object::Reader,
-        field: &mut Access<Box<dyn Load>>,
-    ) {
-        field
-            .strategy
-            .load(index, object, vec![(1, field.name.clone(), oid)]);
-    }
-
-    fn query<K>(
-        &self,
-        oid: ObjectId,
-        index: &mut Reader,
-        object: &mut dyn crate::object::Reader,
-        mut field: Access<Box<impl Select<Key = K>>>,
-        pred: impl Fn(&K) -> QueryAction,
-    ) {
-        field
-            .strategy
-            .select(index, object, vec![(1, field.name.clone(), oid)], pred);
-    }
-}
-
-impl<T> IndexExt for T where T: Index {}
-
-/// Allows serializing an individual records of an infinite collection.
+/// Allows serializing individual records of an infinite collection.
 ///
 /// Implemented by a [`writer::Transaction`]. There's no need to implement this yourself.
 pub trait FieldWriter: Send {
@@ -158,6 +81,89 @@ pub trait FieldReader: Send {
 impl FieldReader for Decoder {
     fn read_next<T: DeserializeOwned>(&mut self) -> Result<T, Box<dyn Error>> {
         Ok(T::deserialize(self)?)
+    }
+}
+
+impl<T> IndexExt for T where T: Index {}
+
+/// This is just a convenience layer to handle direct operations on an index
+///
+/// All of these functions are mirrored in [`Infinitree`] in a way
+/// that's automatically handling reader/writer management & versions
+///
+/// In the future it may be worth exposing this more low-level interface
+pub(crate) trait IndexExt: Index {
+    fn load_all_from(
+        &mut self,
+        full_transaction_list: &TransactionList,
+        index: &Reader,
+        object: &mut dyn crate::object::Reader,
+    ) -> anyhow::Result<()> {
+        // #accidentallyquadratic
+
+        for action in self.load_all()?.iter_mut() {
+            let commits_for_field = full_transaction_list
+                .iter()
+                .filter(|(_, name, _)| name == &action.name)
+                .cloned()
+                .collect::<Vec<_>>();
+
+            self.load(commits_for_field, index, object, action);
+        }
+        Ok(())
+    }
+
+    fn commit(
+        &mut self,
+        index: &mut Writer,
+        object: &mut dyn crate::object::Writer,
+    ) -> anyhow::Result<(Generation, Vec<(Field, ObjectId)>)> {
+        let log = self
+            .store_all()?
+            .drain(..)
+            .map(|mut action| (action.name.clone(), self.store(index, object, &mut action)))
+            .collect();
+
+        let version = crate::crypto::secure_hash(&crate::serialize_to_vec(&log)?);
+
+        index.seal_and_store();
+        Ok((version, log))
+    }
+
+    fn store<'indexwriter>(
+        &self,
+        index: &'indexwriter mut Writer,
+        object: &mut dyn crate::object::Writer,
+        field: &mut Access<Box<dyn Store>>,
+    ) -> ObjectId {
+        let mut tr = index.transaction(&field.name);
+
+        field.strategy.execute(&mut tr, object);
+
+        tr.finish()
+    }
+
+    fn load(
+        &self,
+        commits_for_field: TransactionList,
+        index: &Reader,
+        object: &mut dyn crate::object::Reader,
+        field: &mut Access<Box<dyn Load>>,
+    ) {
+        field.strategy.load(index, object, commits_for_field);
+    }
+
+    fn select<K>(
+        &self,
+        commits_for_field: TransactionList,
+        index: &Reader,
+        object: &mut dyn crate::object::Reader,
+        mut field: Access<Box<impl Select<Key = K>>>,
+        pred: impl Fn(&K) -> QueryAction,
+    ) {
+        field
+            .strategy
+            .select(index, object, commits_for_field, pred);
     }
 }
 

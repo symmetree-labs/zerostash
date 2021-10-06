@@ -15,7 +15,7 @@ pub fn write<'writer, T: Serialize, W: 'writer + Writer + ?Sized>(
 ) -> Result<SizedPointer> {
     let d = (serialize)(obj)?;
     let data_size = d.len();
-    let hash = crate::crypto::chunk_hash(&d);
+    let hash = crate::crypto::secure_hash(&d);
     let chunk = writer.write_chunk(&hash, &d)?;
 
     Ok(SizedPointer { chunk, data_size })

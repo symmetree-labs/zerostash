@@ -18,6 +18,13 @@ use std::{
 
 pub struct Transaction<'writer> {
     writer: &'writer mut Writer,
+    start_object: ObjectId,
+}
+
+impl<'writer> Transaction<'writer> {
+    pub(crate) fn finish(self) -> ObjectId {
+        self.start_object
+    }
 }
 
 impl<'writer> FieldWriter for Transaction<'writer> {
@@ -77,7 +84,6 @@ pub(crate) type Result<T> = std::result::Result<T, io::Error>;
 pub(crate) struct Writer {
     offsets: Vec<FieldOffset>,
     encoder: WriteState,
-    current_objects: Vec<ObjectId>,
     current_field: Option<FieldOffset>,
 
     backend: Arc<dyn Backend>,
@@ -98,38 +104,16 @@ impl<'writer> Writer {
         Ok(Writer {
             encoder: WriteState::Parked(object),
             offsets: vec![],
-            current_objects: vec![],
             current_field: None,
             backend,
             crypto,
         })
     }
 
-    pub(crate) fn resume(
-        object: WriteObject,
-        offsets: Vec<FieldOffset>,
-        backend: Arc<dyn Backend>,
-        crypto: IndexKey,
-    ) -> Self {
-        Writer {
-            encoder: WriteState::Parked(object),
-            offsets,
-            current_objects: vec![],
-            current_field: None,
-            backend,
-            crypto,
-        }
-    }
-
-    pub(crate) fn transaction_objects(&self) -> &Vec<ObjectId> {
-        &self.current_objects
-    }
-
     pub(crate) fn transaction(&'writer mut self, name: &str) -> Transaction<'writer> {
         let oid = *self.encoder.writer().unwrap().id();
 
-        self.current_objects.clear();
-        self.current_objects.push(oid);
+        let start_object = oid;
 
         self.encoder.start().unwrap();
 
@@ -144,7 +128,10 @@ impl<'writer> Writer {
             self.current_field
         );
 
-        Transaction { writer: self }
+        Transaction {
+            writer: self,
+            start_object,
+        }
     }
 
     pub(crate) fn seal_and_store(&mut self) {

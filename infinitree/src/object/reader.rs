@@ -40,7 +40,7 @@ impl Reader for AEADReader {
             object.id(),
             pointer.as_raw(),
         );
-        compress::decompress_into(buf, target, 0)?;
+        compress::decompress_into(buf, target)?;
         Ok(())
     }
 }

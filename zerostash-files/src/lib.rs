@@ -27,7 +27,7 @@ pub struct Files {
 impl Files {
     fn list<'a>(
         &'a self,
-        stash: &Infinitree<Files>,
+        stash: &'a Infinitree<Files>,
         glob: &'a [impl AsRef<str>],
     ) -> stash::restore::FileIterator<'a> {
         let matchers = glob

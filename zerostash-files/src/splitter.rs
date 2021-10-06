@@ -1,5 +1,5 @@
 use crate::rollsum::Rollsum;
-use infinitree::{chunk_hash, Digest};
+use infinitree::{secure_hash, Digest};
 
 use std::marker::PhantomData;
 
@@ -38,7 +38,7 @@ where
         let data = &self.data[start..start + end];
         self.cur += end;
 
-        Some((start as u64, chunk_hash(data), data))
+        Some((start as u64, secure_hash(data), data))
     }
 }
 

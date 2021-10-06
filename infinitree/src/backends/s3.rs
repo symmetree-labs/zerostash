@@ -3,6 +3,7 @@ use crate::object::{Object, ObjectId, ReadBuffer, ReadObject, WriteObject};
 
 use dashmap::DashMap;
 use lru::LruCache;
+use parking_lot::RwLock;
 use rusoto_core::Region;
 use rusoto_s3::{GetObjectRequest, PutObjectOutput, PutObjectRequest, S3Client, S3};
 use tokio::{
@@ -15,7 +16,7 @@ use std::{
     fs::{self, read_dir, DirEntry},
     num::NonZeroUsize,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::SystemTime,
 };
 
@@ -47,7 +48,7 @@ impl Backend for InMemoryS3 {
         let body = Some(object.as_inner().to_vec().into());
         let key = object.id().to_string();
 
-        self.handles.write().unwrap().push((
+        self.handles.write().push((
             *object.id(),
             task::spawn(async move {
                 client

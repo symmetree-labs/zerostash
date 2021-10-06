@@ -99,6 +99,14 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
         })
         .collect::<TokenStream>();
 
+    let field_name_list = fields
+        .iter()
+        .map(|f| {
+            let field_name_str = Lit::Str(LitStr::new(f.rename.as_str(), Span::mixed_site()));
+            quote! { #field_name_str.into(), }
+        })
+        .collect::<TokenStream>();
+
     let st_name = input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
@@ -107,7 +115,12 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
         #[automatically_derived]
         impl #impl_generics #st_name #ty_generics #where_clause {
             #getters
+
+            pub fn fields(&self) -> Vec<String> {
+                vec![#field_name_list]
+            }
         }
+
 
         impl #infinitree_crate::Index for #impl_generics #st_name #ty_generics #where_clause {
             fn store_all(&'_ mut self) -> #infinitree_crate::anyhow::Result<Vec<#infinitree_crate::index::Access<Box<dyn #infinitree_crate::index::Store>>>> {

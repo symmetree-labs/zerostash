@@ -72,7 +72,7 @@ impl Writer for AEADWriter {
         let oid = *self.object.id();
         let (size, tag) = {
             let buffer = self.object.tail_mut();
-            let size = compress::compress_into(data, buffer, 0)?;
+            let size = compress::compress_into(data, buffer)?;
             let tag = self.crypto.encrypt_chunk(&oid, hash, &mut buffer[..size]);
 
             (size, tag)

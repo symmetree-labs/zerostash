@@ -1,20 +1,36 @@
 use crate::{
     index::{
         self,
-        fields::{self, QueryIteratorOwned},
-        Access, Collection, Index, IndexExt, Load, ObjectIndex, QueryAction, Select, Serialized,
-        Store,
+        fields::{self, QueryIteratorOwned, Serialized},
+        Access, Collection, Generation, Index, IndexExt, Load, QueryAction, Select, Store,
+        TransactionList, TransactionResolver,
     },
     object::{AEADReader, AEADWriter},
     Backend, Key, ObjectId,
 };
-use anyhow::{Context, Result};
+use anyhow::Result;
+use chrono::{DateTime, Utc};
 use std::sync::Arc;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct CommitMetadata {
+    generation: Generation,
+    message: Option<String>,
+    time: DateTime<Utc>,
+}
 
 #[derive(Default, crate::Index)]
 struct RootIndex {
-    objects: ObjectIndex,
-    last_written: Serialized<Option<ObjectId>>,
+    /// Transaction log of individual fields included in each
+    /// generation.
+    ///
+    /// The last generation's transactions are at _the front_, so
+    /// looping through this naively will yield the last commit
+    /// _first_.
+    transaction_log: Serialized<TransactionList>,
+
+    /// Chronologically ordered list of commits
+    commit_metadata: Serialized<Vec<CommitMetadata>>,
 }
 
 pub struct Infinitree<I> {
@@ -38,15 +54,15 @@ impl<I: Index + Default> Infinitree<I> {
 
         Ok(Self {
             root,
-            index: I::default(),
             backend,
             master_key,
+            index: I::default(),
         })
     }
 }
 
-fn open_root<I: Index>(
-    root: &mut I,
+fn open_root(
+    root: &mut RootIndex,
     backend: Arc<dyn Backend>,
     master_key: &Key,
     root_object: ObjectId,
@@ -54,66 +70,67 @@ fn open_root<I: Index>(
     let mut reader = index::Reader::new(backend.clone(), master_key.get_meta_key()?);
 
     root.load_all_from(
-        root_object,
+        &root
+            .fields()
+            .iter()
+            .cloned()
+            .map(|fname| (crate::Digest::default(), fname, root_object.clone()))
+            .collect::<TransactionList>(),
         &mut reader,
         &mut AEADReader::new(backend.clone(), master_key.get_object_key()?),
     )?;
 
-    Ok(())
-}
+    println!("restored: {:?}", root.transaction_log.read());
 
-fn merge_object_index(base: ObjectIndex, changeset: ObjectIndex) {
-    // Note: This must be safe to unwrap, as we expect changeset to be
-    // a unique object.
-    changeset.for_each(|key, value| {
-        if let None = base.update_with(key, |_, v| {
-            let v_mut = Arc::get_mut(v).unwrap();
-            v_mut.extend(value.iter());
-            v_mut.dedup();
-        }) {
-            base.insert(key.to_owned(), value.to_owned());
-        }
-    });
+    Ok(())
 }
 
 impl<I: Index> Infinitree<I> {
     pub fn with_key(backend: Arc<dyn Backend>, index: I, master_key: Key) -> Self {
         Self {
-            root: RootIndex::default(),
             backend,
             index,
             master_key,
+            root: RootIndex::default(),
         }
     }
 
     pub fn load_all(&mut self) -> Result<()> {
-        let mut index = self.meta_reader()?; // TODO WTF
-        let mut object = self.object_reader()?; // TODO WTF
-
-        for mut action in self.index.load_all()?.drain(..) {
-            for oid in Arc::make_mut(&mut self.root.objects.get(&action.name).unwrap_or_default())
-                .drain(..)
-            {
-                self.index.load(oid, &mut index, &mut object, &mut action);
-            }
-        }
-
-        Ok(())
+        self.index.load_all_from(
+            &self.root.transaction_log.read(),
+            &self.meta_reader()?,
+            &mut self.object_reader()?,
+        )
     }
 
-    pub fn commit(&mut self) -> Result<()> {
+    pub fn commit(&mut self, message: Option<String>) -> Result<()> {
         let key = self.master_key.get_meta_key()?;
-        let start_meta = self
-            .root
-            .last_written
-            .unwrap_or_else(|| ObjectId::new(&key));
+        let start_meta = ObjectId::new(&key);
 
         let mut index = index::Writer::new(start_meta, self.backend.clone(), key.clone())?;
         let mut object = self.object_writer()?;
 
-        let changeset = self.index.commit(&mut index, &mut object)?;
+        let (generation, changeset) = self.index.commit(&mut index, &mut object)?;
 
-        merge_object_index(self.root.objects.clone(), changeset);
+        // scope for rewriting history. this is critical, the log is locked.
+        {
+            let mut tr_log = self.root.transaction_log.write();
+            let size = tr_log.len() + changeset.len();
+            let history = std::mem::replace(&mut *tr_log, Vec::with_capacity(size));
+
+            tr_log.extend(
+                changeset
+                    .into_iter()
+                    .map(|(field, oid)| (generation, field, oid)),
+            );
+            tr_log.extend(history);
+        }
+
+        self.root.commit_metadata.write().push(CommitMetadata {
+            generation,
+            message,
+            time: Utc::now(),
+        });
 
         let mut index =
             index::Writer::new(self.master_key.root_object_id()?, self.backend.clone(), key)?;
@@ -123,85 +140,87 @@ impl<I: Index> Infinitree<I> {
         Ok(())
     }
 
-    fn store_start_object(&self, _name: &str) -> ObjectId {
-        ObjectId::new(&self.master_key.get_meta_key().unwrap())
-    }
-
-    fn query_start_object(&self, name: &str) -> Option<ObjectId> {
-        self.root
-            .objects
-            .get(name)
-            .map(|v| v.first().cloned())
-            .flatten()
-    }
-
-    pub fn store(&self, field: impl Into<Access<Box<dyn Store>>>) -> Result<()> {
+    pub fn store(&self, field: impl Into<Access<Box<dyn Store>>>) -> Result<ObjectId> {
         let mut field = field.into();
         let start_object = self.store_start_object(&field.name);
 
-        self.index.store(
+        Ok(self.index.store(
             &mut self.meta_writer(start_object)?,
             &mut self.object_writer()?,
             &mut field,
-        );
-        Ok(())
+        ))
     }
 
     pub fn load(&self, field: impl Into<Access<Box<dyn Load>>>) -> Result<()> {
         let mut field = field.into();
+        let commits_for_field = self.field_for_version(&field.name);
 
-        self.index.load(
-            self.query_start_object(&field.name)
-                .context("Empty index")?,
-            &mut self.meta_reader()?,
+        field.strategy.load(
+            &self.meta_reader()?,
             &mut self.object_reader()?,
-            &mut field,
+            commits_for_field,
         );
+
         Ok(())
     }
 
     pub fn select<K>(
         &self,
-        field: Access<Box<impl Select<Key = K>>>,
+        mut field: Access<Box<impl Select<Key = K>>>,
         pred: impl Fn(&K) -> QueryAction,
     ) -> Result<()> {
-        self.index.query(
-            self.query_start_object(&field.name)
-                .context("Empty index")?,
-            &mut self.meta_reader()?,
+        let commits_for_field = self.field_for_version(&field.name);
+
+        field.strategy.select(
+            &self.meta_reader()?,
             &mut self.object_reader()?,
-            field,
+            commits_for_field,
             pred,
         );
+
         Ok(())
     }
 
     pub fn query<K, O, Q>(
         &self,
         mut field: Access<Box<Q>>,
-        pred: impl Fn(&K) -> QueryAction,
-    ) -> Result<impl Iterator<Item = O>>
+        pred: impl Fn(&K) -> QueryAction + 'static,
+    ) -> Result<impl Iterator<Item = O> + '_>
     where
         for<'de> <Q as fields::Collection>::Serialized: serde::Deserialize<'de>,
-        Q: Collection<Key = K, Item = O>,
+        Q: Collection<Key = K, Item = O> + 'static,
     {
+        let pred = Arc::new(pred);
         let index = self.meta_reader()?;
         let object = self.object_reader()?;
-        let iter = QueryIteratorOwned::new(
-            index
-                .transaction(
-                    &field.name,
-                    &self
-                        .query_start_object(&field.name)
-                        .context("Empty index")?,
-                )
-                .unwrap(),
-            object,
-            pred,
-            field.strategy.as_mut(),
-        );
+        let commits_for_field = self.field_for_version(&field.name);
 
-        Ok(iter)
+        Ok(
+            <Q as Collection>::TransactionResolver::resolve(index, commits_for_field)
+                .map(move |transaction| {
+                    QueryIteratorOwned::new(
+                        transaction,
+                        object.clone(),
+                        pred.clone(),
+                        field.strategy.as_mut(),
+                    )
+                })
+                .flatten(),
+        )
+    }
+
+    fn store_start_object(&self, _name: &str) -> ObjectId {
+        ObjectId::new(&self.master_key.get_meta_key().unwrap())
+    }
+
+    fn field_for_version(&self, field: &index::Field) -> TransactionList {
+        self.root
+            .transaction_log
+            .read()
+            .iter()
+            .filter(|(_, name, _)| name == field)
+            .cloned()
+            .collect::<Vec<_>>()
     }
 
     fn meta_writer(&self, start_object: ObjectId) -> Result<index::Writer> {

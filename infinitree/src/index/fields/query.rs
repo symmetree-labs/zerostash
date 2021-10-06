@@ -1,6 +1,6 @@
 use super::{reader, Collection, FieldReader};
 use crate::object;
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 /// Result of a query predicate.
 pub enum QueryAction {
@@ -15,7 +15,7 @@ pub enum QueryAction {
 pub(crate) struct QueryIteratorOwned<T, F, R> {
     transaction: reader::Transaction,
     object: R,
-    predicate: F,
+    predicate: Arc<F>,
     _fieldtype: PhantomData<T>,
 }
 
@@ -28,7 +28,7 @@ where
     pub fn new(
         mut transaction: reader::Transaction,
         mut object: R,
-        predicate: F,
+        predicate: Arc<F>,
         field: &mut T,
     ) -> Self {
         field.load_head(&mut transaction, &mut object);
@@ -68,7 +68,7 @@ where
 pub(crate) struct QueryIterator<'reader, T, F> {
     transaction: reader::Transaction,
     object: &'reader mut dyn object::Reader,
-    predicate: F,
+    predicate: Arc<F>,
     _fieldtype: PhantomData<T>,
 }
 
@@ -80,7 +80,7 @@ where
     pub fn new(
         mut transaction: reader::Transaction,
         object: &'reader mut dyn object::Reader,
-        predicate: F,
+        predicate: Arc<F>,
         field: &mut T,
     ) -> Self {
         field.load_head(&mut transaction, object);

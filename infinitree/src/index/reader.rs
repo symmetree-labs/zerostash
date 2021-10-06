@@ -41,7 +41,7 @@ pub type Result<T> = std::result::Result<T, ReadError>;
 
 #[derive(Clone)]
 pub struct Reader {
-    inner: Object<BlockBuffer>,
+    inner: Arc<Object<BlockBuffer>>,
     header: Option<Header>,
     backend: Arc<dyn Backend>,
     crypto: IndexKey,
@@ -50,7 +50,7 @@ pub struct Reader {
 impl Reader {
     pub(crate) fn new(backend: Arc<dyn Backend>, crypto: IndexKey) -> Self {
         Reader {
-            inner: Object::default(),
+            inner: Arc::default(),
             header: None,
             backend,
             crypto,
@@ -60,13 +60,16 @@ impl Reader {
     pub(crate) fn open(&mut self, id: &ObjectId) -> Result<Header> {
         let obj = self.backend.read_object(id)?;
 
-        self.header = None;
-        self.inner.reset_cursor();
-        self.inner.set_id(*id);
-        self.crypto
-            .decrypt_object_into(self.inner.as_mut(), obj.as_inner(), obj.id());
+        let buffer = Arc::make_mut(&mut self.inner);
+        buffer.reset_cursor();
+        buffer.set_id(*id);
 
-        self.header = deserialize_from_slice(&self.inner).map_err(|_| ReadError::InvalidHeader)?;
+        self.header = None;
+        self.crypto
+            .decrypt_object_into(buffer.as_inner_mut(), obj.as_inner(), obj.id());
+
+        self.header =
+            deserialize_from_slice(buffer.as_inner()).map_err(|_| ReadError::InvalidHeader)?;
         self.header.clone().ok_or(ReadError::NoHeader)
     }
 
@@ -76,7 +79,7 @@ impl Reader {
             Some(ref header) => {
                 let frame_start = header.get_offset(name).ok_or(ReadError::NoField)? as usize;
 
-                let buffer: &[u8] = self.inner.as_ref();
+                let buffer: &[u8] = self.inner.as_inner();
                 let decompress =
                     compress::destream(Cursor::new(buffer[frame_start..header.end()].to_vec()));
 
@@ -86,11 +89,7 @@ impl Reader {
         }
     }
 
-    pub(crate) fn transaction(
-        &self,
-        field: impl Into<String>,
-        id: &ObjectId,
-    ) -> Result<Transaction> {
+    pub fn transaction(&self, field: impl Into<String>, id: &ObjectId) -> Result<Transaction> {
         Transaction::new(self.clone(), field.into(), id)
     }
 }
@@ -134,5 +133,11 @@ impl FieldReader for Transaction {
                 self.decoder.read_next()
             }
         }
+    }
+}
+
+impl AsRef<Self> for Reader {
+    fn as_ref(&self) -> &Self {
+        self
     }
 }
