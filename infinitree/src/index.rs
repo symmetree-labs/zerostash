@@ -185,36 +185,34 @@ mod tests {
         let crypto = crypto::ObjectOperations::new(key);
         let storage = Arc::new(backends::test::InMemoryBackend::default());
         let oid = ObjectId::new(&crypto);
-        let mut mw = super::Writer::new(oid, storage.clone(), crypto.clone()).unwrap();
 
         let chunks = ChunkIndex::default();
-        chunks
-            .entry(Digest::default())
-            .or_insert_with(|| ChunkPointer::default());
+        chunks.insert(Digest::default(), ChunkPointer::default());
 
-        Store::execute(
-            &mut LocalField::for_field(&chunks),
-            mw.transaction("chunks"),
-            &mut crate::object::AEADWriter::new(storage.clone(), crypto.clone()),
-        );
+        let object = {
+            let mut mw = super::Writer::new(oid, storage.clone(), crypto.clone()).unwrap();
+            let mut transaction = mw.transaction("chunks");
+            Store::execute(
+                &mut LocalField::for_field(&chunks),
+                &mut transaction,
+                &mut crate::object::AEADWriter::new(storage.clone(), crypto.clone()),
+            );
 
-        mw.seal_and_store();
-        let objects = mw.transaction_objects();
-        assert_eq!(objects.len(), 1);
+            let obj = transaction.finish();
+            mw.seal_and_store();
+
+            obj
+        };
 
         let chunks_restore = ChunkIndex::default();
         let mut reader = crate::object::AEADReader::new(storage.clone(), crypto.clone());
 
-        // this runs once according to the assert above
-        for id in objects.iter() {
-            Load::execute(
-                &mut LocalField::for_field(&chunks_restore),
-                super::Reader::new(storage.clone(), crypto.clone())
-                    .transaction("chunks", id)
-                    .unwrap(),
-                &mut reader,
-            );
-        }
+        Load::load(
+            &mut LocalField::for_field(&chunks_restore),
+            &mut super::Reader::new(storage.clone(), crypto.clone()),
+            &mut reader,
+            vec![(Digest::default(), "chunks".into(), object)],
+        );
 
         assert_eq!(chunks_restore.len(), 1);
     }
