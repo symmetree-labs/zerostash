@@ -67,16 +67,16 @@ fn open_root(
     master_key: &Key,
     root_object: ObjectId,
 ) -> Result<()> {
-    let mut reader = index::Reader::new(backend.clone(), master_key.get_meta_key()?);
+    let reader = index::Reader::new(backend.clone(), master_key.get_meta_key()?);
 
     root.load_all_from(
         &root
             .fields()
             .iter()
             .cloned()
-            .map(|fname| (crate::Digest::default(), fname, root_object.clone()))
+            .map(|fname| (crate::Digest::default(), fname, root_object))
             .collect::<TransactionList>(),
-        &mut reader,
+        &reader,
         &mut AEADReader::new(backend.clone(), master_key.get_object_key()?),
     )?;
 

@@ -32,14 +32,11 @@ impl AEADReader {
 impl Reader for AEADReader {
     fn read_chunk(&mut self, pointer: &ChunkPointer, target: &mut [u8]) -> Result<()> {
         let object = self.backend.read_object(pointer.object_id())?;
-        let mut cryptbuf: &mut [u8] = self.buffer.as_inner_mut();
+        let cryptbuf: &mut [u8] = self.buffer.as_inner_mut();
 
-        let buf = self.crypto.decrypt_chunk(
-            &mut cryptbuf,
-            object.as_inner(),
-            object.id(),
-            pointer.as_raw(),
-        );
+        let buf =
+            self.crypto
+                .decrypt_chunk(cryptbuf, object.as_inner(), object.id(), pointer.as_raw());
         compress::decompress_into(buf, target)?;
         Ok(())
     }

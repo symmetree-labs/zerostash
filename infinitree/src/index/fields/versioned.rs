@@ -36,7 +36,7 @@ where
     #[inline(always)]
     pub fn insert(&self, key: K, value: impl Into<Arc<V>>) -> Arc<V> {
         match self.get(&key) {
-            Some(v) => v.clone(),
+            Some(v) => v,
             None => {
                 let new = value.into();
 
@@ -55,7 +55,7 @@ where
     #[inline(always)]
     pub fn insert_with(&self, key: K, new: impl Fn() -> V) -> Arc<V> {
         match self.get(&key) {
-            Some(v) => v.clone(),
+            Some(v) => v,
             None => {
                 let result = Cell::new(None);
 
@@ -148,12 +148,12 @@ where
 
         self.base.for_each(|k, v: &mut Action<V>| {
             if let Some(value) = v {
-                (callback)(k, Arc::as_ref(&value));
+                (callback)(k, Arc::as_ref(value));
             }
         });
         self.current.for_each(|k, v: &mut Action<V>| {
             if let Some(value) = v {
-                (callback)(k, Arc::as_ref(&value));
+                (callback)(k, Arc::as_ref(value));
             }
         });
     }
@@ -181,6 +181,15 @@ where
     #[inline(always)]
     pub fn capacity(&self) -> usize {
         self.base.capacity() + self.current.capacity()
+    }
+
+    /// True if the number of additions to the map is zero
+    ///
+    /// Since `VersionedMap` is tracking _changes_, `is_empty()` may
+    /// return `true` even if a non-zero amount of memory is being
+    /// used.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -268,11 +277,8 @@ where
         // therefore:
         // 1. do not insert a key if it already exists
         // 2. do not restore a removed key
-        match record.1 {
-            value @ Some(..) => {
-                let _ = self.field.base.insert(record.0, value.clone());
-            }
-            None => (),
+        if let value @ Some(..) = record.1 {
+            let _ = self.field.base.insert(record.0, value);
         }
     }
 }

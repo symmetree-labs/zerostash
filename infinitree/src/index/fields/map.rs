@@ -92,16 +92,22 @@ where
         });
     }
 
-    /// Returns the number of additive keys
+    /// Returns the number of keys.
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    /// Return the size of all allocated items
+    /// Return the size of all allocated items.
     #[inline(always)]
     pub fn capacity(&self) -> usize {
         self.0.capacity()
+    }
+
+    /// True if the map doesn't contain any items.
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.0.len() == 0
     }
 }
 

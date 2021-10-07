@@ -340,8 +340,8 @@ where
     ) {
         let predicate = Arc::new(predicate);
         for transaction in T::TransactionResolver::resolve(index, transaction_list) {
-            let mut iter = QueryIterator::new(transaction, object, predicate.clone(), self);
-            while let Some(item) = iter.next() {
+            let iter = QueryIterator::new(transaction, object, predicate.clone(), self);
+            for item in iter {
                 self.insert(item);
             }
         }
