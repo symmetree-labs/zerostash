@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0"
-clap = "3.0.0-beta.2"
+clap = "3.0.0-beta.4"
 infinitree = { path = "../infinitree" }
 zerostash-files = { path = "../zerostash-files" }
 num_cpus = "1.13.0"
@@ -19,14 +19,10 @@ toml = "0.5"
 xdg = "2.2"
 
 [dependencies.abscissa_tokio]
-git = "https://github.com/rsdy/abscissa"
-package = "abscissa_tokio"
-branch = "main" 
+version = "=0.6.0-pre.3"
 
 [dependencies.abscissa_core]
-git = "https://github.com/rsdy/abscissa"
-package = "abscissa_core"
-branch = "main" 
+version = "=0.6.0-pre.2"
 
 #version = "0.5.0"
 # optional: use `gimli` to capture backtraces
@@ -34,7 +30,7 @@ branch = "main"
 # features = ["gimli-backtrace"]
 
 [dev-dependencies]
-abscissa_core = { git = "https://github.com/rsdy/abscissa", package = "abscissa_core", features = ["testing"], branch = "main" }
-abscissa_tokio = { git = "https://github.com/rsdy/abscissa", package = "abscissa_tokio", branch = "main" }
+abscissa_core = { version = "0.6.0-pre.2", features = ["testing"] }
+abscissa_tokio = { version = "0.6.0-pre.3" }
 once_cell = "1.5"
 
