@@ -79,7 +79,7 @@ where
     }
 
     #[inline(always)]
-    pub fn update_with(&self, key: K, new: impl Fn(Arc<V>) -> V) -> Action<V> {
+    pub fn update_with(&self, key: K, update: impl Fn(Arc<V>) -> V) -> Action<V> {
         match self.get(&key) {
             Some(existing) => {
                 let result = Cell::new(None);
@@ -87,12 +87,12 @@ where
                 self.current.upsert(
                     key,
                     || {
-                        let val = store(new(existing.clone()));
+                        let val = store(update(existing.clone()));
                         result.set(val.clone());
                         val
                     },
                     |_, v| {
-                        *v = store(new(v.as_ref().unwrap().clone()));
+                        *v = store(update(v.as_ref().unwrap().clone()));
                         result.set(v.clone())
                     },
                 );
@@ -154,6 +154,32 @@ where
         self.current.for_each(|k, v: &mut Action<V>| {
             if let Some(value) = v {
                 (callback)(k, Arc::as_ref(value));
+            }
+        });
+    }
+
+    /// Clear out the current changeset, and commit all changes to history.
+    ///
+    /// This operation potentially helps free some memory, but more
+    /// importantly any subsequent `Store` calls are going to be empty
+    /// until further additions or removals.
+    pub fn commit(&self) {
+        self.current.for_each(|k_ref, _| {
+            let (k, v_new) = self.current.remove(k_ref).unwrap();
+
+            // if the base doesn't have the key, and we're not
+            // removing it
+            if self
+                .base
+                .remove_if(k_ref, |_v_base| v_new.is_none())
+                .is_none()
+            {
+                // then make sure we store the new value
+                //
+                // cloning the value is safe and cheap, because
+                // it's always an Option<Arc<V>>
+                self.base
+                    .upsert(k, || v_new.clone(), |_, v| *v = v_new.clone());
             }
         });
     }
@@ -228,7 +254,9 @@ where
     fn execute(&mut self, transaction: &mut writer::Transaction, _object: &mut dyn object::Writer) {
         self.field.current.for_each(|k, v| {
             transaction.write_next((k, v));
-        })
+        });
+
+        self.field.commit();
     }
 }
 
@@ -304,6 +332,8 @@ where
                 .unwrap()
             });
             transaction.write_next((key, ptr));
-        })
+        });
+
+        self.field.commit();
     }
 }
