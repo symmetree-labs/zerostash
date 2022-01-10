@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use crate::files::{self, FileSet};
+use crate::{files, FileSet};
 use infinitree::{
     backends::Backend,
     object::{self, WriteObject},

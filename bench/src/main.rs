@@ -4,7 +4,7 @@
 use infinitree::{backends, Infinitree, Key};
 use zerostash_files::Files;
 
-use std::{collections::HashMap, env::args, fs::metadata, sync::Arc, time::Instant};
+use std::{collections::HashMap, env::args, fs::metadata, time::Instant};
 
 fn mb(m: f64) -> f64 {
     m / 1024.0 / 1024.0
@@ -38,10 +38,8 @@ async fn main() {
     // i am really, truly sorry for this. there must be a better way,
     // but i can't be bothered to find it
     let (store_time, commit_time, ol, fl, cl, creuse_sum, creuse_cnt, ssize, tlen, tsize) = {
-        let mut repo = Infinitree::<Files>::empty(
-            Arc::new(backends::Directory::new(&output).unwrap()),
-            (key)(),
-        );
+        let mut repo =
+            Infinitree::<Files>::empty(backends::Directory::new(&output).unwrap(), (key)());
 
         let store_start = Instant::now();
         repo.index()
@@ -51,7 +49,7 @@ async fn main() {
         let store_time = store_start.elapsed();
 
         let commit_start = Instant::now();
-        repo.commit(None).unwrap();
+        repo.commit("commit message").unwrap();
         let commit_time = commit_start.elapsed();
 
         // let objects = mobjects
@@ -133,11 +131,8 @@ async fn main() {
     );
 
     {
-        let mut repo: Infinitree<Files> = Infinitree::open(
-            Arc::new(backends::Directory::new(&output).unwrap()),
-            (key)(),
-        )
-        .unwrap();
+        let mut repo: Infinitree<Files> =
+            Infinitree::open(backends::Directory::new(&output).unwrap(), (key)()).unwrap();
 
         let read_start = Instant::now();
         repo.load_all().unwrap();

@@ -1,26 +1,22 @@
 #[macro_use]
 extern crate serde_derive;
 
-use infinitree::{
-    index::{ChunkIndex, QueryAction},
-    *,
-};
-
-use std::path::Path;
+use infinitree::{fields::QueryAction, *};
+use std::path::{Path, PathBuf};
 
 mod files;
 pub mod rollsum;
 pub mod splitter;
 mod stash;
 
-use files::FileSet;
-
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+type ChunkIndex = fields::VersionedMap<Digest, ChunkPointer>;
+type FileSet = fields::VersionedMap<PathBuf, files::Entry>;
 
 #[derive(Clone, Default, Index)]
 pub struct Files {
     pub chunks: ChunkIndex,
-    #[infinitree(strategy = "infinitree::index::SparseField")]
+    #[infinitree(strategy = "infinitree::fields::SparseField")]
     pub files: FileSet,
 }
 
@@ -38,7 +34,7 @@ impl Files {
         use QueryAction::{Skip, Take};
         Box::new(
             stash
-                .query(self.files(), move |fname| {
+                .iter(self.files(), move |fname| {
                     if matchers.iter().any(|m| m.matches(&fname.to_string_lossy())) {
                         Take
                     } else {

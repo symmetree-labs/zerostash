@@ -7,8 +7,6 @@ debug = false
 [workspace]
 members = [
     "bench",
-    "infinitree",
-    "infinitree-macros",
     "zerostash-files",
     "zerostash",
 ]
