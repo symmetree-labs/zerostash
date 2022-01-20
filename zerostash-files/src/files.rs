@@ -2,7 +2,7 @@ use infinitree::ChunkPointer;
 
 use std::{
     fs,
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
     sync::Arc,
     time::{SystemTimeError, UNIX_EPOCH},
 };
@@ -56,6 +56,7 @@ pub struct Entry {
     pub unix_uid: Option<u32>,
     pub unix_gid: Option<u32>,
     pub readonly: Option<bool>,
+    pub symlink: Option<PathBuf>,
 
     pub size: u64,
     pub name: String,
@@ -74,6 +75,7 @@ impl PartialEq for Entry {
             && self.size == other.size
             && self.readonly == other.readonly
             && self.name == other.name
+            && self.symlink == other.symlink
     }
 }
 
@@ -88,18 +90,19 @@ impl Entry {
         let path = path.as_ref();
         let (unix_secs, unix_nanos) = to_unix_mtime(&metadata)?;
 
-        Ok(File {
+        Ok(Entry {
             unix_secs,
             unix_nanos,
             unix_perm: 0,
             unix_uid: None,
             unix_gid: None,
-
-            readonly: if preserve_persmission {
-                metadata.permissions().readonly().into()
+            symlink: if metadata.is_symlink() {
+                fs::read_link(path).ok()
             } else {
                 None
             },
+
+            readonly: if_yes!(preserve_permissions, metadata.permissions().readonly()),
 
             size: metadata.len(),
             name: normalize_filename(path)?,
@@ -131,6 +134,11 @@ impl Entry {
             unix_uid: if_yes!(preserve_ownership, metadata.uid()),
             unix_gid: if_yes!(preserve_ownership, metadata.gid()),
             readonly: if_yes!(preserve_permissions, metadata.permissions().readonly()),
+            symlink: if metadata.is_symlink() {
+                fs::read_link(path).ok()
+            } else {
+                None
+            },
 
             size: metadata.len(),
             name: normalize_filename(&path)?,

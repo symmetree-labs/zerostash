@@ -1,19 +1,19 @@
 use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Files};
-use infinitree::{
-    object::{self, write_balancer::RoundRobinBalancer, Writer},
-    Infinitree,
-};
-
 use anyhow::Context;
 use flume as mpsc;
 use futures::future::join_all;
 use ignore::{DirEntry, WalkBuilder};
+use infinitree::{
+    object::{self, write_balancer::RoundRobinBalancer, Writer},
+    Infinitree,
+};
 use memmap2::{Mmap, MmapOptions};
+use std::path::PathBuf;
 use tokio::{fs, io::AsyncReadExt, task};
 use tracing::{error, trace, warn};
 
-type Sender = mpsc::Sender<(fs::File, files::Entry)>;
-type Receiver = mpsc::Receiver<(fs::File, files::Entry)>;
+type Sender = mpsc::Sender<(PathBuf, files::Entry)>;
+type Receiver = mpsc::Receiver<(PathBuf, files::Entry)>;
 
 const MAX_FILE_SIZE: usize = 4 * 1024 * 1024;
 
@@ -106,20 +106,12 @@ impl Options {
             };
 
             let metadata = match metadata {
-                Ok(md) if md.is_file() => md,
+                Ok(md) if md.is_file() || md.is_symlink() => md,
                 Err(error) => {
                     warn!(%error, ?path, "failed to stat file; skipping");
                     continue;
                 }
                 _ => continue,
-            };
-
-            let osfile = match fs::File::open(&path).await {
-                Ok(f) => f,
-                Err(error) => {
-                    warn!(%error, ?path, "failed to open file; skipping");
-                    continue;
-                }
             };
 
             let entry = match files::Entry::from_metadata(
@@ -137,7 +129,7 @@ impl Options {
 
             trace!(?path, "processed");
             current_file_list.push(entry.name.clone());
-            sender.send((osfile, entry)).unwrap();
+            sender.send((path, entry)).unwrap();
         }
 
         drop(sender);
@@ -218,7 +210,7 @@ async fn process_file_loop(
     let chunkindex = &index.chunks;
     let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
 
-    while let Ok((mut osfile, mut entry)) = r.recv_async().await {
+    while let Ok((path, mut entry)) = r.recv_async().await {
         buf.clear();
 
         if let Some(in_store) = fileindex.get(&entry.name) {
@@ -227,10 +219,18 @@ async fn process_file_loop(
             }
         }
 
-        if entry.size == 0 {
+        if entry.size == 0 || entry.symlink.is_some() {
             fileindex.insert(entry.name.clone(), entry);
             continue;
         }
+
+        let mut osfile = match fs::File::open(&path).await {
+            Ok(f) => f,
+            Err(error) => {
+                warn!(%error, ?path, "failed to open file; skipping");
+                continue;
+            }
+        };
 
         if entry.size < MAX_FILE_SIZE as u64 {
             osfile.read_to_end(&mut buf).await.unwrap();
