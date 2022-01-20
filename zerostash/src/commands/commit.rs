@@ -1,18 +1,19 @@
 //! `commit` subcommand
 
 use crate::prelude::*;
+use clap::Parser;
 
-/// `commit` subcommand
-///
-/// The `Clap` proc macro generates an option parser based on the struct
-/// definition, and is defined in the `gumdrop` crate. See their documentation
-/// for a more comprehensive example:
-///
-/// <https://docs.rs/gumdrop/>
-#[derive(Command, Debug, Clap)]
+#[derive(Command, Parser, Debug)]
 pub struct Commit {
+    /// Stash path or alias
     stash: String,
-    paths: Vec<String>,
+
+    #[clap(flatten)]
+    options: zerostash_files::store::Options,
+
+    /// Commit message to include in the changeset
+    #[clap(short = 'm', long)]
+    message: Option<String>,
 }
 
 impl Runnable for Commit {
@@ -21,15 +22,14 @@ impl Runnable for Commit {
         abscissa_tokio::run(&APP, async {
             let mut stash = APP.open_stash(&self.stash);
 
-            for path in self.paths.iter() {
-                stash
-                    .index()
-                    .add_recursive(&stash, APP.get_worker_threads(), path)
-                    .await
-                    .expect("Failed to add path");
-            }
+            self.options
+                .add_recursive(&stash, APP.get_worker_threads())
+                .await
+                .unwrap();
 
-            stash.commit().await.expect("Failed to write metadata");
+            stash
+                .commit(self.message.clone())
+                .expect("Failed to write metadata");
         })
         .unwrap();
     }

@@ -1,12 +1,19 @@
 [package]
 name = "zerostash-files"
+authors = ["Peter Parkanyi <p@symmetree.dev>"]
+repository = "https://github.com/symmetree-labs/zerostash"
+license = "GPL-3.0"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-infinitree = "0.3"
+infinitree = { git = "https://github.com/symmetree-labs/infinitree" }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
+tracing = "0.1"
+clap = "3"
+anyhow = "1"
+thiserror = "1"
 
 memmap2 = "0.5"
 glob = { version = "0.3" }
@@ -24,3 +31,4 @@ nix = "0.23"
 [dev-dependencies]
 getrandom = "0.2"
 tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"] }
+infinitree = { git = "https://github.com/symmetree-labs/infinitree", features = [ "_test" ] }

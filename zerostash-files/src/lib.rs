@@ -2,16 +2,19 @@
 extern crate serde_derive;
 
 use infinitree::{fields::QueryAction, *};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 mod files;
 pub mod rollsum;
 pub mod splitter;
 mod stash;
 
+pub use stash::restore;
+pub use stash::store;
+
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 type ChunkIndex = fields::VersionedMap<Digest, ChunkPointer>;
-type FileSet = fields::VersionedMap<PathBuf, files::Entry>;
+type FileSet = fields::VersionedMap<String, files::Entry>;
 
 #[derive(Clone, Default, Index)]
 pub struct Files {
@@ -21,7 +24,7 @@ pub struct Files {
 }
 
 impl Files {
-    fn list<'a>(
+    pub fn list<'a>(
         &'a self,
         stash: &'a Infinitree<Files>,
         glob: &'a [impl AsRef<str>],
@@ -34,8 +37,8 @@ impl Files {
         use QueryAction::{Skip, Take};
         Box::new(
             stash
-                .iter(self.files(), move |fname| {
-                    if matchers.iter().any(|m| m.matches(&fname.to_string_lossy())) {
+                .iter(self.files(), move |ref fname| {
+                    if matchers.iter().any(|m| m.matches(fname)) {
                         Take
                     } else {
                         Skip
@@ -44,17 +47,6 @@ impl Files {
                 .unwrap()
                 .map(|(_, v)| v.unwrap()),
         )
-    }
-
-    pub async fn add_recursive(
-        &self,
-        stash: &Infinitree<Files>,
-        threads: usize,
-        path: impl AsRef<Path>,
-    ) -> Result<()> {
-        stash::store::recursive(threads, &self, stash.object_writer()?, path).await;
-
-        Ok(())
     }
 
     pub async fn restore_by_glob(

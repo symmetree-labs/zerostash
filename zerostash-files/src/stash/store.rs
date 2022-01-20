@@ -1,47 +1,212 @@
-use crate::{files, rollsum::SeaSplit, splitter::FileSplitter};
-use infinitree::object::{self, write_balancer::RoundRobinBalancer, Writer};
+use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Files};
+use infinitree::{
+    object::{self, write_balancer::RoundRobinBalancer, Writer},
+    Infinitree,
+};
 
+use anyhow::Context;
 use flume as mpsc;
 use futures::future::join_all;
 use ignore::{DirEntry, WalkBuilder};
 use memmap2::{Mmap, MmapOptions};
 use tokio::{fs, io::AsyncReadExt, task};
+use tracing::{error, trace, warn};
 
-use std::path::Path;
+type Sender = mpsc::Sender<(fs::File, files::Entry)>;
+type Receiver = mpsc::Receiver<(fs::File, files::Entry)>;
 
-type Sender = mpsc::Sender<DirEntry>;
-type Receiver = mpsc::Receiver<DirEntry>;
+const MAX_FILE_SIZE: usize = 4 * 1024 * 1024;
 
-const MAX_FILE_SIZE: usize = 16 * 1024 * 1024;
+#[derive(clap::Args, Debug, Default, Clone)]
+pub struct Options {
+    /// The paths to include in the commit. All changes (addition/removal) will be committed.
+    pub paths: Vec<String>,
 
-#[allow(unused)]
-pub async fn recursive(
-    worker_count: usize,
-    index: &crate::Files,
-    objectstore: impl object::Writer + Clone + 'static,
-    path: impl AsRef<Path>,
-) {
+    /// Preserve permissions.
+    #[clap(
+        short = 'p',
+        long = "preserve-permissions",
+        default_value = "true",
+        parse(try_from_str)
+    )]
+    pub preserve_permissions: bool,
+
+    /// Preserve owner/gid information.
+    #[clap(
+        short = 'o',
+        long = "preserve-ownership",
+        default_value = "true",
+        parse(try_from_str)
+    )]
+    pub preserve_ownership: bool,
+
+    /// Ignore files larger than the given value in bytes.
+    #[clap(short = 'm', long = "max-size")]
+    pub max_size: Option<u64>,
+
+    /// Do not cross file system boundaries during directory walk.
+    #[clap(short = 'x', long = "same-file-system")]
+    pub same_fs: bool,
+
+    /// Ignore hidden files.
+    #[clap(short = 'h', long = "ignore-hidden")]
+    pub hidden: bool,
+
+    /// Process ignore rules case insensitively.
+    #[clap(short = 'i', long = "ignore-case-insensitive")]
+    pub case_insensitive: bool,
+
+    /// Respect ignore rules from parent directories (.gitignore and .ignore files)
+    #[clap(
+        short = 'P',
+        long = "inherit-parent-ignore",
+        default_value = "true",
+        parse(try_from_str)
+    )]
+    pub parents: bool,
+
+    /// Respect global gitignore rules (from `core.excludesFile` setting, or $XDG_CONFIG_HOME/git/ignore)
+    #[clap(short = 'G', long = "git-global-ignore")]
+    pub git_global: bool,
+
+    /// Respect git .git/info/exclude files for git repositories.
+    #[clap(short = 'E', long = "git-exclude")]
+    pub git_exclude: bool,
+
+    /// Respect .gitignore files for git repositories.
+    #[clap(short = 'g', long = "git-gitignore")]
+    pub git_ignore: bool,
+
+    /// Respect .ignore files, which are equivalent to .gitignore without git.
+    #[clap(short = 'I', long = "dot-ignore")]
+    pub ignore: bool,
+
+    /// Follow symbolic links.
+    #[clap(short = 'l', long = "follow-links")]
+    pub follow_links: bool,
+}
+
+impl Options {
+    pub async fn add_recursive(
+        &self,
+        stash: &Infinitree<Files>,
+        threads: usize,
+    ) -> anyhow::Result<()> {
+        let (sender, workers) = start_workers(stash, threads)?;
+        let dir_walk = self.dir_walk()?;
+        let mut current_file_list = vec![];
+
+        for dir_entry in dir_walk {
+            let (metadata, path) = match dir_entry {
+                Ok(de) => (de.metadata(), de.path().to_owned()),
+                Err(error) => {
+                    warn!(%error, "failed to process file; skipping");
+                    continue;
+                }
+            };
+
+            let metadata = match metadata {
+                Ok(md) if md.is_file() => md,
+                Err(error) => {
+                    warn!(%error, ?path, "failed to stat file; skipping");
+                    continue;
+                }
+                _ => continue,
+            };
+
+            let osfile = match fs::File::open(&path).await {
+                Ok(f) => f,
+                Err(error) => {
+                    warn!(%error, ?path, "failed to open file; skipping");
+                    continue;
+                }
+            };
+
+            let entry = match files::Entry::from_metadata(
+                metadata,
+                &path,
+                self.preserve_permissions,
+                self.preserve_ownership,
+            ) {
+                Ok(e) => e,
+                Err(error) => {
+                    error!(%error, ?path, "failed to ingest file; aborting");
+                    break;
+                }
+            };
+
+            trace!(?path, "processed");
+            current_file_list.push(entry.name.clone());
+            sender.send((osfile, entry)).unwrap();
+        }
+
+        drop(sender);
+        join_all(workers).await;
+
+        let source_paths = self
+            .paths
+            .iter()
+            .map(files::normalize_filename)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        stash.index().files.retain(|k, _| {
+            for path in source_paths.iter() {
+                if k.starts_with(path) {
+                    // if the current directory is part of the new commit, diff
+                    return current_file_list.contains(k);
+                }
+            }
+
+            // if it's unrelated, keep it in the index
+            true
+        });
+
+        Ok(())
+    }
+
+    fn dir_walk(&self) -> anyhow::Result<impl Iterator<Item = Result<DirEntry, ignore::Error>>> {
+        let mut paths = self.paths.iter();
+        let mut builder = WalkBuilder::new(paths.next().context("no path available")?);
+
+        for path in paths {
+            builder.add(path);
+        }
+
+        builder.standard_filters(false);
+        builder.max_filesize(self.max_size);
+        builder.same_file_system(self.same_fs);
+        builder.hidden(self.hidden);
+        builder.ignore_case_insensitive(self.case_insensitive);
+        builder.parents(self.parents);
+        builder.git_exclude(self.git_exclude);
+        builder.git_ignore(self.git_ignore);
+        builder.git_global(self.git_global);
+        builder.ignore(self.ignore);
+        builder.follow_links(self.follow_links);
+
+        Ok(builder.build())
+    }
+}
+
+fn start_workers(
+    stash: &Infinitree<Files>,
+    threads: usize,
+) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
     // make sure the input and output queues are generous
-    let (mut sender, receiver) = mpsc::bounded(worker_count * 2);
-    let mut balancer = RoundRobinBalancer::new(objectstore, worker_count).unwrap();
+    let (sender, receiver) = mpsc::bounded(threads * 2);
+    let balancer = RoundRobinBalancer::new(stash.object_writer()?, threads)?;
 
-    let workers = (0..worker_count)
+    let workers = (0..threads)
         .map(|_| {
             task::spawn(process_file_loop(
                 receiver.clone(),
-                index.clone(),
+                stash.index().clone(),
                 balancer.clone(),
             ))
         })
         .collect::<Vec<_>>();
 
-    // it's probably not a good idea to have walker threads compete
-    // with workers, so we don't need to scale this up so aggressively
-    walk_path(worker_count / 4, sender, path);
-
-    join_all(workers).await;
-
-    balancer.flush().unwrap();
+    Ok((sender, workers))
 }
 
 async fn process_file_loop(
@@ -53,40 +218,17 @@ async fn process_file_loop(
     let chunkindex = &index.chunks;
     let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
 
-    while let Ok(file) = r.recv_async().await {
+    while let Ok((mut osfile, mut entry)) = r.recv_async().await {
         buf.clear();
 
-        let path = file.path().to_owned();
-
-        if path
-            .components()
-            .any(|c| c == std::path::Component::ParentDir)
-        {
-            println!(
-                "skipping because contains parent {:?}",
-                path.to_string_lossy()
-            );
-            continue;
-        }
-
-        let osfile = fs::File::open(&path).await;
-        if osfile.is_err() {
-            println!("skipping {}: {}", path.display(), osfile.unwrap_err());
-            continue;
-        }
-
-        let mut osfile = osfile.unwrap();
-        let metadata = osfile.metadata().await.unwrap();
-        let mut entry = files::Entry::from_metadata(metadata, path.clone()).unwrap();
-
-        if let Some(in_store) = fileindex.get(&path) {
+        if let Some(in_store) = fileindex.get(&entry.name) {
             if in_store.as_ref() == &entry {
                 continue;
             }
         }
 
         if entry.size == 0 {
-            fileindex.insert(path, entry);
+            fileindex.insert(entry.name.clone(), entry);
             continue;
         }
 
@@ -103,14 +245,14 @@ async fn process_file_loop(
             FileSplitter::<SeaSplit>::new(mmap.open())
         };
         let chunks = splitter.map(|(start, hash, data)| {
-            let store = || writer.write_chunk(&hash, &data).unwrap();
+            let store = || writer.write_chunk(&hash, data).unwrap();
             let ptr = chunkindex.insert_with(hash, store);
             (start, ptr)
         });
 
         entry.chunks.extend(chunks);
 
-        fileindex.insert(path, entry);
+        fileindex.insert(entry.name.clone(), entry);
     }
 }
 
@@ -137,61 +279,5 @@ impl MmappedFile {
                 .map(&self._file)
                 .unwrap()
         })
-    }
-}
-
-/// if `threads == 0`, it chooses the number of threads automatically using heuristics
-fn walk_path(threads: usize, sender: Sender, path: impl AsRef<Path>) {
-    let walker = WalkBuilder::new(path)
-        .threads(threads)
-        .standard_filters(false)
-        .build_parallel();
-
-    walker.run(|| {
-        let tx = sender.clone();
-        Box::new(move |result| {
-            use ignore::WalkState::*;
-
-            if result.is_err() {
-                return Continue;
-            }
-
-            let entry = result.unwrap();
-            if !entry.path().is_file() {
-                return Continue;
-            }
-
-            tx.send(entry).unwrap();
-
-            Continue
-        })
-    });
-
-    println!("all paths done");
-}
-
-#[cfg(test)]
-mod tests {
-    const PATH_100: &str = "tests/data/100_random_1k";
-
-    // need a multi-threaded scheduler for anything involving
-    // `store::recursive`
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn test_stats_add_up() {
-        use crate::stash::store;
-        use crate::*;
-        use libzerostash::object::test::*;
-
-        let mut index = Files::default();
-        let s = NullStorage::default();
-
-        std::env::set_current_dir("..").unwrap();
-        store::recursive(2, &mut index, s, PATH_100).await;
-
-        assert_eq!(100, index.files.len());
-        assert_eq!(
-            1_024_000u64,
-            index.files.iter().map(|f| f.key().size).sum::<u64>()
-        );
     }
 }

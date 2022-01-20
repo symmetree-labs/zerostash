@@ -7,14 +7,16 @@ license = "GPL-3.0"
 edition= "2018"
 
 [dependencies]
-infinitree = "0.3"
+infinitree = { git = "https://github.com/symmetree-labs/infinitree" }
 zerostash-files = { path = "../zerostash-files" }
 walkdir = "^2.2.7"
 tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread", "parking_lot"] }
 num_cpus = "1"
+tracing-subscriber = "0.3"
+tracing = "0.1"
 
 [dev-dependencies]
-infinitree = { version = "0.3", features = ["_test"] }
+infinitree = { git = "https://github.com/symmetree-labs/infinitree", features = [ "_test" ] }
 getrandom = "*"
 memmap2 = "*"
 

@@ -2,7 +2,7 @@
 #![cfg_attr(test, feature(test))]
 
 use infinitree::{backends, Infinitree, Key};
-use zerostash_files::Files;
+use zerostash_files::{store, Files};
 
 use std::{collections::HashMap, env::args, fs::metadata, time::Instant};
 
@@ -24,6 +24,13 @@ fn dir_stat(path: &str) -> (u64, usize) {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    use tracing_subscriber::FmtSubscriber;
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(tracing::Level::WARN)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("setting tracing default failed");
+
     let threads = num_cpus::get();
     let path = args().nth(1).unwrap();
     let output = args().nth(2).unwrap();
@@ -42,10 +49,13 @@ async fn main() {
             Infinitree::<Files>::empty(backends::Directory::new(&output).unwrap(), (key)());
 
         let store_start = Instant::now();
-        repo.index()
-            .add_recursive(&repo, threads, &path)
-            .await
-            .unwrap();
+        store::Options {
+            paths: vec![path.clone()],
+            ..Default::default()
+        }
+        .add_recursive(&repo, threads)
+        .await
+        .unwrap();
         let store_time = store_start.elapsed();
 
         let commit_start = Instant::now();

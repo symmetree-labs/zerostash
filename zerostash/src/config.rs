@@ -6,24 +6,15 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf};
 
 /// Zerostash Configuration
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Default, Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ZerostashConfig {
     /// An example configuration section
     #[serde(rename = "stash")]
     stashes: HashMap<String, Stash>,
-}
-
-impl Default for ZerostashConfig {
-    fn default() -> ZerostashConfig {
-        ZerostashConfig {
-            stashes: HashMap::new(),
-        }
-    }
 }
 
 /// Describe the configuration for a named stash
@@ -41,17 +32,16 @@ impl Stash {
             use Key::*;
             match &self.key {
                 Interactive => ask_credentials()?,
-                Plaintext { user, password } => libzerostash::StashKey::open_stash(user, password)?,
+                Plaintext { user, password } => infinitree::Key::from_credentials(user, password)?,
             }
         };
 
         let stash = {
             use Backend::*;
             match &self.backend {
-                Filesystem { path } => crate::Stash::with_default_index(
-                    Arc::new(libzerostash::backends::Directory::new(path)?),
-                    key,
-                ),
+                Filesystem { path } => {
+                    crate::Stash::empty(infinitree::backends::Directory::new(path)?, key)
+                }
             }
         };
 
@@ -60,10 +50,10 @@ impl Stash {
 }
 
 /// Ask for credentials on the standard input using [rpassword]
-pub fn ask_credentials() -> Result<libzerostash::StashKey> {
+pub fn ask_credentials() -> Result<infinitree::Key> {
     let username = rprompt::prompt_reply_stderr("Username: ")?;
     let password = rpassword::prompt_password_stderr("Password: ")?;
-    Ok(libzerostash::StashKey::open_stash(username, password)?)
+    Ok(infinitree::Key::from_credentials(username, password)?)
 }
 
 /// Credentials for a stash

@@ -12,8 +12,7 @@ use abscissa_core::{
 };
 use abscissa_tokio::TokioComponent;
 use anyhow::Result;
-
-use std::{process, sync::Arc};
+use std::process;
 
 /// Application state
 pub static APP: AppCell<ZerostashApp> = AppCell::new();
@@ -22,10 +21,10 @@ pub static APP: AppCell<ZerostashApp> = AppCell::new();
 #[derive(Debug)]
 pub struct ZerostashApp {
     /// Application configuration.
-    pub config: CfgCell<ZerostashConfig>,
+    config: CfgCell<ZerostashConfig>,
 
     /// Application state.
-    pub state: application::State<Self>,
+    state: application::State<Self>,
 }
 
 /// Initialize a new application instance.
@@ -38,45 +37,6 @@ impl Default for ZerostashApp {
             config: CfgCell::default(),
             state: application::State::default(),
         }
-    }
-}
-
-impl ZerostashApp {
-    /// Open a stash or produce an error
-    ///
-    /// # Arguments
-    ///
-    /// * `pathy` - Can be a path or an alias stored in the config
-    pub(crate) fn open_stash(&self, pathy: impl AsRef<str>) -> Stash {
-        let config = self.config.read();
-
-        let stash = match config.resolve_stash(&pathy) {
-            None => {
-                let path = pathy.as_ref();
-                let key = ask_credentials().unwrap_or_else(|e| fatal_error(e));
-                let backend = Arc::new(
-                    libzerostash::backends::Directory::new(path).unwrap_or_else(|e| fatal_error(e)),
-                );
-
-                Stash::with_default_index(backend, key)
-            }
-            Some(cfg) => cfg.try_open().unwrap_or_else(|e| fatal_error(e)),
-        };
-
-        stash
-    }
-
-    pub(crate) async fn stash_exists(&self, pathy: impl AsRef<str>) -> Stash {
-        let mut stash = self.open_stash(pathy);
-        match stash.read().await {
-            Ok(_) => stash,
-            Err(e) => fatal_error(e),
-        }
-    }
-
-    pub(crate) fn get_worker_threads(&self) -> usize {
-        use std::cmp;
-        cmp::min(num_cpus::get() + 1, 5)
     }
 }
 
@@ -132,6 +92,41 @@ impl Application for ZerostashApp {
         } else {
             trace::Config::default()
         }
+    }
+}
+
+impl ZerostashApp {
+    /// Open a stash or produce an error
+    ///
+    /// # Arguments
+    ///
+    /// * `pathy` - Can be a path or an alias stored in the config
+    #[allow(clippy::redundant_closure)]
+    pub(crate) fn open_stash(&self, pathy: impl AsRef<str>) -> Stash {
+        let config = self.config();
+
+        let stash = match config.resolve_stash(&pathy) {
+            None => {
+                let path = pathy.as_ref();
+                let key = ask_credentials().unwrap_or_else(|e| fatal_error(e));
+                let backend =
+                    infinitree::backends::Directory::new(path).unwrap_or_else(|e| fatal_error(e));
+
+                Stash::empty(backend, key)
+            }
+            Some(cfg) => cfg.try_open().unwrap_or_else(|e| fatal_error(e)),
+        };
+
+        stash
+    }
+
+    pub(crate) async fn stash_exists(&self, pathy: impl AsRef<str>) -> Stash {
+        self.open_stash(pathy)
+    }
+
+    pub(crate) fn get_worker_threads(&self) -> usize {
+        use std::cmp;
+        cmp::min(num_cpus::get() + 1, 5)
     }
 }
 

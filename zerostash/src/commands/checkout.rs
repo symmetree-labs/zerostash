@@ -1,6 +1,7 @@
 //! `checkout` subcommand
 
 use crate::prelude::*;
+use clap::Parser;
 
 /// `checkout` subcommand
 ///
@@ -9,7 +10,7 @@ use crate::prelude::*;
 /// for a more comprehensive example:
 ///
 /// <https://docs.rs/gumdrop/>
-#[derive(Command, Debug, Clap)]
+#[derive(Command, Debug, Parser)]
 pub struct Checkout {
     stash: String,
     target: String,

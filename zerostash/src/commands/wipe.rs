@@ -1,6 +1,7 @@
 //! `wipe` subcommand
 
 use crate::prelude::*;
+use clap::Parser;
 
 /// `wipe` subcommand
 ///
@@ -9,7 +10,7 @@ use crate::prelude::*;
 /// for a more comprehensive example:
 ///
 /// <https://docs.rs/gumdrop/>
-#[derive(Command, Debug, Clap)]
+#[derive(Command, Debug, Parser)]
 pub struct Wipe {
     stash: String,
 }
@@ -19,7 +20,7 @@ impl Runnable for Wipe {
     fn run(&self) {
         use crate::config::Backend::*;
 
-        let config = APP.config.read();
+        let config = APP.config();
         let path = match config.resolve_stash(&self.stash) {
             None => self.stash.clone(),
             Some(stash) => match &stash.backend {

@@ -6,7 +6,6 @@
 
 // Tip: Deny warnings with `RUSTFLAGS="-D warnings"` environment variable in CI
 
-#![deny(clippy::all)]
 #![forbid(unsafe_code)]
 #![warn(
     missing_docs,
@@ -22,4 +21,4 @@ pub mod config;
 pub mod error;
 pub mod prelude;
 
-pub(crate) type Stash = libzerostash::Stash<libzerostash_files::FileStashIndex>;
+pub(crate) type Stash = infinitree::Infinitree<zerostash_files::Files>;

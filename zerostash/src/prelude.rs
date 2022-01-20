@@ -5,8 +5,5 @@
 /// Abscissa core prelude
 pub use abscissa_core::prelude::*;
 
-/// Necessary for command implementations
-pub use abscissa_core::{Clap, Command, Runnable};
-
-/// Application state accessors
+/// Application state
 pub use crate::application::APP;

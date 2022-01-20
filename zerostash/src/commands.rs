@@ -5,38 +5,32 @@
 //! The default application comes with two subcommands:
 //!
 //! - `start`: launches the application
-//! - `version`: print application version
+//! - `--version`: print application version
 //!
 //! See the `impl Configurable` below for how to specify the path to the
 //! application's configuration file.
 
-mod alias_add;
-mod alias_del;
-mod alias_list;
+mod alias;
 mod checkout;
 mod commit;
 mod ls;
 mod wipe;
 
-use self::{
-    alias_add::AliasAdd, alias_del::AliasDel, alias_list::AliasList, checkout::Checkout,
-    commit::Commit, ls::Ls, wipe::Wipe,
-};
+use self::{alias::Alias, checkout::Checkout, commit::Commit, ls::Ls, wipe::Wipe};
 use crate::config::ZerostashConfig;
-use abscissa_core::{Clap, Command, Configurable, FrameworkError, Runnable};
+use abscissa_core::{Command, Configurable, FrameworkError, Runnable};
+use clap::Parser;
 use std::path::PathBuf;
 
+/// Zerostash Configuration Filename
+pub const CONFIG_FILE: &str = "zerostash.toml";
+
 /// Zerostash Subcommands
-#[derive(Command, Debug, Clap, Runnable)]
+/// Subcommands need to be listed in an enum.
+#[derive(Command, Debug, Parser, Runnable)]
 pub enum ZerostashCmd {
     /// add new alias for a stash URI/path
-    AliasAdd(AliasAdd),
-
-    /// delete a stash alias
-    AliasDel(AliasDel),
-
-    /// list existing stash shorthands
-    AliasList(AliasList),
+    Alias(Alias),
 
     /// check out files
     Checkout(Checkout),
@@ -52,7 +46,7 @@ pub enum ZerostashCmd {
 }
 
 /// Entry point for the application. It needs to be a struct to allow using subcommands!
-#[derive(Command, Debug, Clap)]
+#[derive(Command, Debug, Parser)]
 #[clap(author, about, version)]
 pub struct EntryPoint {
     #[clap(subcommand)]
