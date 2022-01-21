@@ -40,6 +40,10 @@ pub struct Options {
     )]
     pub preserve_ownership: bool,
 
+    /// Force hashing all files even if size and modification time is the same
+    #[clap(short = 'f', long)]
+    pub force: bool,
+
     /// Ignore files larger than the given value in bytes.
     #[clap(short = 'm', long = "max-size")]
     pub max_size: Option<u64>,
@@ -92,7 +96,7 @@ impl Options {
         stash: &Infinitree<Files>,
         threads: usize,
     ) -> anyhow::Result<()> {
-        let (sender, workers) = start_workers(stash, threads)?;
+        let (sender, workers) = start_workers(stash, threads, self.force)?;
         let dir_walk = self.dir_walk()?;
         let mut current_file_list = vec![];
 
@@ -183,6 +187,7 @@ impl Options {
 fn start_workers(
     stash: &Infinitree<Files>,
     threads: usize,
+    force: bool,
 ) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
     // make sure the input and output queues are generous
     let (sender, receiver) = mpsc::bounded(threads * 2);
@@ -191,6 +196,7 @@ fn start_workers(
     let workers = (0..threads)
         .map(|_| {
             task::spawn(process_file_loop(
+                force,
                 receiver.clone(),
                 stash.index().clone(),
                 balancer.clone(),
@@ -202,6 +208,7 @@ fn start_workers(
 }
 
 async fn process_file_loop(
+    force: bool,
     r: Receiver,
     index: crate::Files,
     writer: RoundRobinBalancer<impl object::Writer + Clone + 'static>,
@@ -211,10 +218,12 @@ async fn process_file_loop(
     while let Ok((path, entry)) = r.recv_async().await {
         buf.clear();
 
-        if let Some(in_store) = index.files.get(&entry.name) {
-            if in_store.as_ref() == &entry {
-                trace!(?path, "already indexed, skipping");
-                continue;
+        if !force {
+            if let Some(in_store) = index.files.get(&entry.name) {
+                if in_store.as_ref() == &entry {
+                    trace!(?path, "already indexed, skipping");
+                    continue;
+                }
             }
         }
 
