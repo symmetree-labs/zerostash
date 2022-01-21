@@ -31,7 +31,7 @@ async fn main() {
 
     tracing::subscriber::set_global_default(subscriber).expect("setting tracing default failed");
 
-    let threads = num_cpus::get();
+    let threads = num_cpus::get() / 2 + 2;
     let path = args().nth(1).unwrap();
     let output = args().nth(2).unwrap();
     let restore_to = args().nth(3).unwrap();
@@ -115,7 +115,7 @@ async fn main() {
  * files: {},
  * chunks: {},
  * data size: {}
- * throughput: {}
+ * throughput/core: {}
  * objects: {}
  * output size: {}
  * compression ratio: {}
@@ -129,7 +129,7 @@ async fn main() {
         fl,
         cl,
         mb(ssize),
-        mb(ssize) / total_time,
+        mb(ssize) / total_time / threads as f64,
         tlen,
         mb(tsize as f64),
         tsize as f64 / ssize,

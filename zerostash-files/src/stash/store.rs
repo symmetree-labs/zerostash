@@ -1,7 +1,7 @@
 use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Files};
 use anyhow::Context;
 use flume as mpsc;
-use futures::future::join_all;
+use futures::{future::join_all, stream::futures_unordered::FuturesUnordered};
 use ignore::{DirEntry, WalkBuilder};
 use infinitree::{
     object::{self, write_balancer::RoundRobinBalancer, Writer},
@@ -108,7 +108,7 @@ impl Options {
             let metadata = match metadata {
                 Ok(md) if md.is_file() || md.is_symlink() => md,
                 Err(error) => {
-                    warn!(%error, ?path, "failed to stat file; skipping");
+                    warn!(%error, ?path, "failed to get file metadata; skipping");
                     continue;
                 }
                 _ => continue,
@@ -127,7 +127,7 @@ impl Options {
                 }
             };
 
-            trace!(?path, "processed");
+            trace!(?path, "queued");
             current_file_list.push(entry.name.clone());
             sender.send((path, entry)).unwrap();
         }
@@ -204,7 +204,7 @@ fn start_workers(
 async fn process_file_loop(
     r: Receiver,
     index: crate::Files,
-    mut writer: RoundRobinBalancer<impl object::Writer + Clone + 'static>,
+    writer: RoundRobinBalancer<impl object::Writer + Clone + 'static>,
 ) {
     let fileindex = &index.files;
     let chunkindex = &index.chunks;
@@ -244,13 +244,34 @@ async fn process_file_loop(
         } else {
             FileSplitter::<SeaSplit>::new(mmap.open())
         };
-        let chunks = splitter.map(|(start, hash, data)| {
-            let store = || writer.write_chunk(&hash, data).unwrap();
-            let ptr = chunkindex.insert_with(hash, store);
-            (start, ptr)
-        });
 
-        entry.chunks.extend(chunks);
+        let chunks = splitter
+            .map(|(start, hash, data)| {
+                let mut writer = writer.clone();
+                let hash = hash.clone();
+                let data = data.to_vec();
+                let chunkindex = chunkindex.clone();
+
+                task::spawn(async move {
+                    let store = || writer.write_chunk(&hash, &data).unwrap();
+                    let ptr = chunkindex.insert_with(hash, store);
+                    (start, ptr)
+                })
+            })
+            .collect::<FuturesUnordered<_>>();
+
+        entry
+            .chunks
+            .extend(join_all(chunks).await.into_iter().map(Result::unwrap));
+
+        trace!(
+            ?path,
+            name = %entry.name,
+            chunks = entry.chunks.len(),
+            size = entry.size,
+            symlink = ?entry.symlink,
+            "indexed"
+        );
 
         fileindex.insert(entry.name.clone(), entry);
     }
