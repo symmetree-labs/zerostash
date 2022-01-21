@@ -10,7 +10,7 @@ use infinitree::{
 use memmap2::{Mmap, MmapOptions};
 use std::path::PathBuf;
 use tokio::{fs, io::AsyncReadExt, task};
-use tracing::{error, trace, warn};
+use tracing::{error, trace, trace_span, warn, Instrument};
 
 type Sender = mpsc::Sender<(PathBuf, files::Entry)>;
 type Receiver = mpsc::Receiver<(PathBuf, files::Entry)>;
@@ -206,25 +206,25 @@ async fn process_file_loop(
     index: crate::Files,
     writer: RoundRobinBalancer<impl object::Writer + Clone + 'static>,
 ) {
-    let fileindex = &index.files;
-    let chunkindex = &index.chunks;
     let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
 
-    while let Ok((path, mut entry)) = r.recv_async().await {
+    while let Ok((path, entry)) = r.recv_async().await {
         buf.clear();
 
-        if let Some(in_store) = fileindex.get(&entry.name) {
+        if let Some(in_store) = index.files.get(&entry.name) {
             if in_store.as_ref() == &entry {
+                trace!(?path, "already indexed, skipping");
                 continue;
             }
         }
 
-        if entry.size == 0 || entry.symlink.is_some() {
-            fileindex.insert(entry.name.clone(), entry);
+        let size = entry.size;
+        if size == 0 || entry.symlink.is_some() {
+            index.files.insert(entry.name.clone(), entry);
             continue;
         }
 
-        let mut osfile = match fs::File::open(&path).await {
+        let osfile = match fs::File::open(&path).await {
             Ok(f) => f,
             Err(error) => {
                 warn!(%error, ?path, "failed to open file; skipping");
@@ -232,49 +232,56 @@ async fn process_file_loop(
             }
         };
 
-        if entry.size < MAX_FILE_SIZE as u64 {
-            osfile.read_to_end(&mut buf).await.unwrap();
-        }
-
-        let size = entry.size as usize;
-        let mut mmap = MmappedFile::new(size, osfile.into_std().await);
-
-        let splitter = if size < MAX_FILE_SIZE {
-            FileSplitter::<SeaSplit>::new(&buf[0..size])
-        } else {
-            FileSplitter::<SeaSplit>::new(mmap.open())
-        };
-
-        let chunks = splitter
-            .map(|(start, hash, data)| {
-                let mut writer = writer.clone();
-                let hash = hash.clone();
-                let data = data.to_vec();
-                let chunkindex = chunkindex.clone();
-
-                task::spawn(async move {
-                    let store = || writer.write_chunk(&hash, &data).unwrap();
-                    let ptr = chunkindex.insert_with(hash, store);
-                    (start, ptr)
-                })
-            })
-            .collect::<FuturesUnordered<_>>();
-
-        entry
-            .chunks
-            .extend(join_all(chunks).await.into_iter().map(Result::unwrap));
-
-        trace!(
-            ?path,
-            name = %entry.name,
-            chunks = entry.chunks.len(),
-            size = entry.size,
-            symlink = ?entry.symlink,
-            "indexed"
-        );
-
-        fileindex.insert(entry.name.clone(), entry);
+        index_file(entry, osfile, &mut buf, path.clone(), &index, &writer)
+            .instrument(trace_span!("index file", ?path, size))
+            .await;
     }
+}
+
+async fn index_file(
+    mut entry: files::Entry,
+    mut osfile: fs::File,
+    buf: &mut Vec<u8>,
+    path: PathBuf,
+    index: &crate::Files,
+    writer: &RoundRobinBalancer<impl object::Writer + Clone + 'static>,
+) {
+    let size = entry.size as usize;
+
+    if size < MAX_FILE_SIZE {
+        osfile.read_to_end(buf).await.unwrap();
+    }
+
+    let mut mmap = MmappedFile::new(size, osfile.into_std().await);
+
+    let splitter = if size < MAX_FILE_SIZE {
+        FileSplitter::<SeaSplit>::new(&buf[0..size])
+    } else {
+        FileSplitter::<SeaSplit>::new(mmap.open())
+    };
+
+    let chunks = splitter
+        .map(|(start, hash, data)| {
+            let mut writer = writer.clone();
+            let hash = hash.clone();
+            let data = data.to_vec();
+            let chunkindex = index.chunks.clone();
+
+            task::spawn(async move {
+                let store = || writer.write_chunk(&hash, &data).unwrap();
+                let ptr = chunkindex.insert_with(hash, store);
+                (start, ptr)
+            })
+        })
+        .collect::<FuturesUnordered<_>>();
+
+    entry
+        .chunks
+        .extend(join_all(chunks).await.into_iter().map(Result::unwrap));
+
+    trace!(?path, chunks = entry.chunks.len(), "indexed");
+
+    index.files.insert(entry.name.clone(), entry);
 }
 
 struct MmappedFile {
