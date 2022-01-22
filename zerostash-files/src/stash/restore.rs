@@ -98,15 +98,23 @@ impl Options {
         Ok(0)
     }
 
+    #[cfg(unix)]
     fn setup_env(&self) -> anyhow::Result<()> {
-        if cfg!(target_family = "unix") {
-            if let Some(ref path) = self.chroot {
-                std::os::unix::fs::chroot(path).unwrap();
-            }
+        if let Some(ref path) = self.chroot {
+            std::os::unix::fs::chroot(path).unwrap();
         }
 
         if let Some(ref path) = self.chdir {
-            std::env::set_current_dir(path)?;
+            env::set_current_dir(path)?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn setup_env(&self) -> anyhow::Result<()> {
+        if let Some(ref path) = self.chdir {
+            env::set_current_dir(path)?;
         }
 
         Ok(())
@@ -117,7 +125,7 @@ impl Options {
         stash: &Infinitree<Files>,
         threads: usize,
     ) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
-        let (mut sender, receiver) = mpsc::bounded(threads * 2);
+        let (mut sender, receiver) = mpsc::bounded(threads);
         let reader = stash.object_reader()?;
         let workers = (0..threads)
             .map(|_| {

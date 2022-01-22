@@ -1,7 +1,8 @@
 use infinitree::ChunkPointer;
+#[cfg(unix)]
+use std::os::raw::c_int;
 use std::{
     fs, io,
-    os::raw::c_int,
     path::{Component, Path, PathBuf},
     sync::Arc,
     time::{SystemTimeError, UNIX_EPOCH},
@@ -220,9 +221,9 @@ impl Entry {
     #[cfg(windows)]
     pub fn restore_to(
         &self,
-        file: &fs::File,
+        path: &impl AsRef<Path>,
         preserve: &PreserveMetadata,
-    ) -> Result<(), EntryError> {
+    ) -> Result<Option<fs::File>, EntryError> {
         file.set_len(self.size)?;
 
         if let Some(readonly) = self.readonly {
@@ -310,6 +311,14 @@ fn open_file(path: impl AsRef<Path> + Copy) -> Result<fs::File, io::Error> {
 }
 
 #[inline(always)]
+#[cfg(unix)]
+fn to_unix_mtime(m: &fs::Metadata) -> Result<(u64, u32), EntryError> {
+    let mtime = m.modified()?.duration_since(UNIX_EPOCH)?;
+    Ok((mtime.as_secs(), mtime.subsec_nanos()))
+}
+
+#[inline(always)]
+#[cfg(windows)]
 fn to_unix_mtime(m: &fs::Metadata) -> Result<(u64, u32), EntryError> {
     use std::os::unix::fs::MetadataExt;
     Ok((m.mtime() as u64, m.mtime_nsec() as u32))
