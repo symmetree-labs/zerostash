@@ -7,18 +7,43 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
-
+  security_audit:
     runs-on: ubuntu-latest
+    if: false
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions-rs/audit-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
 
+  clippy_check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions-rs/toolchain@v1
+      with:
+          toolchain: nightly
+          components: clippy
+          override: true
+    - uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    strategy:
+      matrix:
+        platform:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        rust:
+          - 1.56.0 # MSRV
+    runs-on: ${{ matrix.platform }}
     steps:
     - uses: actions/checkout@v2
-    - name: Install nightly
-      run: rustup toolchain add nightly
-    - name: Build
-      run: |
-        cargo +nightly build --bin 0s-bench
-        cargo +stable build --lib
-        cargo +stable build --bin 0s
-    - name: Run tests
-      run: cargo +nightly test --verbose
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        profile: minimal
+    - run: cargo build
