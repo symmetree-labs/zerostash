@@ -1,10 +1,17 @@
 use infinitree::ChunkPointer;
 use std::{
     fs, io,
+    os::raw::c_int,
     path::{Component, Path, PathBuf},
     sync::Arc,
     time::{SystemTimeError, UNIX_EPOCH},
 };
+
+#[cfg(target_os = "linux")]
+const NO_SYMLINK: c_int = libc::O_PATH | libc::O_NOFOLLOW;
+
+#[cfg(all(not(target_os = "linux"), target_family = "unix"))]
+const NO_SYMLINK: c_int = libc::O_SYMLINK;
 
 macro_rules! if_yes {
     ( $flag:expr, $val:expr ) => {
@@ -257,7 +264,7 @@ impl Entry {
                 std::os::unix::fs::symlink(pointed_to, path)?;
                 fs::OpenOptions::new()
                     .read(true)
-                    .custom_flags(libc::O_SYMLINK)
+                    .custom_flags(NO_SYMLINK)
                     .open(path)?
             }
         };
