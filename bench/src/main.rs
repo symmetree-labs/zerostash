@@ -41,6 +41,8 @@ async fn main() {
     let _ = std::fs::remove_dir_all(&output);
     let _ = std::fs::remove_dir_all(&restore_to);
 
+    let _ = std::fs::create_dir(&restore_to);
+
     let key = || Key::from_credentials(&key, &key).unwrap();
     // i am really, truly sorry for this. there must be a better way,
     // but i can't be bothered to find it
@@ -50,7 +52,7 @@ async fn main() {
 
         let store_start = Instant::now();
         store::Options {
-            paths: vec![path.clone()],
+            paths: vec![path.clone().into()],
             ..Default::default()
         }
         .add_recursive(&repo, threads)
@@ -59,7 +61,7 @@ async fn main() {
         let store_time = store_start.elapsed();
 
         let commit_start = Instant::now();
-        repo.commit("commit message").unwrap();
+        repo.commit(None).unwrap();
         let commit_time = commit_start.elapsed();
 
         // let objects = mobjects
@@ -115,7 +117,7 @@ async fn main() {
  * files: {},
  * chunks: {},
  * data size: {}
- * throughput/core: {}
+ * throughput: {}
  * objects: {}
  * output size: {}
  * compression ratio: {}
@@ -129,7 +131,7 @@ async fn main() {
         fl,
         cl,
         mb(ssize),
-        mb(ssize) / total_time / threads as f64,
+        mb(ssize) / total_time,
         tlen,
         mb(tsize as f64),
         tsize as f64 / ssize,
@@ -150,10 +152,14 @@ async fn main() {
         println!("repo open: {}", read_time.as_secs_f64());
 
         let restore_start = Instant::now();
-        repo.index()
-            .restore_by_glob(&repo, threads, &["*"], restore_to)
-            .await
-            .unwrap();
+        zerostash_files::restore::Options {
+            globs: vec!["*".into()],
+            chdir: Some(restore_to.into()),
+            ..Default::default()
+        }
+        .from_iter(&repo, threads)
+        .await
+        .unwrap();
         let restore_time = restore_start.elapsed();
 
         let total_time = restore_time.as_secs_f64();

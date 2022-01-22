@@ -26,6 +26,7 @@ tokio = { version = "^1", features = ["fs", "rt", "sync", "parking_lot"] }
 itertools = "0.10"
 seahash = "4.0"
 
+libc = "0.2"
 nix = "0.23"
 
 [dev-dependencies]

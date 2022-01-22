@@ -2,6 +2,7 @@
 
 use crate::prelude::*;
 use clap::Parser;
+use zerostash_files::restore;
 
 /// `checkout` subcommand
 ///
@@ -13,8 +14,9 @@ use clap::Parser;
 #[derive(Command, Debug, Parser)]
 pub struct Checkout {
     stash: String,
-    target: String,
-    paths: Vec<String>,
+
+    #[clap(flatten)]
+    options: restore::Options,
 }
 
 impl Runnable for Checkout {
@@ -23,9 +25,8 @@ impl Runnable for Checkout {
         abscissa_tokio::run(&APP, async {
             let stash = APP.stash_exists(&self.stash).await;
 
-            stash
-                .index()
-                .restore_by_glob(&stash, APP.get_worker_threads(), &self.paths, &self.target)
+            self.options
+                .from_iter(&stash, APP.get_worker_threads())
                 .await
                 .expect("Error extracting data");
         })

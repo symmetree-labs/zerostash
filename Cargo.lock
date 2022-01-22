@@ -2243,6 +2243,7 @@ dependencies = [
  "ignore",
  "infinitree",
  "itertools",
+ "libc",
  "memmap2",
  "nix",
  "seahash",

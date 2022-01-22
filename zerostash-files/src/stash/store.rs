@@ -20,25 +20,10 @@ const MAX_FILE_SIZE: usize = 4 * 1024 * 1024;
 #[derive(clap::Args, Debug, Default, Clone)]
 pub struct Options {
     /// The paths to include in the commit. All changes (addition/removal) will be committed.
-    pub paths: Vec<String>,
+    pub paths: Vec<PathBuf>,
 
-    /// Preserve permissions.
-    #[clap(
-        short = 'p',
-        long = "preserve-permissions",
-        default_value = "true",
-        parse(try_from_str)
-    )]
-    pub preserve_permissions: bool,
-
-    /// Preserve owner/gid information.
-    #[clap(
-        short = 'o',
-        long = "preserve-ownership",
-        default_value = "true",
-        parse(try_from_str)
-    )]
-    pub preserve_ownership: bool,
+    #[clap(flatten)]
+    pub preserve: files::PreserveMetadata,
 
     /// Force hashing all files even if size and modification time is the same
     #[clap(short = 'f', long)]
@@ -118,12 +103,7 @@ impl Options {
                 _ => continue,
             };
 
-            let entry = match files::Entry::from_metadata(
-                metadata,
-                &path,
-                self.preserve_permissions,
-                self.preserve_ownership,
-            ) {
+            let entry = match files::Entry::from_metadata(metadata, &path, &self.preserve) {
                 Ok(e) => e,
                 Err(error) => {
                     error!(%error, ?path, "failed to ingest file; aborting");
@@ -228,7 +208,7 @@ async fn process_file_loop(
         }
 
         let size = entry.size;
-        if size == 0 || entry.symlink.is_some() {
+        if size == 0 || entry.file_type.is_symlink() {
             index.files.insert(entry.name.clone(), entry);
             continue;
         }
@@ -272,7 +252,6 @@ async fn index_file(
     let chunks = splitter
         .map(|(start, hash, data)| {
             let mut writer = writer.clone();
-            let hash = hash.clone();
             let data = data.to_vec();
             let chunkindex = index.chunks.clone();
 

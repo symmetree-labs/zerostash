@@ -1,27 +1,27 @@
 #![allow(unused)]
 
-use crate::{files, FileSet};
+use crate::{files, FileSet, Files};
+use flume as mpsc;
+use futures::future::join_all;
 use infinitree::{
     backends::Backend,
     object::{self, WriteObject},
+    Infinitree,
 };
-
-use flume as mpsc;
-use futures::future::join_all;
 use itertools::Itertools;
 use memmap2::MmapOptions;
-use tokio::task;
-
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env,
     error::Error,
-    fs,
+    ffi::OsString,
     path::{Path, PathBuf},
     pin::Pin,
     sync::Arc,
     time::UNIX_EPOCH,
 };
+use tokio::{fs, task};
+use tracing::{error, trace};
 
 type ThreadWork = (PathBuf, Arc<files::Entry>);
 
@@ -30,42 +30,115 @@ type Receiver = mpsc::Receiver<ThreadWork>;
 
 pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + 'a)>;
 
-pub async fn from_iter(
-    max_file_handles: usize,
-    iter: FileIterator<'_>,
-    objreader: impl object::Reader + Clone + 'static,
-    target: impl AsRef<Path>,
-) {
-    let (mut sender, receiver) = mpsc::bounded(2 * max_file_handles);
+#[derive(clap::Args, Debug, Clone, Default)]
+pub struct Options {
+    /// List of globs to match in the database
+    pub globs: Vec<String>,
 
-    let workers = (0..max_file_handles)
-        .map(|_| task::spawn(process_packet_loop(receiver.clone(), objreader.clone())))
-        .collect::<Vec<_>>();
+    #[clap(flatten)]
+    pub preserve: files::PreserveMetadata,
 
-    for md in iter {
-        let path = get_path(&md.name);
+    /// Ignore errors
+    #[clap(short = 'f', long)]
+    pub force: bool,
 
-        // if there's no parent, then the entire thing is root.
-        // if what we're trying to extract is root, then what happens?
-        let mut basedir = target.as_ref().to_owned();
-        if let Some(parent) = path.parent() {
-            // create the file and parent directory
-            fs::create_dir_all(basedir.join(parent)).unwrap();
-        }
+    /// Ignore files larger than the given value in bytes.
+    #[clap(short = 'M', long = "max-size")]
+    pub max_size: Option<u64>,
 
-        let filename = basedir.join(&path);
+    /// Ignore files smaller than the given value in bytes.
+    #[clap(short = 'm', long = "min-size")]
+    pub min_size: Option<u64>,
 
-        if sender.send_async((filename, md.clone())).await.is_err() {
-            println!("internal process crashed");
-            return;
-        }
-    }
+    /// Change directory before restore operation.
+    #[clap(short = 'c', long = "chdir")]
+    pub chdir: Option<PathBuf>,
 
-    drop(sender);
-    join_all(workers).await;
+    /// Call chroot(PATH) before restore operation. It is executed before --chdir if specified.
+    /// Note that the source needs to be inside the chroot, or on the network!
+    #[cfg(target_family = "unix")]
+    #[clap(short = 'C', long = "chroot")]
+    pub chroot: Option<PathBuf>,
 }
 
-async fn process_packet_loop(mut r: Receiver, mut objreader: impl object::Reader + 'static) {
+impl Options {
+    pub async fn from_iter(
+        &self,
+        stash: &Infinitree<Files>,
+        threads: usize,
+    ) -> anyhow::Result<u64> {
+        self.setup_env()?;
+
+        let (sender, workers) = self.start_workers(stash, threads)?;
+        let index = stash.index();
+        let iter = index.list(stash, &self.globs);
+
+        for md in iter {
+            if let Some(max) = self.max_size {
+                if max > md.size {
+                    continue;
+                }
+            }
+
+            if let Some(min) = self.min_size {
+                if min < md.size {
+                    continue;
+                }
+            }
+
+            let path = get_path(&md.name);
+
+            trace!(?path, "queued");
+            sender.send_async((path, md)).await.unwrap();
+        }
+
+        drop(sender);
+        join_all(workers).await;
+
+        Ok(0)
+    }
+
+    fn setup_env(&self) -> anyhow::Result<()> {
+        if cfg!(target_family = "unix") {
+            if let Some(ref path) = self.chroot {
+                std::os::unix::fs::chroot(path).unwrap();
+            }
+        }
+
+        if let Some(ref path) = self.chdir {
+            std::env::set_current_dir(path)?;
+        }
+
+        Ok(())
+    }
+
+    fn start_workers(
+        &self,
+        stash: &Infinitree<Files>,
+        threads: usize,
+    ) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
+        let (mut sender, receiver) = mpsc::bounded(threads * 2);
+        let reader = stash.object_reader()?;
+        let workers = (0..threads)
+            .map(|_| {
+                task::spawn(process_packet_loop(
+                    self.force,
+                    self.preserve.clone(),
+                    receiver.clone(),
+                    reader.clone(),
+                ))
+            })
+            .collect::<Vec<_>>();
+        Ok((sender, workers))
+    }
+}
+
+async fn process_packet_loop(
+    force: bool,
+    preserve: files::PreserveMetadata,
+    mut r: Receiver,
+    mut objreader: impl object::Reader + 'static,
+) {
     // Since resources here are all managed by RAII, and they all
     // implement Drop, we can simply go through the Arc<_>s,
     // mmap them, open the corresponding objects to extract details,
@@ -76,28 +149,31 @@ async fn process_packet_loop(mut r: Receiver, mut objreader: impl object::Reader
     let mut buffer = WriteObject::default();
 
     // This loop is managing an mmap of a file that's written
-    while let Ok((filename, metadata)) = r.recv_async().await {
-        if metadata.size == 0 {
-            continue;
-        }
-        let fd = fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .read(true)
-            .open(filename)
-            .unwrap();
-        metadata.restore_to(&fd).unwrap();
+    while let Ok((path, metadata)) = r.recv_async().await {
+        match metadata.restore_to(&path, &preserve) {
+            Ok(Some(fd)) => {
+                let mut mmap = unsafe {
+                    MmapOptions::new()
+                        .len(metadata.size as usize)
+                        .map_mut(&fd)
+                        .expect("mmap")
+                };
 
-        let mut mmap = unsafe {
-            MmapOptions::new()
-                .len(metadata.size as usize)
-                .map_mut(&fd)
-                .expect("mmap")
-        };
+                for (start, cp) in metadata.chunks.iter() {
+                    let start = *start as usize;
+                    objreader.read_chunk(cp, &mut mmap[start..]).unwrap();
+                }
+            }
+            Ok(None) => {
+                trace!(?path, file_type = ?metadata.file_type, "no chunks restored for file");
+            }
+            Err(error) => {
+                error!(%error, "failed to restore file");
 
-        for (start, cp) in metadata.chunks.iter() {
-            let start = *start as usize;
-            objreader.read_chunk(cp, &mut mmap[start..]).unwrap();
+                if !force {
+                    panic!("error while restoring file");
+                }
+            }
         }
     }
 }

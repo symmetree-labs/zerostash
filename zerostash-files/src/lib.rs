@@ -2,7 +2,6 @@
 extern crate serde_derive;
 
 use infinitree::{fields::QueryAction, *};
-use std::path::Path;
 
 mod files;
 pub mod rollsum;
@@ -12,7 +11,6 @@ mod stash;
 pub use stash::restore;
 pub use stash::store;
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 type ChunkIndex = fields::VersionedMap<Digest, ChunkPointer>;
 type FileSet = fields::VersionedMap<String, files::Entry>;
 
@@ -37,7 +35,7 @@ impl Files {
         use QueryAction::{Skip, Take};
         Box::new(
             stash
-                .iter(self.files(), move |ref fname| {
+                .iter(self.files(), move |fname| {
                     if matchers.iter().any(|m| m.matches(fname)) {
                         Take
                     } else {
@@ -47,23 +45,5 @@ impl Files {
                 .unwrap()
                 .map(|(_, v)| v.unwrap()),
         )
-    }
-
-    pub async fn restore_by_glob(
-        &self,
-        stash: &Infinitree<Files>,
-        threads: usize,
-        pattern: &[impl AsRef<str>],
-        target: impl AsRef<Path>,
-    ) -> Result<()> {
-        stash::restore::from_iter(
-            threads,
-            self.list(stash, pattern),
-            stash.object_reader()?,
-            target,
-        )
-        .await;
-
-        Ok(())
     }
 }
