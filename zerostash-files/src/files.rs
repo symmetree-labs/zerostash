@@ -1,18 +1,10 @@
 use infinitree::ChunkPointer;
-#[cfg(unix)]
-use std::os::raw::c_int;
 use std::{
     fs, io,
     path::{Component, Path, PathBuf},
     sync::Arc,
     time::{SystemTimeError, UNIX_EPOCH},
 };
-
-#[cfg(target_os = "linux")]
-const NO_SYMLINK: c_int = libc::O_PATH | libc::O_NOFOLLOW;
-
-#[cfg(all(not(target_os = "linux"), target_family = "unix"))]
-const NO_SYMLINK: c_int = libc::O_SYMLINK;
 
 macro_rules! if_yes {
     ( $flag:expr, $val:expr ) => {
@@ -252,7 +244,7 @@ impl Entry {
 
         let file = match self.file_type {
             Directory => {
-                fs::create_dir(path)?;
+                fs::create_dir_all(path)?;
                 fs::File::open(path)?
             }
             File => {
@@ -260,14 +252,7 @@ impl Entry {
                 file.set_len(self.size)?;
                 file
             }
-            Symlink(ref pointed_to) => {
-                use std::os::unix::fs::OpenOptionsExt;
-                std::os::unix::fs::symlink(pointed_to, path)?;
-                fs::OpenOptions::new()
-                    .read(true)
-                    .custom_flags(NO_SYMLINK)
-                    .open(path)?
-            }
+            Symlink(ref pointed_to) => open_symlink(path, pointed_to)?,
         };
 
         if preserve.permissions {
@@ -287,6 +272,43 @@ impl Entry {
         } else {
             None
         })
+    }
+}
+
+#[cfg(unix)]
+fn open_symlink(
+    path: impl AsRef<Path> + Copy,
+    pointed_to: impl AsRef<Path> + Copy,
+) -> Result<fs::File, io::Error> {
+    use std::os::{
+        raw::c_int,
+        unix::fs::{symlink, OpenOptionsExt},
+    };
+
+    #[cfg(target_os = "linux")]
+    const NO_SYMLINK: c_int = libc::O_PATH | libc::O_NOFOLLOW;
+
+    #[cfg(not(target_os = "linux"))]
+    const NO_SYMLINK: c_int = libc::O_SYMLINK;
+
+    match symlink(pointed_to, path) {
+        Ok(()) => {
+            let file = fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(NO_SYMLINK)
+                .open(path)?;
+
+            Ok(file)
+        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            if let Some(parent) = path.as_ref().parent() {
+                fs::create_dir_all(parent)?;
+                open_symlink(path, pointed_to)
+            } else {
+                Err(err)
+            }
+        }
+        Err(err) => Err(err),
     }
 }
 
