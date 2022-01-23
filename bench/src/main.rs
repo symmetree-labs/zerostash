@@ -2,9 +2,11 @@
 #![cfg_attr(test, feature(test))]
 
 use infinitree::{backends, Infinitree, Key};
-use zerostash_files::{store, Files};
+use zerostash_files::{restore, store, Files};
 
 use std::{collections::HashMap, env::args, fs::metadata, time::Instant};
+
+const MAX_OBJECT_LRU: usize = 64;
 
 fn mb(m: f64) -> f64 {
     m / 1024.0 / 1024.0
@@ -47,8 +49,10 @@ async fn main() {
     // i am really, truly sorry for this. there must be a better way,
     // but i can't be bothered to find it
     let (store_time, commit_time, ol, fl, cl, creuse_sum, creuse_cnt, ssize, tlen, tsize) = {
-        let mut repo =
-            Infinitree::<Files>::empty(backends::Directory::new(&output).unwrap(), (key)());
+        let mut repo = Infinitree::<Files>::empty(
+            backends::Directory::with_open_file_limit(&output, MAX_OBJECT_LRU).unwrap(),
+            (key)(),
+        );
 
         let store_start = Instant::now();
         store::Options {
@@ -143,8 +147,11 @@ async fn main() {
     );
 
     {
-        let mut repo: Infinitree<Files> =
-            Infinitree::open(backends::Directory::new(&output).unwrap(), (key)()).unwrap();
+        let mut repo: Infinitree<Files> = Infinitree::open(
+            backends::Directory::with_open_file_limit(&output, MAX_OBJECT_LRU).unwrap(),
+            (key)(),
+        )
+        .unwrap();
 
         let read_start = Instant::now();
         repo.load_all().unwrap();
@@ -152,7 +159,7 @@ async fn main() {
         println!("repo open: {}", read_time.as_secs_f64());
 
         let restore_start = Instant::now();
-        zerostash_files::restore::Options {
+        restore::Options {
             globs: vec!["*".into()],
             chdir: Some(restore_to.into()),
             ..Default::default()

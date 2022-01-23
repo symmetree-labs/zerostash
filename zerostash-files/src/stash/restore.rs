@@ -171,12 +171,14 @@ async fn process_packet_loop(
                     let start = *start as usize;
                     objreader.read_chunk(cp, &mut mmap[start..]).unwrap();
                 }
+
+                trace!(?path, "restored");
             }
             Ok(None) => {
                 trace!(?path, file_type = ?metadata.file_type, "no chunks restored for file");
             }
             Err(error) => {
-                error!(%error, "failed to restore file");
+                error!(%error, ?path, "failed to restore file");
 
                 if !force {
                     panic!("error while restoring file");
