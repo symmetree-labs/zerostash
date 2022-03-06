@@ -32,7 +32,7 @@ impl Stash {
             use Key::*;
             match &self.key {
                 Interactive => ask_credentials()?,
-                Plaintext { user, password } => infinitree::Key::from_credentials(user, password)?,
+                Plaintext { user, password } => (user.to_string(), password.to_string()),
             }
         };
 
@@ -40,7 +40,17 @@ impl Stash {
             use Backend::*;
             match &self.backend {
                 Filesystem { path } => {
-                    crate::Stash::empty(infinitree::backends::Directory::new(path)?, key)
+                    let backend = infinitree::backends::Directory::new(path)?;
+                    crate::Stash::open(
+                        backend.clone(),
+                        infinitree::Key::from_credentials(&key.0, &key.1)?,
+                    )
+                    .unwrap_or_else(move |_| {
+                        crate::Stash::empty(
+                            backend,
+                            infinitree::Key::from_credentials(&key.0, &key.1).unwrap(),
+                        )
+                    })
                 }
             }
         };
@@ -50,10 +60,10 @@ impl Stash {
 }
 
 /// Ask for credentials on the standard input using [rpassword]
-pub fn ask_credentials() -> Result<infinitree::Key> {
+pub fn ask_credentials() -> Result<(String, String)> {
     let username = rprompt::prompt_reply_stderr("Username: ")?;
     let password = rpassword::prompt_password_stderr("Password: ")?;
-    Ok(infinitree::Key::from_credentials(username, password)?)
+    Ok((username, password))
 }
 
 /// Credentials for a stash

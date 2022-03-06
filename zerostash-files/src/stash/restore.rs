@@ -62,16 +62,47 @@ pub struct Options {
 }
 
 impl Options {
+    pub fn list(&self, stash: &Infinitree<Files>) {
+        let index = stash.index();
+        let globs = if self.globs.len() > 0 {
+            self.globs.clone()
+        } else {
+            vec!["*".into()]
+        };
+        let iter = index.list(stash, &globs);
+
+        for md in iter {
+            if let Some(max) = self.max_size {
+                if max > md.size {
+                    continue;
+                }
+            }
+
+            if let Some(min) = self.min_size {
+                if min < md.size {
+                    continue;
+                }
+            }
+
+            println!("{}", md.name);
+        }
+    }
+
     pub async fn from_iter(
         &self,
         stash: &Infinitree<Files>,
         threads: usize,
     ) -> anyhow::Result<u64> {
         self.setup_env()?;
+        let globs = if self.globs.len() > 0 {
+            self.globs.clone()
+        } else {
+            vec!["*".into()]
+        };
 
         let (sender, workers) = self.start_workers(stash, threads)?;
         let index = stash.index();
-        let iter = index.list(stash, &self.globs);
+        let iter = index.list(stash, &globs);
 
         for md in iter {
             if let Some(max) = self.max_size {

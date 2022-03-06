@@ -38,7 +38,7 @@ pub struct Options {
     pub same_fs: bool,
 
     /// Ignore hidden files.
-    #[clap(short = 'h', long = "ignore-hidden")]
+    #[clap(short = 'd', long = "ignore-hidden")]
     pub hidden: bool,
 
     /// Process ignore rules case insensitively.

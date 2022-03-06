@@ -13,16 +13,17 @@ use clap::Parser;
 #[derive(Command, Debug, Parser)]
 pub struct Ls {
     stash: String,
-    paths: Vec<String>,
+
+    #[clap(flatten)]
+    options: zerostash_files::restore::Options,
 }
 
 impl Runnable for Ls {
     /// Start the application.
     fn run(&self) {
-        let stash = APP.open_stash(&self.stash);
+        let mut stash = APP.open_stash(&self.stash);
 
-        for file in stash.index().list(&stash, &self.paths) {
-            println!("{}", file.name);
-        }
+        stash.load_all().unwrap();
+        self.options.list(&stash);
     }
 }

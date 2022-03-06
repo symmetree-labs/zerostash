@@ -108,11 +108,20 @@ impl ZerostashApp {
         let stash = match config.resolve_stash(&pathy) {
             None => {
                 let path = pathy.as_ref();
-                let key = ask_credentials().unwrap_or_else(|e| fatal_error(e));
+                let (user, pw) = ask_credentials().unwrap_or_else(|e| fatal_error(e));
                 let backend =
                     infinitree::backends::Directory::new(path).unwrap_or_else(|e| fatal_error(e));
 
-                Stash::empty(backend, key)
+                Stash::open(
+                    backend.clone(),
+                    infinitree::Key::from_credentials(&user, &pw).unwrap(),
+                )
+                .unwrap_or_else(move |_| {
+                    Stash::empty(
+                        backend,
+                        infinitree::Key::from_credentials(&user, &pw).unwrap(),
+                    )
+                })
             }
             Some(cfg) => cfg.try_open().unwrap_or_else(|e| fatal_error(e)),
         };
