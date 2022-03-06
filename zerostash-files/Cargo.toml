@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-infinitree = { git = "https://github.com/symmetree-labs/infinitree" }
+infinitree = { git = "https://github.com/symmetree-labs/infinitree", default-features = false, features=["rustls", "s3", "mmap"] }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 tracing = "0.1"
@@ -32,4 +32,4 @@ nix = "0.23"
 [dev-dependencies]
 getrandom = "0.2"
 tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"] }
-infinitree = { git = "https://github.com/symmetree-labs/infinitree", features = [ "_test" ] }
+infinitree = { git = "https://github.com/symmetree-labs/infinitree", default-features = false, features=["rustls", "s3", "mmap"] }
