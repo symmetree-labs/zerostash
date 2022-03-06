@@ -18,8 +18,8 @@ jobs:
         include:
           - name: linux
             os: ubuntu-latest
-            artifact_name: target/release/<name>
-            asset_name: <name>-linux
+            artifact_name: target/x86_64-unknown-linux-musl/release/0s
+            asset_name: 0s-linux-x86_64-musl
 
     steps:
     - uses: actions/checkout@v1
