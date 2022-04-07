@@ -62,7 +62,7 @@ impl Stash {
 /// Ask for credentials on the standard input using [rpassword]
 pub fn ask_credentials() -> Result<(String, String)> {
     let username = rprompt::prompt_reply_stderr("Username: ")?;
-    let password = rpassword::prompt_password_stderr("Password: ")?;
+    let password = rpassword::prompt_password("Password: ")?;
     Ok((username, password))
 }
 
