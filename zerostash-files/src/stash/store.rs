@@ -4,7 +4,7 @@ use flume as mpsc;
 use futures::{future::join_all, stream::futures_unordered::FuturesUnordered};
 use ignore::{DirEntry, WalkBuilder};
 use infinitree::{
-    object::{self, write_balancer::RoundRobinBalancer, Writer},
+    object::{Pool, Writer},
     Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
@@ -171,7 +171,7 @@ fn start_workers(
 ) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
     // make sure the input and output queues are generous
     let (sender, receiver) = mpsc::bounded(threads * 2);
-    let balancer = RoundRobinBalancer::new(stash.object_writer()?, threads)?;
+    let balancer = Pool::new(threads, stash.object_writer()?)?;
 
     let workers = (0..threads)
         .map(|_| {
@@ -191,7 +191,7 @@ async fn process_file_loop(
     force: bool,
     r: Receiver,
     index: crate::Files,
-    writer: RoundRobinBalancer<impl object::Writer + Clone + 'static>,
+    writer: Pool<impl Writer + Clone + 'static>,
 ) {
     let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
 
@@ -233,7 +233,7 @@ async fn index_file(
     buf: &mut Vec<u8>,
     path: PathBuf,
     index: &crate::Files,
-    writer: &RoundRobinBalancer<impl object::Writer + Clone + 'static>,
+    writer: &Pool<impl Writer + Clone + 'static>,
 ) {
     let size = entry.size as usize;
 

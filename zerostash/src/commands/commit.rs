@@ -21,6 +21,7 @@ impl Runnable for Commit {
     fn run(&self) {
         abscissa_tokio::run(&APP, async {
             let mut stash = APP.open_stash(&self.stash);
+            stash.load_all().unwrap();
 
             self.options
                 .add_recursive(&stash, APP.get_worker_threads())

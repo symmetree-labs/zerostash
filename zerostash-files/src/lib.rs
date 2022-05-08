@@ -17,7 +17,6 @@ type FileSet = fields::VersionedMap<String, files::Entry>;
 #[derive(Clone, Default, Index)]
 pub struct Files {
     pub chunks: ChunkIndex,
-    #[infinitree(strategy = "infinitree::fields::SparseField")]
     pub files: FileSet,
 }
 

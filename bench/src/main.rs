@@ -52,7 +52,8 @@ async fn main() {
         let mut repo = Infinitree::<Files>::empty(
             backends::Directory::with_open_file_limit(&output, MAX_OBJECT_LRU).unwrap(),
             (key)(),
-        );
+        )
+        .unwrap();
 
         let store_start = Instant::now();
         store::Options {

@@ -105,28 +105,16 @@ impl ZerostashApp {
     pub(crate) fn open_stash(&self, pathy: impl AsRef<str>) -> Stash {
         let config = self.config();
 
-        let stash = match config.resolve_stash(&pathy) {
-            None => {
-                let path = pathy.as_ref();
-                let (user, pw) = ask_credentials().unwrap_or_else(|e| fatal_error(e));
-                let backend =
-                    infinitree::backends::Directory::new(path).unwrap_or_else(|e| fatal_error(e));
+        let stash = config
+            .resolve_stash(&pathy)
+            .unwrap_or_else(|| crate::config::Stash {
+                key: crate::config::Key::Interactive,
+                backend: crate::config::Backend::Filesystem {
+                    path: pathy.as_ref().to_string(),
+                },
+            });
 
-                Stash::open(
-                    backend.clone(),
-                    infinitree::Key::from_credentials(&user, &pw).unwrap(),
-                )
-                .unwrap_or_else(move |_| {
-                    Stash::empty(
-                        backend,
-                        infinitree::Key::from_credentials(&user, &pw).unwrap(),
-                    )
-                })
-            }
-            Some(cfg) => cfg.try_open().unwrap_or_else(|e| fatal_error(e)),
-        };
-
-        stash
+        stash.try_open().unwrap_or_else(|e| fatal_error(e))
     }
 
     pub(crate) async fn stash_exists(&self, pathy: impl AsRef<str>) -> Stash {

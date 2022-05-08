@@ -21,8 +21,10 @@ pub struct ZerostashConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Stash {
-    key: Key,
-    pub(crate) backend: Backend,
+    /// Key descriptor to use while opening the stash
+    pub key: Key,
+    /// Backend configuration for the stash
+    pub backend: Backend,
 }
 
 impl Stash {
@@ -50,6 +52,7 @@ impl Stash {
                             backend,
                             infinitree::Key::from_credentials(&key.0, &key.1).unwrap(),
                         )
+                        .unwrap()
                     })
                 }
             }
@@ -109,8 +112,8 @@ impl ZerostashConfig {
 
     /// Find a stash by name in the config, and return a read-only
     /// reference if found
-    pub fn resolve_stash(&self, alias: impl AsRef<str>) -> Option<&Stash> {
-        self.stashes.get(alias.as_ref())
+    pub fn resolve_stash(&self, alias: impl AsRef<str>) -> Option<Stash> {
+        self.stashes.get(alias.as_ref()).cloned()
     }
 }
 

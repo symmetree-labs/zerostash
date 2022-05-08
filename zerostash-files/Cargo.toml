@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-infinitree = { version = "0.4", default-features = false, features=["rustls", "s3", "mmap"] }
+infinitree = { version = "0.5", default-features = false, features=["rustls", "s3", "mmap"] }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 tracing = "0.1"
@@ -27,9 +27,9 @@ itertools = "0.10"
 seahash = "4.0"
 
 libc = "0.2"
-nix = "0.23"
+nix = "0.24"
 
 [dev-dependencies]
 getrandom = "0.2"
 tokio = { version = "^1", features = ["rt", "macros", "rt-multi-thread"] }
-infinitree = { version = "0.4", default-features = false, features=["rustls", "s3", "mmap"] }
+infinitree = { version = "0.5", default-features = false, features=["rustls", "s3", "mmap"] }

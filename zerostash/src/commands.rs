@@ -30,7 +30,7 @@ pub const CONFIG_FILE: &str = "zerostash.toml";
 #[derive(Command, Debug, Parser, Runnable)]
 pub enum ZerostashCmd {
     /// add new alias for a stash URI/path
-    Alias(Alias),
+    //Alias(Alias),
 
     /// check out files
     Checkout(Checkout),
@@ -45,7 +45,7 @@ pub enum ZerostashCmd {
     Wipe(Wipe),
 }
 
-/// Entry point for the application. It needs to be a struct to allow using subcommands!
+/// Secure and speedy backups.
 #[derive(Command, Debug, Parser)]
 #[clap(author, about, version)]
 pub struct EntryPoint {

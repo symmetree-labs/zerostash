@@ -157,14 +157,13 @@ impl Options {
         threads: usize,
     ) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
         let (mut sender, receiver) = mpsc::bounded(threads);
-        let reader = stash.object_reader()?;
         let workers = (0..threads)
             .map(|_| {
                 task::spawn(process_packet_loop(
                     self.force,
                     self.preserve.clone(),
                     receiver.clone(),
-                    reader.clone(),
+                    stash.object_reader().unwrap(),
                 ))
             })
             .collect::<Vec<_>>();
