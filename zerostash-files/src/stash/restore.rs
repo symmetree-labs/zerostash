@@ -64,7 +64,7 @@ pub struct Options {
 impl Options {
     pub fn list(&self, stash: &Infinitree<Files>) {
         let index = stash.index();
-        let globs = if self.globs.len() > 0 {
+        let globs = if !self.globs.is_empty() {
             self.globs.clone()
         } else {
             vec!["*".into()]
@@ -94,7 +94,7 @@ impl Options {
         threads: usize,
     ) -> anyhow::Result<u64> {
         self.setup_env()?;
-        let globs = if self.globs.len() > 0 {
+        let globs = if !self.globs.is_empty() {
             self.globs.clone()
         } else {
             vec!["*".into()]

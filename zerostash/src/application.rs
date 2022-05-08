@@ -1,10 +1,6 @@
 //! Zerostash Abscissa Application
 
-use crate::{
-    commands::EntryPoint,
-    config::{ask_credentials, ZerostashConfig},
-    Stash,
-};
+use crate::{commands::EntryPoint, config::ZerostashConfig, Stash};
 use abscissa_core::{
     application::{self, AppCell},
     config::{self, CfgCell},

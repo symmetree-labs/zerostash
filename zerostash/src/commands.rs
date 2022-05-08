@@ -16,7 +16,7 @@ mod commit;
 mod ls;
 mod wipe;
 
-use self::{alias::Alias, checkout::Checkout, commit::Commit, ls::Ls, wipe::Wipe};
+use self::{checkout::Checkout, commit::Commit, ls::Ls, wipe::Wipe};
 use crate::config::ZerostashConfig;
 use abscissa_core::{Command, Configurable, FrameworkError, Runnable};
 use clap::Parser;
