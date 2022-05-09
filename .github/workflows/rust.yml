@@ -5,11 +5,13 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+  release:
+    types: [ published ]
 
 jobs:
   security_audit:
-    runs-on: ubuntu-latest
     if: false
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
     - uses: actions-rs/audit-check@v1
@@ -32,18 +34,80 @@ jobs:
   build:
     strategy:
       matrix:
-        platform:
-          - ubuntu-latest
-          - macos-latest
+        name: [
+          linux,
+          macos
           # - windows-latest # disabled until morale improves
+        ]
+
+        include:
+          - name: linux
+            os: ubuntu-latest
+            asset_name: 0s-linux-x86_64-static
+            target: x86_64-unknown-linux-musl
+            cross: true
+
+          - name: macos
+            os: macos-latest
+            asset_name: 0s-macos-x86_64
+            target: x86_64-apple-darwin
+            cross: false
+
         rust:
-          - 1.56.0 # MSRV
-    runs-on: ${{ matrix.platform }}
+          - 1.60.0 # MSRV
+
+    runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+          target: ${{ matrix.target }}
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+            use-cross: ${{ matrix.cross }}
+            command: build
+            args: --release --target ${{ matrix.target }}
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.asset_name }}
+          path: target/${{ matrix.target }}/release/0s
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
       with:
-        toolchain: stable
-        override: true
-        profile: minimal
-    - run: cargo build
+        path: bin
+    - name: Attach binaries to release
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs/promises');
+          const path = require('path');
+
+          const {owner, repo} = context.repo;
+          const release_id = context.payload.release.id;
+
+          const artifacts = await fs.readdir('bin/');
+
+          for (dir of artifacts) {
+              console.log(`Uploading ${dir}/0s for release ${release_id}`);
+          
+              await github.rest.repos.uploadReleaseAsset({
+                  owner,
+                  repo,
+                  release_id,
+                  name: path.basename(dir),
+                  data: await fs.readFile(`bin/${dir}/0s`),
+              });
+          }
