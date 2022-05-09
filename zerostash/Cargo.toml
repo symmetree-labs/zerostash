@@ -10,7 +10,7 @@ edition = "2021"
 anyhow = "1.0"
 thiserror = "1.0"
 clap = "3"
-infinitree = { version = "0.5", default-features = false, features=["rustls", "s3", "mmap"] }
+infinitree = { version = "0.6", default-features = false, features=["rustls", "s3", "mmap"] }
 zerostash-files = { path = "../zerostash-files" }
 num_cpus = "1.13.0"
 rpassword = "6.0.0"
