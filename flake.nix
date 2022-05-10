@@ -29,16 +29,6 @@
 
           src = ./.;
           root = ./.;
-
-          LIBCLANG_PATH = "${pkgs.llvmPackages_13.libclang.lib}/lib";
-
-          nativeBuildInputs = with pkgs; [
-            llvm
-            clang
-          ];
-          buildInputs = with pkgs; [
-            llvm.dev
-          ];
         };
         defaultPackage = packages.zerostash;
 
@@ -58,8 +48,6 @@
             rustfmt
             clippy
           ];
-
-          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
         };
       });
 }
