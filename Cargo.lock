@@ -843,6 +843,8 @@ dependencies = [
 [[package]]
 name = "infinitree"
 version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9990c1c4b3419fb1f30c9ab6def8f099f30505112f5b06eece03850c2d3d4b3e"
 dependencies = [
  "anyhow",
  "blake3",
@@ -872,6 +874,8 @@ dependencies = [
 [[package]]
 name = "infinitree-macros"
 version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d855403351929c0fa39d7f91bd3280361af1ee6c36e7f22a55707ab6036edea9"
 dependencies = [
  "proc-macro-crate",
  "proc-macro-error",
@@ -1692,9 +1696,9 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "syn"
-version = "1.0.92"
+version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ff7c592601f11445996a06f8ad0c27f094a58857c2f89e97974ab9235b92c52"
+checksum = "04066589568b72ec65f42d65a1a52436e954b168773148893c020269563decf2"
 dependencies = [
  "proc-macro2",
  "quote",
