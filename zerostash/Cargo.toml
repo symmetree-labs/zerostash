@@ -3,7 +3,7 @@ name = "zerostash"
 authors = ["Peter Parkanyi <p@symmetree.dev>"]
 repository = "https://github.com/symmetree-labs/zerostash"
 license = "GPL-3.0"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 
 [dependencies]
@@ -11,7 +11,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 clap = "3"
 infinitree = { version = "0.6", default-features = false, features=["rustls", "s3", "mmap"] }
-zerostash-files = { path = "../zerostash-files" }
+zerostash-files = { version = "0.3", path = "../zerostash-files" }
 num_cpus = "1.13.0"
 rpassword = "6.0.0"
 rprompt = "1.0.5"

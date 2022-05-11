@@ -2273,7 +2273,7 @@ checksum = "94693807d016b2f2d2e14420eb3bfcca689311ff775dcf113d74ea624b7cdf07"
 
 [[package]]
 name = "zerostash"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "abscissa_core",
  "abscissa_tokio",
@@ -2309,7 +2309,7 @@ dependencies = [
 
 [[package]]
 name = "zerostash-files"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",

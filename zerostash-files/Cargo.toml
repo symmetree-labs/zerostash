@@ -3,7 +3,7 @@ name = "zerostash-files"
 authors = ["Peter Parkanyi <p@symmetree.dev>"]
 repository = "https://github.com/symmetree-labs/zerostash"
 license = "GPL-3.0"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 
 [dependencies]
