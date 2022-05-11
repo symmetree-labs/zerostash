@@ -8,7 +8,7 @@ use infinitree::{
     Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
-use std::path::PathBuf;
+use std::{num::NonZeroUsize, path::PathBuf};
 use tokio::{fs, io::AsyncReadExt, task};
 use tracing::{error, trace, trace_span, warn, Instrument};
 
@@ -171,7 +171,7 @@ fn start_workers(
 ) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
     // make sure the input and output queues are generous
     let (sender, receiver) = mpsc::bounded(threads * 2);
-    let balancer = Pool::new(threads, stash.object_writer()?)?;
+    let balancer = Pool::new(NonZeroUsize::new(threads).unwrap(), stash.object_writer()?)?;
 
     let workers = (0..threads)
         .map(|_| {
@@ -203,6 +203,8 @@ async fn process_file_loop(
                 if in_store.as_ref() == &entry {
                     trace!(?path, "already indexed, skipping");
                     continue;
+                } else {
+                    trace!(?path, "adding new file");
                 }
             }
         }
@@ -269,7 +271,12 @@ async fn index_file(
 
     trace!(?path, chunks = entry.chunks.len(), "indexed");
 
-    index.files.insert(entry.name.clone(), entry);
+    if let None = index
+        .files
+        .update_with(entry.name.clone(), |_v| entry.clone())
+    {
+        index.files.insert(entry.name.clone(), entry);
+    }
 }
 
 struct MmappedFile {
