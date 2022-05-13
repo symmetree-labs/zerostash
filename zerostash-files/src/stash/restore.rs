@@ -121,28 +121,9 @@ impl Options {
         threads: usize,
     ) -> anyhow::Result<u64> {
         self.setup_env()?;
-        let globs = if !self.globs.is_empty() {
-            self.globs.clone()
-        } else {
-            vec!["*".into()]
-        };
-
         let (sender, workers) = self.start_workers(stash, threads)?;
-        let iter = iter(stash, &globs);
 
-        for md in iter {
-            if let Some(max) = self.max_size {
-                if max > md.size {
-                    continue;
-                }
-            }
-
-            if let Some(min) = self.min_size {
-                if min < md.size {
-                    continue;
-                }
-            }
-
+        for md in self.list(stash) {
             let path = get_path(&md.name);
 
             trace!(?path, "queued");
