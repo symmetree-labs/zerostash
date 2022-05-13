@@ -10,7 +10,7 @@ use infinitree::{
 use memmap2::{Mmap, MmapOptions};
 use std::{num::NonZeroUsize, path::PathBuf};
 use tokio::{fs, io::AsyncReadExt, task};
-use tracing::{error, trace, trace_span, warn, Instrument};
+use tracing::{debug, debug_span, error, trace, warn, Instrument};
 
 type Sender = mpsc::Sender<(PathBuf, files::Entry)>;
 type Receiver = mpsc::Receiver<(PathBuf, files::Entry)>;
@@ -201,10 +201,10 @@ async fn process_file_loop(
         if !force {
             if let Some(in_store) = index.files.get(&entry.name) {
                 if in_store.as_ref() == &entry {
-                    trace!(?path, "already indexed, skipping");
+                    debug!(?path, "already indexed, skipping");
                     continue;
                 } else {
-                    trace!(?path, "adding new file");
+                    debug!(?path, "adding new file");
                 }
             }
         }
@@ -224,7 +224,7 @@ async fn process_file_loop(
         };
 
         index_file(entry, osfile, &mut buf, path.clone(), &index, &writer)
-            .instrument(trace_span!("index file", ?path, size))
+            .instrument(debug_span!("indexing", ?path, size))
             .await;
     }
 }
@@ -269,7 +269,7 @@ async fn index_file(
         .chunks
         .extend(join_all(chunks).await.into_iter().map(Result::unwrap));
 
-    trace!(?path, chunks = entry.chunks.len(), "indexed");
+    debug!(?path, chunks = entry.chunks.len(), "indexed");
 
     if let None = index
         .files
