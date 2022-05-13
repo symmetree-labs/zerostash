@@ -5,8 +5,9 @@ use flume as mpsc;
 use futures::future::join_all;
 use infinitree::{
     backends::Backend,
+    fields::QueryAction,
     object::{self, WriteObject},
-    Infinitree,
+    Infinitree, *,
 };
 use itertools::Itertools;
 use memmap2::MmapOptions;
@@ -61,31 +62,57 @@ pub struct Options {
     pub chroot: Option<PathBuf>,
 }
 
+fn iter<'stash, V: AsRef<[T]>, T: AsRef<str>>(
+    stash: &'stash Infinitree<Files>,
+    glob: V,
+) -> FileIterator<'stash> {
+    let matchers = glob
+        .as_ref()
+        .iter()
+        .map(|g| glob::Pattern::new(g.as_ref()).unwrap())
+        .collect::<Vec<glob::Pattern>>();
+
+    use QueryAction::{Skip, Take};
+    Box::new(
+        stash
+            .iter(stash.index().files(), move |fname| {
+                if matchers.iter().any(|m| m.matches(fname)) {
+                    Take
+                } else {
+                    Skip
+                }
+            })
+            .unwrap()
+            .map(|(_, v)| v.unwrap()),
+    )
+}
+
 impl Options {
-    pub fn list(&self, stash: &Infinitree<Files>) {
-        let index = stash.index();
+    pub fn list<'stash>(
+        &'stash self,
+        stash: &'stash Infinitree<Files>,
+    ) -> impl Iterator<Item = Arc<crate::files::Entry>> + 'stash {
         let globs = if !self.globs.is_empty() {
             self.globs.clone()
         } else {
             vec!["*".into()]
         };
-        let iter = index.list(stash, &globs);
 
-        for md in iter {
+        iter(stash, globs).filter(|md| {
             if let Some(max) = self.max_size {
                 if max > md.size {
-                    continue;
+                    return false;
                 }
             }
 
             if let Some(min) = self.min_size {
                 if min < md.size {
-                    continue;
+                    return false;
                 }
             }
 
-            println!("{}", md.name);
-        }
+            true
+        })
     }
 
     pub async fn from_iter(
@@ -101,8 +128,7 @@ impl Options {
         };
 
         let (sender, workers) = self.start_workers(stash, threads)?;
-        let index = stash.index();
-        let iter = index.list(stash, &globs);
+        let iter = iter(stash, &globs);
 
         for md in iter {
             if let Some(max) = self.max_size {
