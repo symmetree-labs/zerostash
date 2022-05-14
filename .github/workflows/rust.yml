@@ -35,8 +35,8 @@ jobs:
       matrix:
         name: [
           linux,
-          macos
-          # - windows-latest # disabled until morale improves
+          macos,
+          windows
         ]
 
         include:
@@ -51,6 +51,12 @@ jobs:
             asset_name: 0s-macos-x86_64
             target: x86_64-apple-darwin
             cross: false
+
+          - name: windows
+            os: windows-latest
+            asset_name: 0s-windows-x86_64
+            target: x86_64-pc-windows-msvc
+            cross: true
 
         rust:
           - 1.60.0 # MSRV
