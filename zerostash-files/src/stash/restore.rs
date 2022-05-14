@@ -62,10 +62,7 @@ pub struct Options {
     pub chroot: Option<PathBuf>,
 }
 
-fn iter<'stash, V: AsRef<[T]>, T: AsRef<str>>(
-    stash: &'stash Infinitree<Files>,
-    glob: V,
-) -> FileIterator<'stash> {
+fn iter<V: AsRef<[T]>, T: AsRef<str>>(stash: &Infinitree<Files>, glob: V) -> FileIterator {
     let matchers = glob
         .as_ref()
         .iter()

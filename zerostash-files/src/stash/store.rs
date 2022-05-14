@@ -271,9 +271,10 @@ async fn index_file(
 
     debug!(?path, chunks = entry.chunks.len(), "indexed");
 
-    if let None = index
+    if index
         .files
         .update_with(entry.name.clone(), |_v| entry.clone())
+        .is_none()
     {
         index.files.insert(entry.name.clone(), entry);
     }

@@ -62,11 +62,6 @@ impl Ls {
         let human_readable = self.human_readable;
 
         Box::new(move |entry: Arc<Entry>| {
-            match entry.file_type {
-                FileType::Symlink(_) => (),
-                _ => return,
-            };
-
             let time: DateTime<Utc> = entry.as_ref().into();
             let local_time = time.with_timezone(&chrono::Local);
             let formatted_time = local_time.format("%Y %b %e %H:%M:%S").to_string();
@@ -117,7 +112,7 @@ impl Ls {
                     entry.name.clone()
                 },
             );
-            writeln!(stdout().lock(), "").unwrap();
+            writeln!(stdout().lock()).unwrap();
         })
     }
 }
@@ -127,7 +122,7 @@ fn get_uid(uid: Option<u32>) -> String {
     uid.and_then(|uid| User::from_uid(Uid::from_raw(uid)).ok())
         .flatten()
         .map(|u| u.name)
-        .unwrap_or("---".to_string())
+        .unwrap_or_else(|| "---".to_string())
 }
 
 #[cfg(unix)]
@@ -135,7 +130,7 @@ fn get_gid(gid: Option<u32>) -> String {
     gid.and_then(|gid| Group::from_gid(Gid::from_raw(gid)).ok())
         .flatten()
         .map(|g| g.name)
-        .unwrap_or("---".to_string())
+        .unwrap_or_else(|| "---".to_string())
 }
 
 #[cfg(windows)]
