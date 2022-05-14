@@ -7,7 +7,7 @@ version = "0.3.0"
 edition = "2021"
 
 [dependencies]
-infinitree = { version = "0.6", default-features = false, features=["rustls", "s3", "mmap"] }
+infinitree = { version = "0.7", default-features = false, features=["rustls", "s3", "mmap"] }
 serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 tracing = "0.1"

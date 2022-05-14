@@ -7,7 +7,7 @@ license = "MIT/Apache-2.0"
 edition= "2021"
 
 [dependencies]
-infinitree = { version = "0.6", default-features = false, features=["rustls", "s3", "mmap"] }
+infinitree = { version = "0.7", default-features = false, features=["rustls", "s3", "mmap"] }
 zerostash-files = { path = "../zerostash-files" }
 walkdir = "^2.2.7"
 tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread", "parking_lot"] }
@@ -16,7 +16,7 @@ tracing-subscriber = "0.3"
 tracing = "0.1"
 
 [dev-dependencies]
-infinitree = { version = "0.6", default-features = false, features=["rustls", "s3", "mmap"] }
+infinitree = { version = "0.7", default-features = false, features=["rustls", "s3", "mmap"] }
 getrandom = "*"
 memmap2 = "*"
 
