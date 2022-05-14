@@ -2373,6 +2373,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "dirs",
  "humansize",
  "ignore",
  "infinitree 0.7.0",

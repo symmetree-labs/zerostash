@@ -155,7 +155,6 @@ impl Entry {
         path: &impl AsRef<Path>,
         preserve: &PreserveMetadata,
     ) -> Result<Entry, EntryError> {
-        let path = path.as_ref();
         let (unix_secs, unix_nanos) = if preserve.times {
             to_unix_mtime(&metadata)?
         } else {
@@ -217,7 +216,7 @@ impl Entry {
             },
 
             size: metadata.len(),
-            name: normalize_filename(&path)?,
+            name: normalize_filename(path)?,
 
             chunks: Vec::new(),
         })
@@ -229,6 +228,21 @@ impl Entry {
         path: &impl AsRef<Path>,
         preserve: &PreserveMetadata,
     ) -> Result<Option<fs::File>, EntryError> {
+        use FileType::*;
+
+        let file = match self.file_type {
+            Directory => {
+                fs::create_dir_all(path)?;
+                fs::File::open(path)?
+            }
+            File => {
+                let file = open_file(path)?;
+                file.set_len(self.size)?;
+                file
+            }
+            Symlink(ref pointed_to) => open_symlink(path, pointed_to)?,
+        };
+
         file.set_len(self.size)?;
 
         if let Some(readonly) = self.readonly {
@@ -236,11 +250,15 @@ impl Entry {
                 let metadata = file.metadata()?;
                 let mut permissions = metadata.permissions();
                 permissions.set_readonly(readonly);
-                file.set_permissions(permissions);
+                file.set_permissions(permissions)?;
             }
         }
 
-        Ok(())
+        Ok(if self.file_type.is_file() {
+            Some(file)
+        } else {
+            None
+        })
     }
 
     #[cfg(unix)]
@@ -285,6 +303,34 @@ impl Entry {
         } else {
             None
         })
+    }
+}
+
+#[cfg(windows)]
+fn open_symlink(
+    path: impl AsRef<Path> + Copy,
+    pointed_to: impl AsRef<Path> + Copy,
+) -> Result<fs::File, io::Error> {
+    use std::os::windows::fs::{symlink_dir, symlink_file};
+
+    let pointed_md = std::fs::metadata(pointed_to)?;
+    let symlink = if pointed_md.is_dir() {
+        symlink_dir
+    } else {
+        symlink_file
+    };
+
+    match symlink(pointed_to, path) {
+        Ok(()) => Ok(fs::OpenOptions::new().read(true).open(path)?),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            if let Some(parent) = path.as_ref().parent() {
+                fs::create_dir_all(parent)?;
+                open_symlink(path, pointed_to)
+            } else {
+                Err(err)
+            }
+        }
+        Err(err) => Err(err),
     }
 }
 
