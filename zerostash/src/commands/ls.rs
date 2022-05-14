@@ -9,10 +9,7 @@ use chrono::{DateTime, Utc};
 use clap::Parser;
 use humansize::{file_size_opts, FileSize};
 use nix::unistd::{Gid, Group, Uid, User};
-use std::{
-    io::{Error, Write},
-    sync::Arc,
-};
+use std::{io::Write, sync::Arc};
 use termcolor::{Color, ColorSpec, WriteColor};
 use zerostash_files::*;
 
@@ -62,9 +59,6 @@ impl Ls {
     }
 
     fn print_list(&self) -> Box<dyn Fn(Arc<Entry>)> {
-        // ls output:
-        // -rw-r--r--  1 user  staff   3.7K 12 May 22:53 #README.md#
-
         let human_readable = self.human_readable;
 
         Box::new(move |entry: Arc<Entry>| {

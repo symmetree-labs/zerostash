@@ -13,10 +13,11 @@
 mod alias;
 mod checkout;
 mod commit;
+mod log;
 mod ls;
 mod wipe;
 
-use self::{checkout::Checkout, commit::Commit, ls::Ls, wipe::Wipe};
+use self::{checkout::Checkout, commit::Commit, log::Log, ls::Ls, wipe::Wipe};
 use crate::config::ZerostashConfig;
 use abscissa_core::{Command, Configurable, FrameworkError, Runnable};
 use clap::Parser;
@@ -37,6 +38,9 @@ pub enum ZerostashCmd {
 
     /// add files to a stash
     Commit(Commit),
+
+    /// list commits in the stash
+    Log(Log),
 
     /// list files in a stash
     Ls(Ls),

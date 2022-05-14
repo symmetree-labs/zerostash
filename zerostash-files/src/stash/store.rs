@@ -30,7 +30,7 @@ pub struct Options {
     pub force: bool,
 
     /// Ignore files larger than the given value in bytes.
-    #[clap(short = 'm', long = "max-size")]
+    #[clap(short = 'M', long = "max-size")]
     pub max_size: Option<u64>,
 
     /// Do not cross file system boundaries during directory walk.
