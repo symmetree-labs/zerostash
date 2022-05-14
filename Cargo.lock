@@ -296,6 +296,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "chrono"
+version = "0.4.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
+dependencies = [
+ "libc",
+ "num-integer",
+ "num-traits",
+ "time 0.1.44",
+ "winapi",
+]
+
+[[package]]
 name = "clap"
 version = "3.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -622,7 +635,7 @@ dependencies = [
  "cfg-if",
  "js-sys",
  "libc",
- "wasi 0.10.2+wasi-snapshot-preview1",
+ "wasi 0.10.0+wasi-snapshot-preview1",
  "wasm-bindgen",
 ]
 
@@ -753,6 +766,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4a1e36c821dbe04574f602848a19f742f4fb3c98d40449f11bcad18d6b17421"
 
 [[package]]
+name = "humansize"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02296996cb8796d7c6e3bc2d9211b7802812d36999a51bb754123ead7d37d026"
+
+[[package]]
 name = "hyper"
 version = "0.14.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -852,7 +871,7 @@ dependencies = [
  "futures",
  "getrandom",
  "hex",
- "infinitree-macros",
+ "infinitree-macros 0.6.0",
  "lru",
  "lz4_flex",
  "memmap2",
@@ -861,7 +880,38 @@ dependencies = [
  "rmp-serde",
  "rust-argon2",
  "rust-s3",
- "scc",
+ "scc 0.6.10",
+ "secrecy",
+ "serde",
+ "serde_derive",
+ "serde_with",
+ "thiserror",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
+name = "infinitree"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e4ab72903249b16ce168b35aaf5b953e68769d4330c51f7bafadc39d49d8673"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "flume",
+ "futures",
+ "getrandom",
+ "hex",
+ "infinitree-macros 0.7.0",
+ "lru",
+ "lz4_flex",
+ "memmap2",
+ "parking_lot",
+ "ring",
+ "rmp-serde",
+ "rust-argon2",
+ "rust-s3",
+ "scc 0.7.1",
  "secrecy",
  "serde",
  "serde_derive",
@@ -876,6 +926,19 @@ name = "infinitree-macros"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d855403351929c0fa39d7f91bd3280361af1ee6c36e7f22a55707ab6036edea9"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "infinitree-macros"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49ed28c840f970beeffd62e059d3de06b5048a4e1c1faa25b76ca03c44d7bd3b"
 dependencies = [
  "proc-macro-crate",
  "proc-macro-error",
@@ -1065,6 +1128,16 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "225d3389fb3509a24c93f5c29eb6bde2586b98d9f016636dff58d7c6f7569cd9"
+dependencies = [
+ "autocfg",
+ "num-traits",
 ]
 
 [[package]]
@@ -1437,7 +1510,7 @@ dependencies = [
  "serde_derive",
  "sha2",
  "thiserror",
- "time",
+ "time 0.3.9",
  "tokio",
  "tokio-stream",
  "url",
@@ -1496,6 +1569,15 @@ name = "scc"
 version = "0.6.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0578a8fde9af6966abd721515607bcb630fed4f8d6b39e283e8bb713e5698232"
+dependencies = [
+ "scopeguard",
+]
+
+[[package]]
+name = "scc"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a62be7271cd6a93f6b2fc00f6a0b9e65a7d6e6cf844d2f7b52f1f8042f809665"
 dependencies = [
  "scopeguard",
 ]
@@ -1696,9 +1778,9 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "syn"
-version = "1.0.93"
+version = "1.0.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04066589568b72ec65f42d65a1a52436e954b168773148893c020269563decf2"
+checksum = "a07e33e919ebcd69113d5be0e4d70c5707004ff45188910106854f38b960df4a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1759,6 +1841,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5516c27b78311c50bf42c071425c560ac799b11c30b31f87e3081965fe5e0180"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "time"
+version = "0.1.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6db9e6914ab8b1ae1c260a4ae7a49b6c5611b40328a735b21862567685e73255"
+dependencies = [
+ "libc",
+ "wasi 0.10.0+wasi-snapshot-preview1",
+ "winapi",
 ]
 
 [[package]]
@@ -2056,9 +2149,9 @@ dependencies = [
 
 [[package]]
 name = "wasi"
-version = "0.10.2+wasi-snapshot-preview1"
+version = "0.10.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6fbd9a79829dd1ad0cc20627bf1ed606756a7f77edff7b66b7064f9cb327c6"
+checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
 
 [[package]]
 name = "wasi"
@@ -2278,14 +2371,18 @@ dependencies = [
  "abscissa_core",
  "abscissa_tokio",
  "anyhow",
+ "chrono",
  "clap",
+ "humansize",
  "ignore",
- "infinitree",
+ "infinitree 0.7.0",
+ "nix",
  "num_cpus",
  "once_cell",
  "rpassword",
  "rprompt",
  "serde",
+ "termcolor",
  "thiserror",
  "toml",
  "xdg",
@@ -2297,7 +2394,7 @@ name = "zerostash-bench"
 version = "0.1.0"
 dependencies = [
  "getrandom",
- "infinitree",
+ "infinitree 0.7.0",
  "memmap2",
  "num_cpus",
  "tokio",
@@ -2312,13 +2409,15 @@ name = "zerostash-files"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "flume",
  "futures",
  "getrandom",
  "glob",
  "ignore",
- "infinitree",
+ "infinitree 0.6.0",
+ "infinitree 0.7.0",
  "itertools",
  "libc",
  "memmap2",
