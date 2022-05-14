@@ -8,7 +8,6 @@ use abscissa_core::{
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use humansize::{file_size_opts, FileSize};
-use nix::unistd::{Gid, Group, Uid, User};
 use std::{io::Write, sync::Arc};
 use termcolor::{Color, ColorSpec, WriteColor};
 use zerostash_files::*;
@@ -119,6 +118,7 @@ impl Ls {
 
 #[cfg(unix)]
 fn get_uid(uid: Option<u32>) -> String {
+    use nix::unistd::{Uid, User};
     uid.and_then(|uid| User::from_uid(Uid::from_raw(uid)).ok())
         .flatten()
         .map(|u| u.name)
@@ -127,6 +127,7 @@ fn get_uid(uid: Option<u32>) -> String {
 
 #[cfg(unix)]
 fn get_gid(gid: Option<u32>) -> String {
+    use nix::unistd::{Gid, Group};
     gid.and_then(|gid| Group::from_gid(Gid::from_raw(gid)).ok())
         .flatten()
         .map(|g| g.name)

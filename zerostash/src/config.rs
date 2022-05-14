@@ -98,11 +98,24 @@ pub enum Backend {
 
 impl ZerostashConfig {
     /// Path to the configuration directory
+    #[cfg(unix)]
     pub fn path() -> PathBuf {
         xdg::BaseDirectories::with_prefix("zerostash")
             .unwrap()
             .place_config_file("config.toml")
             .expect("cannot create configuration directory")
+    }
+
+    /// Path to the configuration directory
+    #[cfg(windows)]
+    pub fn path() -> PathBuf {
+        let mut p = dirs::home_dir().expect("cannot find home directory");
+
+        p.push(".zerostash");
+        std::fs::create_dir_all(&p).expect("failed to create config dir");
+
+        p.push("config.toml");
+        p
     }
 
     /// Write the config file to the file system

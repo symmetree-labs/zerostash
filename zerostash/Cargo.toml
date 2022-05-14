@@ -18,6 +18,7 @@ rprompt = "1.0.5"
 serde = { version = "1", features = ["serde_derive"] }
 toml = "0.5"
 xdg = "2.2"
+dirs = "4.0"
 ignore = "0.4"
 
 humansize = "1.1.1"
