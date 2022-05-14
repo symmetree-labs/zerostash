@@ -83,7 +83,7 @@ fn iter<'stash, V: AsRef<[T]>, T: AsRef<str>>(
                 }
             })
             .unwrap()
-            .map(|(_, v)| v.unwrap()),
+            .filter_map(|(_, v)| v),
     )
 }
 
@@ -124,7 +124,7 @@ impl Options {
         let (sender, workers) = self.start_workers(stash, threads)?;
 
         for md in self.list(stash) {
-            let path = get_path(&md.name);
+            let path = md.as_ref().into();
 
             trace!(?path, "queued");
             sender.send_async((path, md)).await.unwrap();
@@ -222,27 +222,5 @@ async fn process_packet_loop(
                 }
             }
         }
-    }
-}
-
-fn get_path(filename: impl AsRef<Path>) -> PathBuf {
-    let path = filename.as_ref();
-    let mut cs = path.components();
-
-    if let Some(std::path::Component::RootDir) = cs.next() {
-        cs.as_path().to_owned()
-    } else {
-        path.to_owned()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn path_removes_root() {
-        use super::*;
-
-        assert_eq!(Path::new("home/a/b"), get_path("/home/a/b").as_path());
-        assert_eq!(Path::new("./a/b"), get_path("./a/b").as_path());
     }
 }

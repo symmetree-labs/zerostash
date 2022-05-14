@@ -3,8 +3,8 @@ name = "zerostash-bench"
 version = "0.1.0"
 authors = ["Peter Parkanyi <me@rhapsodhy.hu>"]
 repository = "https://github.com/rsdy/zerostash"
-license = "GPL-3.0"
-edition= "2018"
+license = "MIT/Apache-2.0"
+edition= "2021"
 
 [dependencies]
 infinitree = { version = "0.6", default-features = false, features=["rustls", "s3", "mmap"] }

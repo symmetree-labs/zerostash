@@ -1,3 +1,4 @@
+use chrono::{DateTime, TimeZone, Utc};
 use infinitree::ChunkPointer;
 use std::{
     fs, io,
@@ -106,7 +107,7 @@ pub(crate) fn normalize_filename(path: &impl AsRef<Path>) -> Result<String, Entr
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct Entry {
-    pub unix_secs: u64,
+    pub unix_secs: i64,
     pub unix_nanos: u32,
     pub unix_perm: Option<u32>,
     pub unix_uid: Option<u32>,
@@ -118,6 +119,18 @@ pub struct Entry {
     pub name: String,
 
     pub chunks: Vec<(u64, Arc<ChunkPointer>)>,
+}
+
+impl From<&Entry> for PathBuf {
+    fn from(e: &Entry) -> Self {
+        get_path(&e.name)
+    }
+}
+
+impl From<&Entry> for DateTime<Utc> {
+    fn from(e: &Entry) -> Self {
+        Utc.timestamp(e.unix_secs, e.unix_nanos)
+    }
 }
 
 impl PartialEq for Entry {
@@ -263,7 +276,7 @@ impl Entry {
 
         if preserve.times {
             let atime = SystemTime::now().duration_since(UNIX_EPOCH)?.into();
-            let mtime = Duration::new(self.unix_secs, self.unix_nanos).into();
+            let mtime = Duration::new(self.unix_secs as u64, self.unix_nanos).into();
             nix::sys::stat::futimens(file.as_raw_fd(), &atime, &mtime).unwrap();
         }
 
@@ -333,15 +346,29 @@ fn open_file(path: impl AsRef<Path> + Copy) -> Result<fs::File, io::Error> {
 }
 
 #[inline(always)]
-#[cfg(unix)]
-fn to_unix_mtime(m: &fs::Metadata) -> Result<(u64, u32), EntryError> {
-    let mtime = m.modified()?.duration_since(UNIX_EPOCH)?;
-    Ok((mtime.as_secs(), mtime.subsec_nanos()))
+fn to_unix_mtime(m: &fs::Metadata) -> Result<(i64, u32), EntryError> {
+    let mtime: chrono::DateTime<chrono::Utc> = m.modified()?.into();
+    Ok((mtime.timestamp(), mtime.timestamp_subsec_nanos()))
 }
 
-#[inline(always)]
-#[cfg(windows)]
-fn to_unix_mtime(m: &fs::Metadata) -> Result<(u64, u32), EntryError> {
-    use std::os::unix::fs::MetadataExt;
-    Ok((m.mtime() as u64, m.mtime_nsec() as u32))
+fn get_path(filename: impl AsRef<Path>) -> PathBuf {
+    let path = filename.as_ref();
+    let mut cs = path.components();
+
+    if let Some(std::path::Component::RootDir) = cs.next() {
+        cs.as_path().to_owned()
+    } else {
+        path.to_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn path_removes_root() {
+        use super::*;
+
+        assert_eq!(Path::new("home/a/b"), get_path("/home/a/b").as_path());
+        assert_eq!(Path::new("./a/b"), get_path("./a/b").as_path());
+    }
 }

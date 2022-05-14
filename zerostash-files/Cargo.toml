@@ -2,7 +2,7 @@
 name = "zerostash-files"
 authors = ["Peter Parkanyi <p@symmetree.dev>"]
 repository = "https://github.com/symmetree-labs/zerostash"
-license = "GPL-3.0"
+license = "MIT/Apache-2.0"
 version = "0.3.0"
 edition = "2021"
 
@@ -28,6 +28,8 @@ seahash = "4.0"
 
 libc = "0.2"
 nix = "0.24"
+
+chrono = "0.4.19"
 
 [dev-dependencies]
 getrandom = "0.2"

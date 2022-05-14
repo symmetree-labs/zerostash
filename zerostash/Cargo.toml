@@ -2,7 +2,7 @@
 name = "zerostash"
 authors = ["Peter Parkanyi <p@symmetree.dev>"]
 repository = "https://github.com/symmetree-labs/zerostash"
-license = "GPL-3.0"
+license = "MIT/Apache-2.0"
 version = "0.3.0"
 edition = "2021"
 
@@ -19,6 +19,11 @@ serde = { version = "1", features = ["serde_derive"] }
 toml = "0.5"
 xdg = "2.2"
 ignore = "0.4"
+
+humansize = "1.1.1"
+chrono = "0.4.19"
+termcolor = "1.1"
+nix = "0.24"
 
 [dependencies.abscissa_tokio]
 version = "0.6"
