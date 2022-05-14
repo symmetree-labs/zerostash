@@ -64,6 +64,12 @@ instead of a path to the repository.
 	0s commit mystash /path/to/movies
 
 ## Installation
+
+Zerostash works on Linux, macOS, and Windows, and you can download
+[pre-built binaries](https://github.com/rsdy/zerostash/releases)!
+
+If you're looking for package manager integrations, though, look below.
+
 ### Installation on macOS
 
 There is a homebrew tap you can use!
@@ -95,7 +101,7 @@ Place it in your `$PATH`, and then run:
 
     0s --help
 
-### Build from source.
+### Build from source
 
 The usual Rust incantation will also do to build the binary
 yourself. Use [`rustup`](https://rustup.rs/) to get `cargo` running or
