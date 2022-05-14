@@ -229,6 +229,21 @@ impl Entry {
         path: &impl AsRef<Path>,
         preserve: &PreserveMetadata,
     ) -> Result<Option<fs::File>, EntryError> {
+        use FileType::*;
+
+        let file = match self.file_type {
+            Directory => {
+                fs::create_dir_all(path)?;
+                fs::File::open(path)?
+            }
+            File => {
+                let file = open_file(path)?;
+                file.set_len(self.size)?;
+                file
+            }
+            Symlink(ref pointed_to) => open_symlink(path, pointed_to)?,
+        };
+
         file.set_len(self.size)?;
 
         if let Some(readonly) = self.readonly {
@@ -236,11 +251,15 @@ impl Entry {
                 let metadata = file.metadata()?;
                 let mut permissions = metadata.permissions();
                 permissions.set_readonly(readonly);
-                file.set_permissions(permissions);
+                file.set_permissions(permissions)?;
             }
         }
 
-        Ok(())
+        Ok(if self.file_type.is_file() {
+            Some(file)
+        } else {
+            None
+        })
     }
 
     #[cfg(unix)]
