@@ -114,12 +114,19 @@ jobs:
 
           for (dir of artifacts) {
               console.log(`Uploading ${dir}/0s for release ${release_id}`);
-          
-              await github.rest.repos.uploadReleaseAsset({
-                  owner,
-                  repo,
-                  release_id,
-                  name: path.basename(dir),
-                  data: await fs.readFile(`bin/${dir}/0s`),
-              });
+
+              const files = await fs.readdir(`bin/${dir}`);
+              for (file of files) {
+                  await github.rest.repos.uploadReleaseAsset({
+                      owner,
+                      repo,
+                      release_id,
+                      name: path.basename(dir),
+                      data: await fs.readFile(`bin/${dir}/${file}`),
+                  });
+
+                  // only upload the first file
+                  // there shouldn't be more anyway
+                  break;
+              }
           }
