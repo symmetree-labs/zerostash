@@ -75,20 +75,14 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
             use-cross: ${{ matrix.cross }}
-            command: build
-            args: --release --target ${{ matrix.target }}
+            command: install
+            args: --locked --target ${{ matrix.target }} --root output --bin 0s -- zerostash
 
       - name: Upload binaries
         uses: actions/upload-artifact@v2
         with:
           name: ${{ matrix.asset_name }}
-          path: target/${{ matrix.target }}/release/0s
-
-      - name: Upload binaries fallback
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ matrix.asset_name }}
-          path: target\${{ matrix.target }}\release\0s
+          path: output/bin/0s
 
   release:
     runs-on: ubuntu-latest
