@@ -1,10 +1,13 @@
 [package]
 name = "zerostash-files"
+description = "Safe and secure backup library"
 authors = ["Peter Parkanyi <p@symmetree.dev>"]
 repository = "https://github.com/symmetree-labs/zerostash"
 license = "MIT/Apache-2.0"
 version = "0.3.0"
 edition = "2021"
+keywords = ["crypto", "api", "security", "filesystem", "backup"]
+categories = ["cryptography", "filesystem"]
 
 [dependencies]
 infinitree = { version = "0.7", default-features = false, features=["rustls", "s3", "mmap"] }
