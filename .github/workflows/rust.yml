@@ -54,7 +54,7 @@ jobs:
 
           - name: windows
             os: windows-latest
-            asset_name: 0s-windows-x86_64
+            asset_name: 0s-windows-x86_64.exe
             target: x86_64-pc-windows-msvc
             cross: false
 
@@ -75,14 +75,21 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
             use-cross: ${{ matrix.cross }}
+            command: build
+            args: --locked --target ${{ matrix.target }} --release
+
+      - name: Install
+        uses: actions-rs/cargo@v1
+        with:
+            use-cross: ${{ matrix.cross }}
             command: install
-            args: --locked --target ${{ matrix.target }} --root output --bin 0s -- zerostash
+            args: --locked --target ${{ matrix.target }} --bin 0s --path zerostash --root output
 
       - name: Upload binaries
         uses: actions/upload-artifact@v2
         with:
           name: ${{ matrix.asset_name }}
-          path: output/bin/0s
+          path: "output/bin/0s${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
 
   release:
     runs-on: ubuntu-latest
