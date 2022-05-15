@@ -56,7 +56,7 @@ jobs:
             os: windows-latest
             asset_name: 0s-windows-x86_64
             target: x86_64-pc-windows-msvc
-            cross: true
+            cross: false
 
         rust:
           - 1.60.0 # MSRV
