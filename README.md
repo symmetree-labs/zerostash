@@ -20,7 +20,7 @@ On a M1 Macbook Air, Zerostash can achieve speeds of around 1GB/s.
 Once you install the `0s` command using one of the methods below, you
 can start backing up:
 
-    0s commit $(pwd) /path/to/repository
+    0s commit /path/to/repository $(pwd)
 	
 That's it! No configuration necessary.
 
@@ -30,7 +30,7 @@ which you'll need to enter on any subsequent invocations.
 If you want to get fancy, you can leave a note with your commit, just
 like you do with Git.
 
-    0s commit -m 'My first backup!' $(pwd) /path/to/repository
+    0s commit -m 'My first backup!' /path/to/repository $(pwd)
 
 Commits are only created if there are changes between runs to preserve
 space, and speed things up.
