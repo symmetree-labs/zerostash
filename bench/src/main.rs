@@ -69,12 +69,7 @@ async fn main() {
         repo.commit(None).unwrap();
         let commit_time = commit_start.elapsed();
 
-        // let objects = mobjects
-        //     .values()
-        //     .flatten()
-        //     .collect::<HashSet<&object::ObjectId>>();
-
-        let ol = 0; // objects.len();
+        let ol = repo.index_object_count();
         let fl = repo.index().files.len();
         let cl = repo.index().chunks.len();
         let (creuse_sum, creuse_cnt) = {
