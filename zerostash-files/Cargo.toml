@@ -30,7 +30,7 @@ itertools = "0.10"
 seahash = "4.0"
 
 libc = "0.2"
-nix = "0.24"
+nix = { version = "0.24", default-features = false, features = ["fs"] }
 
 chrono = "0.4.19"
 

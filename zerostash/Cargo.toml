@@ -28,7 +28,7 @@ ignore = "0.4"
 humansize = "1.1.1"
 chrono = "0.4.19"
 termcolor = "1.1"
-nix = "0.24"
+nix = { version = "0.24", default-features = false, features = ["user"] }
 
 [dependencies.abscissa_tokio]
 version = "0.6"
