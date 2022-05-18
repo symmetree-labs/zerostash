@@ -78,6 +78,18 @@ impl Configurable<ZerostashConfig> for EntryPoint {
         let filename = ZerostashConfig::path();
 
         if filename.exists() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                let file_mode = std::fs::metadata(&filename).ok()?.mode();
+
+                if (file_mode & 0o700) != (file_mode & 0o777) {
+                    panic!(
+                        "Config file {filename:?} must not be accessible for other users! Try running `chmod 600 {filename:?}`"
+                    )
+                }
+            }
+
             Some(filename)
         } else {
             None
