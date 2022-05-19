@@ -30,7 +30,7 @@ impl Rollsum for SeaSplit {
 
         // On occasion a too high value for step size can produce
         // chunks larger than a single object
-        for limit in (0..buf.len()).step_by(32) {
+        for limit in (0..buf.len()).step_by(64) {
             self.0.write(&buf[last..limit]);
             let output = self.0.finish();
 
