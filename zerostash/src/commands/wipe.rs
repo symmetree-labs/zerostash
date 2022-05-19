@@ -25,6 +25,10 @@ impl Runnable for Wipe {
             None => self.stash.clone(),
             Some(stash) => match &stash.backend {
                 Filesystem { path } => path.clone(),
+                _ => {
+                    status_info!("Wipe", "Non-local backend found, skipping...");
+                    return;
+                }
             },
         };
 
