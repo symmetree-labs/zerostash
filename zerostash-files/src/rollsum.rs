@@ -4,10 +4,11 @@ use seahash::SeaHasher;
 use std::hash::Hasher;
 
 const ROLLSUM_CHAR_OFFSET: u32 = 31;
-const BLOBBITS: u32 = (12);
+const BLOBBITS: u32 = (16);
 const BLOBSIZE: u32 = (1 << BLOBBITS);
 const WINDOWBITS: u32 = (6);
 const WINDOWSIZE: u32 = (1 << WINDOWBITS);
+const CHUNK_SIZE_LIMIT: usize = 256 * 1024;
 
 pub trait Rollsum {
     fn new() -> Self;
@@ -33,7 +34,9 @@ impl Rollsum for SeaSplit {
             self.0.write(&buf[last..limit]);
             let output = self.0.finish();
 
-            if (output & ((u64::from(BLOBSIZE)) - 1)) == ((u64::from(BLOBSIZE)) - 1) {
+            if (output & ((u64::from(BLOBSIZE)) - 1)) == ((u64::from(BLOBSIZE)) - 1)
+                || limit >= CHUNK_SIZE_LIMIT
+            {
                 return limit + 1;
             } else {
                 last = limit;
