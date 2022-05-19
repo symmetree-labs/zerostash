@@ -13,7 +13,7 @@ use std::{collections::HashMap, path::PathBuf};
 #[serde(deny_unknown_fields)]
 pub struct ZerostashConfig {
     /// An example configuration section
-    #[serde(rename = "stash")]
+    #[serde(rename = "stash", default)]
     stashes: HashMap<String, Stash>,
 }
 
@@ -148,5 +148,13 @@ backend = { type = "fs", path = "/path/to/stash" }
 "#,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn can_load_empty() {
+        use super::ZerostashConfig;
+        use abscissa_core::Config;
+
+        ZerostashConfig::load_toml(r#""#).unwrap();
     }
 }
