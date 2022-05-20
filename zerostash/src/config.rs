@@ -6,7 +6,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, num::NonZeroUsize, path::PathBuf, sync::Arc};
 
 /// Zerostash Configuration
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
@@ -101,6 +101,18 @@ pub enum Backend {
         /// ("access_key_id", "secret_access_key")
         keys: Option<(String, String)>,
     },
+
+    /// Cache files in a local directory, up to `max_size` in size
+    /// You will typically want this to be larger than the index size.
+    #[serde(rename = "fs_cache")]
+    FsCache {
+        /// Max size of local cache
+        max_size_mb: NonZeroUsize,
+        /// Where to store local files
+        path: String,
+        /// Long-term backend
+        upstream: Box<Backend>,
+    },
 }
 
 impl Backend {
@@ -114,7 +126,7 @@ impl Backend {
                 region,
                 keys,
             } => {
-                use infinitree::backends::{Credentials, InMemoryS3};
+                use infinitree::backends::{Credentials, S3};
 
                 let creds = Credentials::new(
                     keys.as_ref().map(|k| k.0.as_str()),
@@ -127,11 +139,18 @@ impl Backend {
 
                 let s3_region = region.parse().context("Invalid region!")?;
 
-                Arc::new(
-                    InMemoryS3::with_credentials(s3_region, bucket, creds)
-                        .context("Failed to connect to S3")?,
-                )
+                S3::with_credentials(s3_region, bucket, creds).context("Failed to connect to S3")?
             }
+            FsCache {
+                max_size_mb,
+                path,
+                upstream,
+            } => infinitree::backends::Cache::new(
+                path,
+                NonZeroUsize::new(max_size_mb.get() * 1024 * 1024)
+                    .expect("Deserialization should have failed if `max_size_mb` is 0"),
+                upstream.to_infinitree()?,
+            )?,
         };
 
         Ok(backend)
@@ -195,6 +214,19 @@ backend = { type = "s3", bucket = "test_bucket", region = "https://127.0.0.1:808
 [stash.s3_env_key]
 key = { source = "ask" }
 backend = { type = "s3", bucket = "test_bucket", region = "https://127.0.0.1:8080/"}
+
+[stash.s3_cached]
+key = { source = "ask" }
+
+[stash.s3_cached.backend]
+type = "fs_cache"
+path = "/path_to_stash"
+max_size_mb = 1024
+
+[stash.s3_cached.backend.upstream]
+type = "s3"
+bucket = "test_bucket"
+region = "https://127.0.0.1:8080/"
 "#,
         )
         .unwrap();
