@@ -79,7 +79,7 @@ impl Configurable<ZerostashConfig> for EntryPoint {
             .config
             .as_ref()
             .map(PathBuf::from)
-            .unwrap_or_else(|| ZerostashConfig::path());
+            .unwrap_or_else(ZerostashConfig::path);
 
         if filename.exists() {
             #[cfg(unix)]
