@@ -257,7 +257,7 @@ async fn index_file(
             let data = data.to_vec();
             let chunkindex = index.chunks.clone();
 
-            task::spawn(async move {
+            task::spawn_blocking(move || {
                 let store = || writer.write_chunk(&hash, &data).unwrap();
                 let ptr = chunkindex.insert_with(hash, store);
                 (start, ptr)

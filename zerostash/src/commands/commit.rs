@@ -31,6 +31,7 @@ impl Runnable for Commit {
             stash
                 .commit(self.message.clone())
                 .expect("Failed to write metadata");
+            stash.backend().sync().expect("Failed to write to storage");
         })
         .unwrap();
     }
