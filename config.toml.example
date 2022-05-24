@@ -1,7 +1,23 @@
-[stash.first]
-key = { source = "plaintext", user = "username@email-not-enforced.com", password = "example passphrase"}
-backend = { type = "fs", path = "/Users/user/0s/first" }
+[stash.local_with_password]
+key = { source = "plaintext", user = "123", password = "123"}
+backend = { type = "fs", path = "/path/to/stash" }
 
-[stash.second]
+[stash.local_interactive_password]
 key = { source = "ask"}
-backend = { type = "fs", path = "/Users/user/0s/first" }
+backend = { type = "fs", path = "/path/to/stash" }
+
+[stash.s3_aws_with_keys]
+key = { source = "ask" }
+backend = { type = "s3", bucket = "test_bucket", region = { name = "us-east-1" }, keys = ["access_key_id", "secret_key"] }
+
+[stash.s3_aws_env_key]
+key = { source = "ask" }
+backend = { type = "s3", bucket = "test_bucket", region = { name = "us-east-1" } }
+
+[stash.s3_custom_address]
+key = { source = "ask" }
+
+[stash.s3_custom_address.backend]
+type = "s3"
+bucket = "test_bucket"
+region = { name = "custom", details = { endpoint = "https://127.0.0.1:8080/", "region" = "" }}
