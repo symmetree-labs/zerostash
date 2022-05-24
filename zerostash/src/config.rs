@@ -5,6 +5,7 @@
 //! for specifying it.
 
 use anyhow::{Context, Result};
+use infinitree::backends::Region;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, num::NonZeroUsize, path::PathBuf, sync::Arc};
 
@@ -96,7 +97,7 @@ pub enum Backend {
 
         /// May be "protocol://fqdn" syntax.
         /// Supports AWS, DigitalOcean, Yandex, WasabiSys canonical names
-        region: String,
+        region: Region,
 
         /// ("access_key_id", "secret_access_key")
         keys: Option<(String, String)>,
@@ -128,18 +129,15 @@ impl Backend {
             } => {
                 use infinitree::backends::{Credentials, S3};
 
-                let creds = Credentials::new(
-                    keys.as_ref().map(|k| k.0.as_str()),
-                    keys.as_ref().map(|k| k.1.as_str()),
-                    None,
-                    None,
-                    None,
-                )
-                .context("Failed to find valid S3 credentials")?;
-
-                let s3_region = region.parse().context("Invalid region!")?;
-
-                S3::with_credentials(s3_region, bucket, creds).context("Failed to connect to S3")?
+                match keys {
+                    Some((access_key, secret_key)) => S3::with_credentials(
+                        region.clone(),
+                        bucket,
+                        Credentials::new(access_key, secret_key),
+                    ),
+                    None => S3::new(region.clone(), bucket),
+                }
+                .context("Failed to connect to S3")?
             }
             FsCache {
                 max_size_mb,
@@ -209,11 +207,11 @@ backend = { type = "fs", path = "/path/to/stash" }
 
 [stash.s3]
 key = { source = "ask" }
-backend = { type = "s3", bucket = "test_bucket", region = "https://127.0.0.1:8080/", keys = ["access_key_id", "secret_key"] }
+backend = { type = "s3", bucket = "test_bucket", region = { name = "us-east-1" }, keys = ["access_key_id", "secret_key"] }
 
 [stash.s3_env_key]
 key = { source = "ask" }
-backend = { type = "s3", bucket = "test_bucket", region = "https://127.0.0.1:8080/"}
+backend = { type = "s3", bucket = "test_bucket", region = { name = "us-east-1" } }
 
 [stash.s3_cached]
 key = { source = "ask" }
@@ -226,7 +224,7 @@ max_size_mb = 1024
 [stash.s3_cached.backend.upstream]
 type = "s3"
 bucket = "test_bucket"
-region = "https://127.0.0.1:8080/"
+region = { name = "custom", details = { endpoint = "https://127.0.0.1:8080/", "region" = "" }}
 "#,
         )
         .unwrap();
