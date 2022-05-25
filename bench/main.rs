@@ -1,5 +1,4 @@
 #![deny(clippy::all)]
-#![cfg_attr(test, feature(test))]
 
 use infinitree::{backends, Infinitree, Key};
 use zerostash_files::{restore, store, Files};
@@ -179,116 +178,116 @@ throughput unpacked: {}
     }
 }
 
-#[cfg(test)]
-mod tests {
-    extern crate test;
-    const PATH: &str = "tests/data/10k_random_blob";
-    const PATH_100: &str = "tests/data/100_random_1k";
-    const SELFTEST_SIZE: usize = 100_000;
+// #[cfg(test)]
+// mod tests {
+//     extern crate test;
+//     const PATH: &str = "tests/data/10k_random_blob";
+//     const PATH_100: &str = "tests/data/100_random_1k";
+//     const SELFTEST_SIZE: usize = 100_000;
 
-    fn rollsum_sum(buf: &[u8], ofs: usize, len: usize) -> u32 {
-        use zerostash_files::rollsum::{BupSplit, Rollsum};
-        let mut r = BupSplit::new();
-        for count in ofs..len {
-            r.roll(buf[count]);
-        }
-        r.digest()
-    }
+//     fn rollsum_sum(buf: &[u8], ofs: usize, len: usize) -> u32 {
+//         use zerostash_files::rollsum::{BupSplit, Rollsum};
+//         let mut r = BupSplit::new();
+//         for count in ofs..len {
+//             r.roll(buf[count]);
+//         }
+//         r.digest()
+//     }
 
-    fn set_test_cwd() {
-        std::env::set_current_dir(format!(
-            "{}/..",
-            std::env::var("CARGO_MANIFEST_DIR").unwrap()
-        ))
-        .unwrap();
-    }
+//     fn set_test_cwd() {
+//         std::env::set_current_dir(format!(
+//             "{}/..",
+//             std::env::var("CARGO_MANIFEST_DIR").unwrap()
+//         ))
+//         .unwrap();
+//     }
 
-    #[bench]
-    fn bup_rollsum(b: &mut test::Bencher) {
-        let mut buf = [0; SELFTEST_SIZE];
-        getrandom::getrandom(&mut buf).unwrap();
+//     #[bench]
+//     fn bup_rollsum(b: &mut test::Bencher) {
+//         let mut buf = [0; SELFTEST_SIZE];
+//         getrandom::getrandom(&mut buf).unwrap();
 
-        b.iter(|| {
-            rollsum_sum(&buf, 0, SELFTEST_SIZE);
-        });
-    }
+//         b.iter(|| {
+//             rollsum_sum(&buf, 0, SELFTEST_SIZE);
+//         });
+//     }
 
-    #[bench]
-    fn chunk_saturated_e2e(b: &mut test::Bencher) {
-        use infinitree::{backends::test::*, Infinitree, Key};
-        use std::sync::Arc;
-        use zerostash_files::Files;
+//     #[bench]
+//     fn chunk_saturated_e2e(b: &mut test::Bencher) {
+//         use infinitree::{backends::test::*, Infinitree, Key};
+//         use std::sync::Arc;
+//         use zerostash_files::Files;
 
-        let key = "abcdef1234567890abcdef1234567890";
-        let key = Key::from_credentials(&key, &key).unwrap();
-        let repo = Infinitree::<Files>::empty(Arc::new(NullBackend::default()), key);
+//         let key = "abcdef1234567890abcdef1234567890";
+//         let key = Key::from_credentials(&key, &key).unwrap();
+//         let repo = Infinitree::<Files>::empty(Arc::new(NullBackend::default()), key);
 
-        let basic_rt = tokio::runtime::Runtime::new().unwrap();
+//         let basic_rt = tokio::runtime::Runtime::new().unwrap();
 
-        set_test_cwd();
-        // first build up the file index
-        basic_rt
-            .block_on(repo.index().add_recursive(&repo, 4, PATH_100))
-            .unwrap();
+//         set_test_cwd();
+//         // first build up the file index
+//         basic_rt
+//             .block_on(repo.index().add_recursive(&repo, 4, PATH_100))
+//             .unwrap();
 
-        b.iter(|| {
-            basic_rt
-                .block_on(repo.index().add_recursive(&repo, 4, PATH_100))
-                .unwrap();
-        })
-    }
+//         b.iter(|| {
+//             basic_rt
+//                 .block_on(repo.index().add_recursive(&repo, 4, PATH_100))
+//                 .unwrap();
+//         })
+//     }
 
-    #[bench]
-    fn chunk_e2e(b: &mut test::Bencher) {
-        use infinitree::{backends::test::*, Infinitree, Key};
-        use std::sync::Arc;
-        use zerostash_files::Files;
+//     #[bench]
+//     fn chunk_e2e(b: &mut test::Bencher) {
+//         use infinitree::{backends::test::*, Infinitree, Key};
+//         use std::sync::Arc;
+//         use zerostash_files::Files;
 
-        let key = "abcdef1234567890abcdef1234567890";
-        let key = Key::from_credentials(&key, &key).unwrap();
-        let repo = Infinitree::<Files>::empty(Arc::new(NullBackend::default()), key);
+//         let key = "abcdef1234567890abcdef1234567890";
+//         let key = Key::from_credentials(&key, &key).unwrap();
+//         let repo = Infinitree::<Files>::empty(Arc::new(NullBackend::default()), key);
 
-        let basic_rt = tokio::runtime::Runtime::new().unwrap();
+//         let basic_rt = tokio::runtime::Runtime::new().unwrap();
 
-        set_test_cwd();
-        b.iter(|| {
-            basic_rt
-                .block_on(repo.index().add_recursive(&repo, 4, PATH_100))
-                .unwrap();
-        })
-    }
+//         set_test_cwd();
+//         b.iter(|| {
+//             basic_rt
+//                 .block_on(repo.index().add_recursive(&repo, 4, PATH_100))
+//                 .unwrap();
+//         })
+//     }
 
-    #[bench]
-    fn split_seasplit(b: &mut test::Bencher) {
-        use memmap2::MmapOptions;
-        use std::fs::File;
-        use zerostash_files::{rollsum::SeaSplit, splitter::FileSplitter};
+//     #[bench]
+//     fn split_seasplit(b: &mut test::Bencher) {
+//         use memmap2::MmapOptions;
+//         use std::fs::File;
+//         use zerostash_files::{rollsum::SeaSplit, splitter::FileSplitter};
 
-        set_test_cwd();
-        let file = File::open(PATH).unwrap();
-        let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
+//         set_test_cwd();
+//         let file = File::open(PATH).unwrap();
+//         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
-        b.iter(|| {
-            FileSplitter::<SeaSplit>::new(&mmap)
-                .map(|(_, _, c)| c.len())
-                .sum::<usize>()
-        });
-    }
+//         b.iter(|| {
+//             FileSplitter::<SeaSplit>::new(&mmap)
+//                 .map(|(_, _, c)| c.len())
+//                 .sum::<usize>()
+//         });
+//     }
 
-    #[bench]
-    fn split_bupsplit(b: &mut test::Bencher) {
-        use memmap2::MmapOptions;
-        use std::fs::File;
-        use zerostash_files::{rollsum::BupSplit, splitter::FileSplitter};
+//     #[bench]
+//     fn split_bupsplit(b: &mut test::Bencher) {
+//         use memmap2::MmapOptions;
+//         use std::fs::File;
+//         use zerostash_files::{rollsum::BupSplit, splitter::FileSplitter};
 
-        set_test_cwd();
-        let file = File::open(PATH).unwrap();
-        let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
+//         set_test_cwd();
+//         let file = File::open(PATH).unwrap();
+//         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
-        b.iter(|| {
-            FileSplitter::<BupSplit>::new(&mmap)
-                .map(|(_, _, c)| c.len())
-                .sum::<usize>()
-        });
-    }
-}
+//         b.iter(|| {
+//             FileSplitter::<BupSplit>::new(&mmap)
+//                 .map(|(_, _, c)| c.len())
+//                 .sum::<usize>()
+//         });
+//     }
+// }

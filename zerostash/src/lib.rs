@@ -7,10 +7,13 @@
 // Tip: Deny warnings with `RUSTFLAGS="-D warnings"` environment variable in CI
 
 #![forbid(unsafe_code)]
-#![warn(
-    missing_docs,
+#![deny(
+    arithmetic_overflow,
+    future_incompatible,
+    nonstandard_style,
     rust_2018_idioms,
     trivial_casts,
+    unused_crate_dependencies,
     unused_lifetimes,
     unused_qualifications
 )]
@@ -20,5 +23,15 @@ pub mod commands;
 pub mod config;
 pub mod error;
 pub mod prelude;
+
+// These dependencies are required for the e2e benchmark
+#[cfg(test)]
+use tokio as _;
+#[cfg(test)]
+use tracing as _;
+#[cfg(test)]
+use tracing_subscriber as _;
+#[cfg(test)]
+use walkdir as _;
 
 pub(crate) type Stash = infinitree::Infinitree<zerostash_files::Files>;

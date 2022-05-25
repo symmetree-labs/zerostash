@@ -2170,35 +2170,20 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
- "dirs",
  "humansize",
- "ignore",
  "infinitree",
  "nix",
  "num_cpus",
- "once_cell",
  "rpassword",
  "rprompt",
  "serde",
  "termcolor",
  "thiserror",
- "toml",
- "xdg",
- "zerostash-files",
-]
-
-[[package]]
-name = "zerostash-bench"
-version = "0.4.0"
-dependencies = [
- "getrandom",
- "infinitree",
- "memmap2",
- "num_cpus",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "walkdir",
+ "xdg",
  "zerostash-files",
 ]
 

@@ -6,7 +6,6 @@ debug = false
 				   
 [workspace]
 members = [
-    "bench",
     "zerostash-files",
     "zerostash",
 ]

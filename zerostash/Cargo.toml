@@ -20,10 +20,7 @@ num_cpus = "1.13.1"
 rpassword = "6.0.1"
 rprompt = "1.0.5"
 serde = { version = "1.0.137", features = ["serde_derive"] }
-toml = "0.5.9"
 xdg = "2.4.1"
-dirs = "4.0.0"
-ignore = "0.4.18"
 
 humansize = "1.1.1"
 chrono = "0.4.19"
@@ -35,4 +32,14 @@ abscissa_core= "0.6.0"
 [dev-dependencies]
 abscissa_core = { version = "0.6.0", features = ["testing"] }
 abscissa_tokio = "0.6.0"
-once_cell = "1.12.0"
+walkdir = "2.3.2"
+tokio = { version = "1.18.2", features = ["rt", "macros", "rt-multi-thread", "parking_lot"] }
+num_cpus = "1.13.1"
+tracing-subscriber = "0.3.11"
+tracing = "0.1.34"
+
+
+[[bench]]
+name = "bench"
+harness = false
+path = "../bench/main.rs"
