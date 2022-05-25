@@ -3,17 +3,30 @@
     nixpkgs.url = "nixpkgs";
     utils.url = "github:numtide/flake-utils";
     naersk.url = "github:nix-community/naersk";
+    mozillapkgs.url = "github:mozilla/nixpkgs-mozilla";
     flake-compat = {
       url = "github:edolstra/flake-compat";
       flake = false;
     };
   };
 
-  outputs = { self, nixpkgs, utils, naersk, ... }:
+  outputs = { self, nixpkgs, utils, naersk, mozillapkgs, ... }:
     utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        naersk-lib = naersk.lib."${system}";
+
+        # Get a specific rust version
+        mozilla = pkgs.callPackage (mozillapkgs + "/package-set.nix") { };
+        rust = (mozilla.rustChannelOf {
+          date = "2022-05-19";
+          channel = "stable";
+          sha256 = "oro0HsosbLRAuZx68xd0zfgPl6efNj2AQruKRq3KA2g=";
+        }).rust;
+
+        naersk-lib = naersk.lib."${system}".override {
+          cargo = rust;
+          rustc = rust;
+        };
       in
       rec {
         packages.zerostash = naersk-lib.buildPackage {
@@ -25,7 +38,7 @@
           };
 
           name = "zerostash";
-          version = "0.3.0";
+          version = "0.4.0";
 
           src = ./.;
           root = ./.;
