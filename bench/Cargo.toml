@@ -1,6 +1,6 @@
 [package]
 name = "zerostash-bench"
-version = "0.1.0"
+version = "0.4.0"
 authors = ["Peter Parkanyi <me@rhapsodhy.hu>"]
 repository = "https://github.com/rsdy/zerostash"
 license = "MIT/Apache-2.0"
