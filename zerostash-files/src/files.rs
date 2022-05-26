@@ -33,7 +33,7 @@ pub enum EntryError {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum FileType {
     File,
     Directory,
