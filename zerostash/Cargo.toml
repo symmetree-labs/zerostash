@@ -20,6 +20,8 @@ num_cpus = "1.13.1"
 rpassword = "6.0.1"
 rprompt = "1.0.5"
 serde = { version = "1.0.137", features = ["serde_derive"] }
+
+dirs = "4.0.0"
 xdg = "2.4.1"
 
 humansize = "1.1.1"

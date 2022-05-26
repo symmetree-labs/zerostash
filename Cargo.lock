@@ -2407,6 +2407,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap 3.1.18",
+ "dirs",
  "humansize",
  "infinitree",
  "nix",

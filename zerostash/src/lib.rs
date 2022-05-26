@@ -34,4 +34,11 @@ use tracing_subscriber as _;
 #[cfg(test)]
 use walkdir as _;
 
+#[cfg(unix)]
+use dirs as _;
+#[cfg(windows)]
+use nix as _;
+#[cfg(windows)]
+use xdg as _;
+
 pub(crate) type Stash = infinitree::Infinitree<zerostash_files::Files>;
