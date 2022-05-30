@@ -7,7 +7,7 @@
 use anyhow::{Context, Result};
 use infinitree::backends::Region;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, num::NonZeroUsize, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, num::NonZeroUsize, path::PathBuf, str::FromStr, sync::Arc};
 
 /// Zerostash Configuration
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
@@ -80,7 +80,7 @@ pub enum Key {
 
 /// Backend configuration
 /// This may be specific to the backend type
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "type")]
 pub enum Backend {
@@ -152,6 +152,55 @@ impl Backend {
         };
 
         Ok(backend)
+    }
+}
+
+impl FromStr for Backend {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.split_once("://") {
+            Some(("s3", url)) => {
+                let re = regex::Regex::new(
+                    r"^((?P<akey>[a-zA-Z0-9]+):(?P<skey>[a-zA-Z0-9/+=]+)@)?((?P<region>[0-9a-z-]+)#)?(?P<host>[a-zA-Z0-9.-]+)?/(?P<bucketpath>[a-zA-Z0-9./_-]+)?$",
+                )
+                    .expect("syntactically correct");
+
+                let caps = re.captures(url).context("invalid S3 url")?;
+                let akey = caps.name("akey");
+                let skey = caps.name("skey");
+                let region_name = caps.name("region");
+                let host = caps.name("host");
+                let bucket = caps
+                    .name("bucketpath")
+                    .context("no s3 bucket provided")?
+                    .as_str()
+                    .to_string();
+
+                let region = match (region_name, host) {
+                    (Some(r), Some(h)) => Region::Custom {
+                        region: r.as_str().into(),
+                        endpoint: h.as_str().into(),
+                    },
+                    (Some(r), None) => r.as_str().parse().context("invalid region name")?,
+                    (None, Some(h)) => h.as_str().parse().context("invalid hostname")?,
+                    (None, None) => anyhow::bail!("invalid url: no hostname or region"),
+                };
+
+                let keys = match (akey, skey) {
+                    (Some(a), Some(s)) => Some((a.as_str().to_string(), s.as_str().to_string())),
+                    _ => None,
+                };
+
+                Ok(Backend::S3 {
+                    bucket,
+                    region,
+                    keys,
+                })
+            }
+            Some(_) => anyhow::bail!("protocol not supported"),
+            None => Ok(Self::Filesystem { path: s.into() }),
+        }
     }
 }
 
@@ -236,5 +285,84 @@ region = { name = "custom", details = { endpoint = "https://127.0.0.1:8080/", "r
         use abscissa_core::Config;
 
         ZerostashConfig::load_toml(r#""#).unwrap();
+    }
+
+    #[test]
+    fn can_parse_s3_url() {
+        use super::{Backend, Region};
+
+        assert_eq!(
+            "s3://access:secret@us-east-1#/bucket/path"
+                .parse::<Backend>()
+                .unwrap(),
+            Backend::S3 {
+                bucket: "bucket/path".into(),
+                region: Region::UsEast1,
+                keys: Some(("access".into(), "secret".into()))
+            }
+        );
+
+        assert_eq!(
+            "s3://us-east-1#/bucket/path".parse::<Backend>().unwrap(),
+            Backend::S3 {
+                bucket: "bucket/path".into(),
+                region: Region::UsEast1,
+                keys: None
+            }
+        );
+
+        assert_eq!(
+            "s3://us-east-1#server.com/bucket/path"
+                .parse::<Backend>()
+                .unwrap(),
+            Backend::S3 {
+                bucket: "bucket/path".into(),
+                region: Region::Custom {
+                    region: "us-east-1".into(),
+                    endpoint: "server.com".into()
+                },
+                keys: None
+            }
+        );
+
+        assert_eq!(
+            "s3://access:secret@server.com/bucket/path"
+                .parse::<Backend>()
+                .unwrap(),
+            Backend::S3 {
+                bucket: "bucket/path".into(),
+                region: Region::Custom {
+                    region: "".into(),
+                    endpoint: "server.com".into()
+                },
+                keys: Some(("access".into(), "secret".into()))
+            }
+        );
+
+        assert_eq!(
+            "s3://accesskey:secret+key/=@us-east-1#server.com/bucket/path"
+                .parse::<Backend>()
+                .unwrap(),
+            Backend::S3 {
+                bucket: "bucket/path".into(),
+                region: Region::Custom {
+                    region: "us-east-1".into(),
+                    endpoint: "server.com".into()
+                },
+                keys: Some(("accesskey".into(), "secret+key/=".into()))
+            }
+        )
+    }
+
+    #[test]
+    fn no_scheme_gets_file_backend() {
+        use super::Backend;
+
+        assert_eq!(
+            "/example/path".parse::<Backend>().unwrap(),
+            Backend::Filesystem {
+                path: "/example/path".into()
+            }
+        )
     }
 }
