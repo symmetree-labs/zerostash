@@ -2452,6 +2452,7 @@ dependencies = [
  "termcolor",
  "thiserror",
  "tokio",
+ "toml",
  "tracing",
  "tracing-subscriber",
  "walkdir",

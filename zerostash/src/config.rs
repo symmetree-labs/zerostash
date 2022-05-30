@@ -42,6 +42,13 @@ impl Stash {
     }
 }
 
+/// Contents of a key file
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct KeyFile {
+    user: String,
+    password: String,
+}
+
 /// Credentials for a stash
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -50,11 +57,16 @@ pub enum Key {
     /// Plain text username/password pair
     #[serde(rename = "plaintext")]
     #[allow(missing_docs)]
-    Plaintext { user: String, password: String },
+    Plaintext(KeyFile),
 
     /// Get credentials through other interactive/command line methods
     #[serde(rename = "ask")]
     Interactive,
+
+    /// Plain text username/password pair
+    #[serde(rename = "file")]
+    #[allow(missing_docs)]
+    KeyFile { path: PathBuf },
 
     #[cfg(target_os = "macos")]
     #[serde(rename = "macos_keychain")]
@@ -62,10 +74,19 @@ pub enum Key {
 }
 
 impl Key {
+    // On non-macos the parameter will generate a warning.
+    #[allow(unused)]
     fn get_credentials(&self, stash: &str) -> Result<(String, String)> {
         match self {
             Self::Interactive => ask_credentials(),
-            Self::Plaintext { user, password } => Ok((user.to_string(), password.to_string())),
+            Self::Plaintext(KeyFile { user, password }) => {
+                Ok((user.to_string(), password.to_string()))
+            }
+            Self::KeyFile { path } => {
+                let contents = std::fs::read_to_string(path)?;
+                let keys: KeyFile = toml::from_str(&contents)?;
+                Ok((keys.user, keys.password))
+            }
             #[cfg(target_os = "macos")]
             Self::MacOsKeychain { user } => {
                 let service_name = "dev.symmetree.zerostash";
@@ -291,6 +312,11 @@ backend = { type = "fs", path = "/path/to/stash" }
 key = { source = "ask"}
 backend = { type = "fs", path = "/path/to/stash" }
 
+[stash.keyfile]
+key = { source = "file", path = "./example_keyfile.toml" }
+backend = { type = "fs", path = "/path/to/stash" }
+
+
 [stash.s3]
 key = { source = "ask" }
 backend = { type = "s3", bucket = "test_bucket", region = { name = "us-east-1" }, keys = ["access_key_id", "secret_key"] }
@@ -338,6 +364,19 @@ backend = { type = "fs", path = "/path/to/stash" }
 "#,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn load_keyfile() {
+        use super::Key;
+        use std::path::PathBuf;
+
+        let mut path: PathBuf = std::env::var("CARGO_MANIFEST_DIR").unwrap().into();
+        assert!(path.pop());
+        path.push("keyfile.toml.example");
+
+        let key = Key::KeyFile { path };
+        key.get_credentials("stash name").unwrap();
     }
 
     #[test]

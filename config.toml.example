@@ -8,8 +8,9 @@
 # Make sure you run `chmod 600 config.toml` after creating your config!
 #
 [stash.local_with_password]
-key = { source = "plaintext", user = "123", password = "123"}
+key = { source = "plaintext", user = "123", password = "123" }
 backend = { type = "fs", path = "/path/to/stash" }
+
 
 ####################################################
 # macOS Keychain support
@@ -30,6 +31,7 @@ backend = { type = "fs", path = "/path/to/stash" }
 # key = { source = "macos_keychain", user = "user@example.com"}
 # backend = { type = "fs", path = "/path/to/stash" }
 
+
 ####################################################
 # Interactive passwords
 #
@@ -37,7 +39,18 @@ backend = { type = "fs", path = "/path/to/stash" }
 # alias the object store paths for convenience.
 #
 [stash.local_interactive_password]
-key = { source = "ask"}
+key = { source = "ask" }
+backend = { type = "fs", path = "/path/to/stash" }
+
+
+####################################################
+# Key file
+#
+# Storing your credentials in a separate toml file is useful for
+# automated provisioning.
+#
+[stash.local_keyfile]
+key = { source = "file", path = "keyfile.toml.example" }
 backend = { type = "fs", path = "/path/to/stash" }
 
 
