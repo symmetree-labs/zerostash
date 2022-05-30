@@ -23,7 +23,7 @@ impl Runnable for Checkout {
     /// Start the application.
     fn run(&self) {
         abscissa_tokio::run(&APP, async {
-            let mut stash = APP.stash_exists(&self.stash).await;
+            let mut stash = APP.open_stash(&self.stash);
             stash.load_all().unwrap();
 
             self.options

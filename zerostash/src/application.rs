@@ -113,10 +113,6 @@ impl ZerostashApp {
         stash.try_open().unwrap_or_else(|e| fatal_error(e))
     }
 
-    pub(crate) async fn stash_exists(&self, pathy: impl AsRef<str>) -> Stash {
-        self.open_stash(pathy)
-    }
-
     pub(crate) fn get_worker_threads(&self) -> usize {
         use std::cmp;
         cmp::min(num_cpus::get() + 1, 5)
