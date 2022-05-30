@@ -288,6 +288,21 @@ region = { name = "custom", details = { endpoint = "https://127.0.0.1:8080/", "r
     }
 
     #[test]
+    fn can_load_example() {
+        use super::ZerostashConfig;
+        use abscissa_core::Config;
+        use std::path::PathBuf;
+
+        let mut path: PathBuf = std::env::var("CARGO_MANIFEST_DIR").unwrap().into();
+        assert!(path.pop());
+        path.push("config.toml.example");
+        println!("{:?}", std::env::vars().collect::<Vec<_>>());
+
+        let example = std::fs::read_to_string(path).unwrap();
+        ZerostashConfig::load_toml(example).unwrap();
+    }
+
+    #[test]
     fn can_parse_s3_url() {
         use super::{Backend, Region};
 
