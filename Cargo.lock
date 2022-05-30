@@ -827,9 +827,9 @@ checksum = "02296996cb8796d7c6e3bc2d9211b7802812d36999a51bb754123ead7d37d026"
 
 [[package]]
 name = "hyper"
-version = "0.14.18"
+version = "0.14.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b26ae0a80afebe130861d90abf98e3814a4f28a4c6ffeb5ab8ebb2be311e0ef2"
+checksum = "42dc3c131584288d375f2d07f822b0cb012d8c6fb899a5b9fdb3cb7eb9b6004f"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -905,9 +905,9 @@ checksum = "ce23b50ad8242c51a442f3ff322d56b02f08852c77e4c0b4d3fd684abc89c683"
 
 [[package]]
 name = "indexmap"
-version = "1.8.1"
+version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f647032dfaa1f8b6dc29bd3edb7bbef4861b8b8007ebb118d6db284fd59f6ee"
+checksum = "e6012d540c5baa3589337a98ce73408de9b5a25ec9fc2c6fd6be8f0d39e0ca5a"
 dependencies = [
  "autocfg",
  "hashbrown",
@@ -916,7 +916,7 @@ dependencies = [
 [[package]]
 name = "infinitree"
 version = "0.8.0"
-source = "git+https://github.com/symmetree-labs/infinitree#457e67caa3aeaada58a5f9e33d6a6e92401ad1d2"
+source = "git+https://github.com/symmetree-labs/infinitree#faa833f9bd6930deb8c2de5d73a82c89ee0255cd"
 dependencies = [
  "anyhow",
  "blake3",
@@ -947,7 +947,7 @@ dependencies = [
 [[package]]
 name = "infinitree-macros"
 version = "0.8.0"
-source = "git+https://github.com/symmetree-labs/infinitree#457e67caa3aeaada58a5f9e33d6a6e92401ad1d2"
+source = "git+https://github.com/symmetree-labs/infinitree#faa833f9bd6930deb8c2de5d73a82c89ee0255cd"
 dependencies = [
  "proc-macro-crate",
  "proc-macro-error",
@@ -1576,12 +1576,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustversion"
-version = "1.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2cc38e8fa666e2de3c4aba7edeb5ffc5246c1c2ed0e3d17e560aeeba736b23f"
-
-[[package]]
 name = "rusty-s3"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1720,11 +1714,10 @@ dependencies = [
 
 [[package]]
 name = "serde_with"
-version = "1.13.0"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b827f2113224f3f19a665136f006709194bdfdcb1fdc1e4b2b5cbac8e0cced54"
+checksum = "678b5a069e50bf00ecd22d0cd8ddf7c236f68581b03db652061ed5eb13a312ff"
 dependencies = [
- "rustversion",
  "serde",
  "serde_with_macros",
 ]
@@ -2412,6 +2405,7 @@ dependencies = [
  "infinitree",
  "nix",
  "num_cpus",
+ "regex",
  "rpassword",
  "rprompt",
  "serde",
