@@ -105,9 +105,7 @@ impl ZerostashApp {
             .resolve_stash(&pathy)
             .unwrap_or_else(|| crate::config::Stash {
                 key: crate::config::Key::Interactive,
-                backend: crate::config::Backend::Filesystem {
-                    path: pathy.as_ref().to_string(),
-                },
+                backend: pathy.as_ref().parse().unwrap(),
             });
 
         stash.try_open().unwrap_or_else(|e| fatal_error(e))
