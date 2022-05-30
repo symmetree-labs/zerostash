@@ -99,16 +99,8 @@ impl ZerostashApp {
     /// * `pathy` - Can be a path or an alias stored in the config
     #[allow(clippy::redundant_closure)]
     pub(crate) fn open_stash(&self, pathy: impl AsRef<str>) -> Stash {
-        let config = self.config();
-
-        let stash = config
-            .resolve_stash(&pathy)
-            .unwrap_or_else(|| crate::config::Stash {
-                key: crate::config::Key::Interactive,
-                backend: pathy.as_ref().parse().unwrap(),
-            });
-
-        stash.try_open().unwrap_or_else(|e| fatal_error(e))
+        let stash = self.config().open(pathy);
+        stash.unwrap_or_else(|e| fatal_error(e))
     }
 
     pub(crate) fn get_worker_threads(&self) -> usize {

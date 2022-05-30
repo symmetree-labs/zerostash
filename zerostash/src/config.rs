@@ -30,37 +30,16 @@ pub struct Stash {
 
 impl Stash {
     /// Try to open a stash with the config-stored credentials
-    pub fn try_open(&self) -> Result<crate::Stash> {
-        let key = {
-            use Key::*;
-            match &self.key {
-                Interactive => ask_credentials()?,
-                Plaintext { user, password } => (user.to_string(), password.to_string()),
-            }
-        };
+    pub fn try_open(&self, name: &str) -> Result<crate::Stash> {
+        let (user, pw) = self.key.get_credentials(name)?;
 
+        let key = || infinitree::Key::from_credentials(&user, &pw);
         let backend = self.backend.to_infinitree()?;
 
-        let stash = crate::Stash::open(
-            backend.clone(),
-            infinitree::Key::from_credentials(&key.0, &key.1)?,
-        )
-        .unwrap_or_else(move |_| {
-            crate::Stash::empty(
-                backend,
-                infinitree::Key::from_credentials(&key.0, &key.1).unwrap(),
-            )
-            .unwrap()
-        });
+        let stash = crate::Stash::open(backend.clone(), key()?)
+            .unwrap_or_else(move |_| crate::Stash::empty(backend, key().unwrap()).unwrap());
         Ok(stash)
     }
-}
-
-/// Ask for credentials on the standard input using [rpassword]
-pub fn ask_credentials() -> Result<(String, String)> {
-    let username = rprompt::prompt_reply_stderr("Username: ")?;
-    let password = rpassword::prompt_password("Password: ")?;
-    Ok((username, password))
 }
 
 /// Credentials for a stash
@@ -76,6 +55,54 @@ pub enum Key {
     /// Get credentials through other interactive/command line methods
     #[serde(rename = "ask")]
     Interactive,
+
+    #[cfg(target_os = "macos")]
+    #[serde(rename = "macos_keychain")]
+    MacOsKeychain { user: String },
+}
+
+impl Key {
+    fn get_credentials(&self, stash: &str) -> Result<(String, String)> {
+        match self {
+            Self::Interactive => ask_credentials(),
+            Self::Plaintext { user, password } => Ok((user.to_string(), password.to_string())),
+            #[cfg(target_os = "macos")]
+            Self::MacOsKeychain { user } => {
+                let service_name = "dev.symmetree.zerostash";
+                let account_name = format!("{}#:0s:#{}", stash, user);
+
+                let pass = security_framework::passwords::get_generic_password(
+                    service_name,
+                    &account_name,
+                )
+                .map(|pass| String::from_utf8_lossy(&pass).to_string())
+                .unwrap_or_else(|_| {
+                    println!(
+                        "Keychain entry not found! Please enter the password to save in Keychain!"
+                    );
+                    let pw = rpassword::prompt_password("Password: ").expect("Invalid password");
+
+                    security_framework::passwords::set_generic_password(
+                        service_name,
+                        &account_name,
+                        pw.as_bytes(),
+                    )
+                    .expect("Failed to add password to keychain!");
+
+                    pw
+                });
+
+                Ok((user.clone(), pass))
+            }
+        }
+    }
+}
+
+/// Ask for credentials on the standard input using [rpassword]
+pub fn ask_credentials() -> Result<(String, String)> {
+    let username = rprompt::prompt_reply_stderr("Username: ")?;
+    let password = rpassword::prompt_password("Password: ")?;
+    Ok((username, password))
 }
 
 /// Backend configuration
@@ -236,6 +263,16 @@ impl ZerostashConfig {
     pub fn resolve_stash(&self, alias: impl AsRef<str>) -> Option<Stash> {
         self.stashes.get(alias.as_ref()).cloned()
     }
+
+    pub fn open(&self, pathy: impl AsRef<str>) -> Result<crate::Stash> {
+        let name = pathy.as_ref();
+        let stash = self.resolve_stash(name).unwrap_or_else(|| Stash {
+            key: crate::config::Key::Interactive,
+            backend: name.parse().unwrap(),
+        });
+
+        stash.try_open(name)
+    }
 }
 
 mod tests {
@@ -285,6 +322,22 @@ region = { name = "custom", details = { endpoint = "https://127.0.0.1:8080/", "r
         use abscissa_core::Config;
 
         ZerostashConfig::load_toml(r#""#).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn can_load_keychain_config() {
+        use super::ZerostashConfig;
+        use abscissa_core::Config;
+
+        ZerostashConfig::load_toml(
+            r#"
+[stash.macos_keychain]
+key = { source = "macos_keychain", user = "user@example.com"}
+backend = { type = "fs", path = "/path/to/stash" }
+"#,
+        )
+        .unwrap();
     }
 
     #[test]

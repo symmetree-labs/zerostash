@@ -11,6 +11,24 @@
 key = { source = "plaintext", user = "123", password = "123"}
 backend = { type = "fs", path = "/path/to/stash" }
 
+####################################################
+# macOS Keychain support
+#
+# Zerostash can save your password in macOS keychain.
+#
+# By doing this, you use the hardware-backed key store on supported
+# systems, and still get a convenient experience. 
+#
+# Do note that changing the *alias* (or `example_keychain` below) will
+# invalidate the existing entry, and you will have to re-enter your
+# password.
+#
+# This configuration item is only available on macOS, and the
+# configuration file will fail to load on other systems.
+#
+# [stash.example_keychain]
+# key = { source = "macos_keychain", user = "user@example.com"}
+# backend = { type = "fs", path = "/path/to/stash" }
 
 ####################################################
 # Interactive passwords
