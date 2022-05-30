@@ -43,14 +43,35 @@ entering your credentials:
 For more details, run
 
     0s --help
+	
+## Remote backups
+
+You can send your backup objects to an S3-compatible remote
+destination by using the following syntax:
+
+    0s commit s3://accesskey:secretkey@region#server.com/bucket /
+	
+For instance, if your files are on AWS, in the `us-east-1` region, you
+can use the bucket like so:
+
+	0s commit s3://us-east-1#/backups
+	
+Omitting the access and secret key parameters from the URL will read them from the environment:
+
+	export AWS_ACCESS_KEY_ID=xxxx
+	export AWS_SECRET_ACCESS_KEY=xxxx
 
 ## Configuration
 
-An example config file can be found [here](./config.toml.example).
+An config file with examples and documentation can be found [in this
+repository](./config.toml.example).
+
 Place it at `~/.config/zerostash/config.toml`, or inside your
 `$XDG_CONFIG_HOME/zerostash` directory.
 
-Using a configuration file is optional, but can make managing stashes easier.
+Using a configuration file is optional, but can make managing stashes
+easier, and some powerful backend configurations are currently not
+exposed on the CLI.
 
 An example config looks like so:
 

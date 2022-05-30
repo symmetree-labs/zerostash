@@ -1,23 +1,127 @@
+####################################################
+# You can store the credentials for the archive in your config file.
+#
+# This makes it easy to script and schedule backup jobs, and 0s will
+# force you to make the permissions on the file restricted to your
+# user.
+#
+# Make sure you run `chmod 600 config.toml` after creating your config!
+#
 [stash.local_with_password]
 key = { source = "plaintext", user = "123", password = "123"}
 backend = { type = "fs", path = "/path/to/stash" }
 
+
+####################################################
+# Interactive passwords
+#
+# If you don't want to store credentials in the config, you can still
+# alias the object store paths for convenience.
+#
 [stash.local_interactive_password]
 key = { source = "ask"}
 backend = { type = "fs", path = "/path/to/stash" }
 
+
+####################################################
+# S3 Remote backups
+#
+# Remote backups work similarly to the previous examples. You can also
+# store the S3 keys directly in your Zerostash config, and copy the
+# same config to multiple machines or use it in templates of your
+# deployment system.
+#
+# Zerostash recognizes the following regions for AWS:
+#
+#   * "us-east-1"
+#   * "us-east-2"
+#   * "us-west-1"
+#   * "us-west-2"
+#   * "ca-central-1"
+#   * "af-south-1"
+#   * "ap-east-1"
+#   * "ap-south-1"
+#   * "ap-northeast-1"
+#   * "ap-northeast-2"
+#   * "ap-northeast-3"
+#   * "ap-southeast-1"
+#   * "ap-southeast-2"
+#   * "cn-north-1"
+#   * "cn-northwest-1"
+#   * "eu-north-1"
+#   * "eu-central-1"
+#   * "eu-west-1"
+#   * "eu-west-2"
+#   * "eu-west-3"
+#   * "sa-east-1"
+#   * "me-south-1"
+#
+# For DigitalOcean:
+#
+#   * "nyc3"
+#   * "ams3"
+#   * "sgp1"
+#   * "fra1"
+#
 [stash.s3_aws_with_keys]
 key = { source = "ask" }
 backend = { type = "s3", bucket = "test_bucket", region = { name = "us-east-1" }, keys = ["access_key_id", "secret_key"] }
 
+
+####################################################
+# S3 Remote backups using the environment
+#
+# Zerostash can also lift your S3 configuration from the environment.
+# The following variables need to be set with your access and secret keys:
+#
+#     export AWS_ACCESS_KEY_ID=xxxx
+#     export AWS_SECRET_ACCESS_KEY=xxxx
+#
 [stash.s3_aws_env_key]
 key = { source = "ask" }
 backend = { type = "s3", bucket = "test_bucket", region = { name = "us-east-1" } }
 
+
+####################################################
+# S3-compatible remotes
+#
+# A custom server can also be used instead of the usual S3 regions.
+# If an endpoint is specified, you may still need to set the
+# appropriate region for your server. On most minio default
+# installations, this will be `us-east-1`
+#
 [stash.s3_custom_address]
 key = { source = "ask" }
 
 [stash.s3_custom_address.backend]
+type = "s3"
+bucket = "test_bucket"
+region = { name = "custom", details = { endpoint = "https://127.0.0.1:8080/", "region" = "" }}
+
+
+####################################################
+# Cache files locally
+#
+# A custom server can also be used instead of the usual S3 regions.
+# If an endpoint is specified, you may still need to set the
+# appropriate region for your server. On most Minio default
+# installations, this will be `us-east-1`
+#
+# The `max_size_mb` will make sure that locally stored content will
+# never be more than the given amount of mebibytes (2^20 bytes).
+#
+# When opening a cached repository, the root is always queried from
+# the `upstream` for freshness.
+#
+[stash.remote_cached]
+key = { source = "ask" }
+
+[stash.remote_cached.backend]
+type = "fs_cache"
+path = "/Users/user/Code/repo"
+max_size_mb = 1000
+
+[stash.remote_cached.backend.upstream]
 type = "s3"
 bucket = "test_bucket"
 region = { name = "custom", details = { endpoint = "https://127.0.0.1:8080/", "region" = "" }}
