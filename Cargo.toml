@@ -2,7 +2,7 @@
 panic = "abort"
 lto = true
 debug = false
-#opt-level = 1
+strip = true
 				   
 [workspace]
 members = [
