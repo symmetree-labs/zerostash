@@ -121,7 +121,9 @@ jobs:
         cd bin
         for dir in 0s-linux* 0s-macos*; do
           (cd $dir;
+           echo $dir
            tar czf archive.tar.gz 0s;
+           sha256sum archive.tar.gz
            rm 0s;
           )
         done
