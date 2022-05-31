@@ -36,19 +36,22 @@ pub struct Ls {
 impl Runnable for Ls {
     /// Start the application.
     fn run(&self) {
-        let mut stash = APP.open_stash(&self.stash);
+        abscissa_tokio::run(&APP, async {
+            let mut stash = APP.open_stash(&self.stash);
 
-        stash.load_all().unwrap();
-        let count = self
-            .options
-            .list(&stash)
-            .map(match self.list {
-                false => self.print_simple(),
-                true => self.print_list(),
-            })
-            .count();
+            stash.load_all().unwrap();
+            let count = self
+                .options
+                .list(&stash)
+                .map(match self.list {
+                    false => self.print_simple(),
+                    true => self.print_list(),
+                })
+                .count();
 
-        writeln!(stderr().lock(), "Total entries: {}", count).unwrap();
+            writeln!(stderr().lock(), "Total entries: {}", count).unwrap();
+        })
+        .unwrap();
     }
 }
 
