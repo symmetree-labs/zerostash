@@ -36,6 +36,7 @@ jobs:
         name: [
           linux,
           macos,
+          macos-m1,
           windows
         ]
 
@@ -52,6 +53,12 @@ jobs:
             target: x86_64-apple-darwin
             cross: false
 
+          - name: macos-m1
+            os: macos-latest
+            asset_name: 0s-macos-aarch64
+            target: aarch64-apple-darwin
+            cross: true
+
           - name: windows
             os: windows-latest
             asset_name: 0s-windows-x86_64.exe
@@ -59,7 +66,7 @@ jobs:
             cross: false
 
         rust:
-          - 1.60.0 # MSRV
+          - 1.61.0 # MSRV
 
     runs-on: ${{ matrix.os }}
     steps:
