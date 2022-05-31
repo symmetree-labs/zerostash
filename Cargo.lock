@@ -931,8 +931,9 @@ dependencies = [
 
 [[package]]
 name = "infinitree"
-version = "0.8.0"
-source = "git+https://github.com/symmetree-labs/infinitree#faa833f9bd6930deb8c2de5d73a82c89ee0255cd"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76ecff428d6123901601f4393154d8fb222bdc3ab71670cd22cfdc14097a98b8"
 dependencies = [
  "anyhow",
  "blake3",
@@ -962,8 +963,9 @@ dependencies = [
 
 [[package]]
 name = "infinitree-macros"
-version = "0.8.0"
-source = "git+https://github.com/symmetree-labs/infinitree#faa833f9bd6930deb8c2de5d73a82c89ee0255cd"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31cc658ecdfb0cc22544839fe2cce4fe36cf55894c815e50bb329e0304f8b391"
 dependencies = [
  "proc-macro-crate",
  "proc-macro-error",
@@ -1113,9 +1115,9 @@ checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
 
 [[package]]
 name = "miniz_oxide"
-version = "0.5.1"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2b29bd4bc3f33391105ebee3589c19197c4271e3e5a9ec9bfe8127eeff8f082"
+checksum = "6f5c75688da582b8ffc1f1799e9db273f32133c49e048f614d22ec3256773ccc"
 dependencies = [
  "adler",
 ]
@@ -1225,9 +1227,9 @@ checksum = "decf7381921fea4dcb2549c5667eda59b3ec297ab7e2b5fc33eac69d2e7da87b"
 
 [[package]]
 name = "parking_lot"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87f5ec2493a61ac0506c0f4199f99070cbe83857b0337006a30f3e6719b8ef58"
+checksum = "3742b2c103b9f06bc9fff0a37ff4912935851bee6d36f3c02bcc755bcfec228f"
 dependencies = [
  "lock_api",
  "parking_lot_core",
@@ -2432,7 +2434,7 @@ checksum = "94693807d016b2f2d2e14420eb3bfcca689311ff775dcf113d74ea624b7cdf07"
 
 [[package]]
 name = "zerostash"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "abscissa_core",
  "abscissa_tokio",
@@ -2462,7 +2464,7 @@ dependencies = [
 
 [[package]]
 name = "zerostash-files"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "chrono",

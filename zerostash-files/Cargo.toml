@@ -10,7 +10,7 @@ keywords = ["crypto", "api", "security", "filesystem", "backup"]
 categories = ["cryptography", "filesystem"]
 
 [dependencies]
-infinitree = { git = "https://github.com/symmetree-labs/infinitree", default-features = false, features = ["rustls", "s3", "mmap"] }
+infinitree = { version = "0.8.1", default-features = false, features = ["rustls", "s3", "mmap"] }
 serde = { version = "1.0.137", features = ["rc"] }
 serde_derive = "1.0.137"
 tracing = "0.1.34"
@@ -38,7 +38,7 @@ chrono = "0.4.19"
 getrandom = "0.2.6"
 tokio = { version = "1.18.2", features = ["rt", "macros", "rt-multi-thread"] }
 criterion = "0.3.5"
-infinitree = { git = "https://github.com/symmetree-labs/infinitree", default-features = false, features = ["test", "s3", "mmap"] }
+infinitree = { version = "0.8.1", default-features = false, features = ["test", "s3", "mmap"] }
 
 [[bench]]
 name = "bench"
