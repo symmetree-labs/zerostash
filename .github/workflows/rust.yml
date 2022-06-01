@@ -8,6 +8,9 @@ on:
   release:
     types: [ published ]
 
+env:
+  version: ${{ github.event.release.tag_name || github.head_ref }}
+
 jobs:
   security_audit:
     runs-on: ubuntu-latest
@@ -43,25 +46,25 @@ jobs:
         include:
           - name: linux
             os: ubuntu-latest
-            asset_name: 0s-linux-x86_64-static.tar.gz
+            asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-linux-x86_64
             target: x86_64-unknown-linux-musl
             cross: true
 
           - name: macos
             os: macos-latest
-            asset_name: 0s-macos-x86_64.tar.gz
+            asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-macos-x86_64
             target: x86_64-apple-darwin
             cross: false
 
           - name: macos-m1
             os: macos-latest
-            asset_name: 0s-macos-aarch64.tar.gz
+            asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-macos-aarch64
             target: aarch64-apple-darwin
             cross: true
 
           - name: windows
             os: windows-latest
-            asset_name: 0s-windows-x86_64.exe
+            asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-windows-x86_64.exe
             target: x86_64-pc-windows-msvc
             cross: false
 
@@ -106,28 +109,6 @@ jobs:
           name: ${{ matrix.asset_name }}
           path: "output/bin/0s${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
 
-  package:
-    runs-on: ubuntu-latest
-    needs: [build]
-    steps:
-    - name: Download artifacts
-      uses: actions/download-artifact@v3
-      with:
-        path: bin
-
-    - name: Package artifacts
-      run: |
-        set -e
-        cd bin
-        for dir in 0s-linux* 0s-macos*; do
-          (cd $dir;
-           echo $dir
-           tar czf archive.tar.gz 0s;
-           sha256sum archive.tar.gz
-           rm 0s;
-          )
-        done
-
   release:
     runs-on: ubuntu-latest
     needs: [build, security_audit]
@@ -142,10 +123,11 @@ jobs:
       run: |
         set -e
         cd bin
-        for dir in 0s-linux* 0s-macos*; do
+        for dir in 0s-*-linux-* 0s-*-macos-*; do
           (cd $dir;
-           tar czf archive.tar.gz 0s;
-           rm 0s;
+           echo $dir
+           tar czf $dir.tar.gz 0s;
+           sha256sum $dir.tar.gz
           )
         done
 
@@ -162,15 +144,24 @@ jobs:
           const artifacts = await fs.readdir('bin/');
 
           for (dir of artifacts) {
-              console.log(`Uploading ${dir}/0s for release ${release_id}`);
-
               const files = await fs.readdir(`bin/${dir}`);
               for (file of files) {
+                  if (file === '0s') {
+                      continue;
+                  }
+
+                  var file_name = file;
+                  if (file === '0s.exe') {
+                      file_name = `${dir}.exe`;
+                  }
+
+                  console.log(`Uploading ${dir}/${file} as ${file_name} for release ${release_id}`);
+
                   await github.rest.repos.uploadReleaseAsset({
                       owner,
                       repo,
                       release_id,
-                      name: path.basename(dir),
+                      name: file_name,
                       data: await fs.readFile(`bin/${dir}/${file}`),
                   });
 
