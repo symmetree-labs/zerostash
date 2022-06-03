@@ -1,27 +1,10 @@
-#![allow(unused)]
-
-use crate::{files, FileSet, Files};
+use crate::{files, Files};
 use flume as mpsc;
 use futures::future::join_all;
-use infinitree::{
-    backends::Backend,
-    fields::QueryAction,
-    object::{self, WriteObject},
-    Infinitree, *,
-};
-use itertools::Itertools;
+use infinitree::{fields::QueryAction, object, Infinitree, *};
 use memmap2::MmapOptions;
-use std::{
-    collections::{HashMap, HashSet},
-    env,
-    error::Error,
-    ffi::OsString,
-    path::{Path, PathBuf},
-    pin::Pin,
-    sync::Arc,
-    time::UNIX_EPOCH,
-};
-use tokio::{fs, task};
+use std::{env, path::PathBuf, sync::Arc};
+use tokio::task;
 use tracing::{error, trace};
 
 type ThreadWork = (PathBuf, Arc<files::Entry>);
@@ -160,7 +143,7 @@ impl Options {
         stash: &Infinitree<Files>,
         threads: usize,
     ) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
-        let (mut sender, receiver) = mpsc::bounded(threads);
+        let (sender, receiver) = mpsc::bounded(threads);
         let workers = (0..threads)
             .map(|_| {
                 task::spawn(process_packet_loop(
@@ -178,7 +161,7 @@ impl Options {
 async fn process_packet_loop(
     force: bool,
     preserve: files::PreserveMetadata,
-    mut r: Receiver,
+    r: Receiver,
     mut objreader: impl object::Reader + 'static,
 ) {
     // Since resources here are all managed by RAII, and they all
@@ -188,7 +171,6 @@ async fn process_packet_loop(
     //
     // In fact, every layer of these for loops is also managing a
     // corresponding resource.
-    let mut buffer = WriteObject::default();
 
     // This loop is managing an mmap of a file that's written
     while let Ok((path, metadata)) = r.recv_async().await {
