@@ -1,9 +1,8 @@
 //! `commit` subcommand
 
 use crate::prelude::*;
-use clap::Parser;
 
-#[derive(Command, Parser, Debug)]
+#[derive(Command, Debug, Clone)]
 pub struct Commit {
     /// Stash path or alias
     stash: String,
@@ -16,23 +15,21 @@ pub struct Commit {
     message: Option<String>,
 }
 
-impl Runnable for Commit {
+#[async_trait]
+impl AsyncRunnable for Commit {
     /// Start the application.
-    fn run(&self) {
-        abscissa_tokio::run(&APP, async {
-            let mut stash = APP.open_stash(&self.stash);
-            stash.load_all().unwrap();
+    async fn run(&self) {
+        let mut stash = APP.open_stash(&self.stash);
+        stash.load_all().unwrap();
 
-            self.options
-                .add_recursive(&stash, APP.get_worker_threads())
-                .await
-                .unwrap();
+        self.options
+            .add_recursive(&stash, APP.get_worker_threads())
+            .await
+            .unwrap();
 
-            stash
-                .commit(self.message.clone())
-                .expect("Failed to write metadata");
-            stash.backend().sync().expect("Failed to write to storage");
-        })
-        .unwrap();
+        stash
+            .commit(self.message.clone())
+            .expect("Failed to write metadata");
+        stash.backend().sync().expect("Failed to write to storage");
     }
 }

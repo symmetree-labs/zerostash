@@ -4,8 +4,9 @@
 //! application's configuration file and/or command-line options
 //! for specifying it.
 
+use crate::prelude::Stash as InfiniStash;
 use anyhow::{Context, Result};
-use infinitree::backends::Region;
+use infinitree_backends::Region;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, num::NonZeroUsize, path::PathBuf, str::FromStr, sync::Arc};
 
@@ -30,14 +31,14 @@ pub struct Stash {
 
 impl Stash {
     /// Try to open a stash with the config-stored credentials
-    pub fn try_open(&self, name: &str) -> Result<crate::Stash> {
+    pub fn try_open(&self, name: &str) -> Result<InfiniStash> {
         let (user, pw) = self.key.get_credentials(name)?;
 
         let key = || infinitree::Key::from_credentials(&user, &pw);
         let backend = self.backend.to_infinitree()?;
 
-        let stash = crate::Stash::open(backend.clone(), key()?)
-            .unwrap_or_else(move |_| crate::Stash::empty(backend, key().unwrap()).unwrap());
+        let stash = InfiniStash::open(backend.clone(), key()?)
+            .unwrap_or_else(move |_| InfiniStash::empty(backend, key().unwrap()).unwrap());
         Ok(stash)
     }
 }
@@ -175,7 +176,7 @@ impl Backend {
                 region,
                 keys,
             } => {
-                use infinitree::backends::{Credentials, S3};
+                use infinitree_backends::{Credentials, S3};
 
                 match keys {
                     Some((access_key, secret_key)) => S3::with_credentials(
@@ -191,7 +192,7 @@ impl Backend {
                 max_size_mb,
                 path,
                 upstream,
-            } => infinitree::backends::Cache::new(
+            } => infinitree_backends::Cache::new(
                 path,
                 NonZeroUsize::new(max_size_mb.get() * 1024 * 1024)
                     .expect("Deserialization should have failed if `max_size_mb` is 0"),
@@ -285,7 +286,7 @@ impl ZerostashConfig {
         self.stashes.get(alias.as_ref()).cloned()
     }
 
-    pub fn open(&self, pathy: impl AsRef<str>) -> Result<crate::Stash> {
+    pub fn open(&self, pathy: impl AsRef<str>) -> Result<InfiniStash> {
         let name = pathy.as_ref();
         let stash = self.resolve_stash(name).unwrap_or_else(|| Stash {
             key: crate::config::Key::Interactive,

@@ -1,25 +1,18 @@
 //! Zerostash Subcommands
-//!
-//! This is where you specify the subcommands of your application.
-//!
-//! The default application comes with two subcommands:
-//!
-//! - `start`: launches the application
-//! - `--version`: print application version
-//!
-//! See the `impl Configurable` below for how to specify the path to the
-//! application's configuration file.
 
-mod alias;
 mod checkout;
+use checkout::*;
 mod commit;
+use commit::*;
 mod log;
+use log::*;
 mod ls;
+use ls::*;
 mod wipe;
+use wipe::*;
 
-use self::{checkout::Checkout, commit::Commit, log::Log, ls::Ls, wipe::Wipe};
-use crate::config::ZerostashConfig;
-use abscissa_core::{Command, Configurable, FrameworkError, Runnable};
+use crate::prelude::*;
+use abscissa_core::{Command, Configurable, Runnable};
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -28,24 +21,21 @@ pub const CONFIG_FILE: &str = "zerostash.toml";
 
 /// Zerostash Subcommands
 /// Subcommands need to be listed in an enum.
-#[derive(Command, Debug, Parser, Runnable)]
+#[derive(Debug, Parser, Clone)]
 pub enum ZerostashCmd {
-    /// add new alias for a stash URI/path
-    //Alias(Alias),
-
-    /// check out files
+    /// Check out files
     Checkout(Checkout),
 
-    /// add files to a stash
+    /// Add files to a stash
     Commit(Commit),
 
-    /// list commits in the stash
+    /// List commits in the stash
     Log(Log),
 
-    /// list files in a stash
+    /// List files in a stash
     Ls(Ls),
 
-    /// delete all data of a stash
+    /// Delete all data of a stash
     Wipe(Wipe),
 }
 
@@ -57,8 +47,8 @@ pub struct EntryPoint {
     cmd: ZerostashCmd,
 
     /// Enable verbose logging
-    #[clap(short, long)]
-    pub verbose: bool,
+    #[clap(short, long, parse(from_occurrences))]
+    pub verbose: usize,
 
     /// Use the specified config file
     #[clap(short, long)]
@@ -67,7 +57,18 @@ pub struct EntryPoint {
 
 impl Runnable for EntryPoint {
     fn run(&self) {
-        self.cmd.run()
+        use ZerostashCmd::*;
+        let command = self.cmd.clone();
+        abscissa_tokio::run(&APP, async move {
+            match command {
+                Checkout(cmd) => cmd.run().await,
+                Commit(cmd) => cmd.run().await,
+                Log(cmd) => cmd.run().await,
+                Ls(cmd) => cmd.run().await,
+                Wipe(cmd) => cmd.run().await,
+            }
+        })
+        .unwrap()
     }
 }
 
@@ -98,14 +99,5 @@ impl Configurable<ZerostashConfig> for EntryPoint {
         } else {
             None
         }
-    }
-
-    /// Apply changes to the config after it's been loaded, e.g. overriding
-    /// values in a config file using command-line options.
-    ///
-    /// This can be safely deleted if you don't want to override config
-    /// settings from command-line options.
-    fn process_config(&self, config: ZerostashConfig) -> Result<ZerostashConfig, FrameworkError> {
-        Ok(config)
     }
 }

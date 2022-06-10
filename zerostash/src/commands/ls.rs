@@ -1,25 +1,14 @@
 //! `ls` subcommand
 
 use crate::prelude::*;
-use abscissa_core::{
-    terminal::{stderr, stdout, StandardStream},
-    *,
-};
+use abscissa_core::terminal::{stderr, stdout};
 use chrono::{DateTime, Utc};
-use clap::Parser;
 use humansize::{file_size_opts, FileSize};
 use std::{io::Write, sync::Arc};
-use termcolor::{Color, ColorSpec, WriteColor};
+use termcolor::{Color, ColorSpec, StandardStream, WriteColor};
 use zerostash_files::*;
 
-/// `ls` subcommand
-///
-/// The `Clap` proc macro generates an option parser based on the struct
-/// definition, and is defined in the `gumdrop` crate. See their documentation
-/// for a more comprehensive example:
-///
-/// <https://docs.rs/gumdrop/>
-#[derive(Command, Debug, Parser)]
+#[derive(Command, Debug, Clone)]
 pub struct Ls {
     stash: String,
 
@@ -33,25 +22,23 @@ pub struct Ls {
     options: zerostash_files::restore::Options,
 }
 
-impl Runnable for Ls {
+#[async_trait]
+impl AsyncRunnable for Ls {
     /// Start the application.
-    fn run(&self) {
-        abscissa_tokio::run(&APP, async {
-            let mut stash = APP.open_stash(&self.stash);
+    async fn run(&self) {
+        let mut stash = APP.open_stash(&self.stash);
 
-            stash.load_all().unwrap();
-            let count = self
-                .options
-                .list(&stash)
-                .map(match self.list {
-                    false => self.print_simple(),
-                    true => self.print_list(),
-                })
-                .count();
+        stash.load_all().unwrap();
+        let count = self
+            .options
+            .list(&stash)
+            .map(match self.list {
+                false => self.print_simple(),
+                true => self.print_list(),
+            })
+            .count();
 
-            writeln!(stderr().lock(), "Total entries: {}", count).unwrap();
-        })
-        .unwrap();
+        writeln!(stderr().lock(), "Total entries: {}", count).unwrap();
     }
 }
 
@@ -62,6 +49,7 @@ impl Ls {
 
     fn print_list(&self) -> Box<dyn Fn(Arc<Entry>)> {
         let human_readable = self.human_readable;
+        let stdout = stdout();
 
         Box::new(move |entry: Arc<Entry>| {
             let time: DateTime<Utc> = entry.as_ref().into();
@@ -100,13 +88,13 @@ impl Ls {
                     .clone(),
             };
 
-            print(stdout(), ColorSpec::new(), mode);
-            print(stdout(), ColorSpec::new(), owner);
-            print(stdout(), ColorSpec::new(), group);
-            print(stdout(), ColorSpec::new(), size);
-            print(stdout(), ColorSpec::new(), formatted_time);
+            print(&stdout, ColorSpec::new(), mode);
+            print(&stdout, ColorSpec::new(), owner);
+            print(&stdout, ColorSpec::new(), group);
+            print(&stdout, ColorSpec::new(), size);
+            print(&stdout, ColorSpec::new(), formatted_time);
             print(
-                stdout(),
+                &stdout,
                 file_color,
                 if let FileType::Symlink(ref target) = entry.file_type {
                     format!("{} -> {:?}", entry.name, target)
@@ -114,7 +102,7 @@ impl Ls {
                     entry.name.clone()
                 },
             );
-            writeln!(stdout().lock()).unwrap();
+            writeln!(stdout.lock()).unwrap();
         })
     }
 }

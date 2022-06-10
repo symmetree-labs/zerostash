@@ -12,7 +12,7 @@ type ThreadWork = (PathBuf, Arc<files::Entry>);
 type Sender = mpsc::Sender<ThreadWork>;
 type Receiver = mpsc::Receiver<ThreadWork>;
 
-pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + 'a)>;
+pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + Send + 'a)>;
 
 #[derive(clap::Args, Debug, Clone, Default)]
 pub struct Options {

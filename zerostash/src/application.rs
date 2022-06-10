@@ -1,6 +1,6 @@
 //! Zerostash Abscissa Application
 
-use crate::{commands::EntryPoint, config::ZerostashConfig, Stash};
+use crate::{commands::EntryPoint, prelude::*};
 use abscissa_core::{
     application::{self, AppCell},
     config::{self, CfgCell},
@@ -8,7 +8,7 @@ use abscissa_core::{
 };
 use abscissa_tokio::TokioComponent;
 use anyhow::Result;
-use std::process;
+use std::{num::NonZeroUsize, process};
 
 /// Application state
 pub static APP: AppCell<ZerostashApp> = AppCell::new();
@@ -74,7 +74,6 @@ impl Application for ZerostashApp {
     /// time in app lifecycle when configuration would be loaded if
     /// possible.
     fn after_config(&mut self, config: Self::Cfg) -> Result<(), FrameworkError> {
-        // Configure components
         let mut components = self.state.components_mut();
         components.after_config(&config)?;
         self.config.set_once(config);
@@ -83,20 +82,17 @@ impl Application for ZerostashApp {
 
     /// Get tracing configuration from command-line options
     fn tracing_config(&self, command: &EntryPoint) -> trace::Config {
-        if command.verbose {
-            trace::Config::verbose()
-        } else {
-            trace::Config::default()
+        match command.verbose {
+            0 => "info",
+            1 => "debug",
+            _ => "trace",
         }
+        .to_owned()
+        .into()
     }
 }
 
 impl ZerostashApp {
-    /// Open a stash or produce an error
-    ///
-    /// # Arguments
-    ///
-    /// * `pathy` - Can be a path or an alias stored in the config
     #[allow(clippy::redundant_closure)]
     pub(crate) fn open_stash(&self, pathy: impl AsRef<str>) -> Stash {
         let stash = self.config().open(pathy);
@@ -105,11 +101,15 @@ impl ZerostashApp {
 
     pub(crate) fn get_worker_threads(&self) -> usize {
         use std::cmp;
-        cmp::min(num_cpus::get() + 1, 5)
+        cmp::min(
+            std::thread::available_parallelism()
+                .map(NonZeroUsize::get)
+                .unwrap_or(1),
+            16,
+        )
     }
 }
 
-/// report a fatal error and exit
 pub fn fatal_error(err: impl Into<Box<dyn std::error::Error>>) -> ! {
     status_err!("{} fatal error: {}", APP.name(), err.into());
     process::exit(1)

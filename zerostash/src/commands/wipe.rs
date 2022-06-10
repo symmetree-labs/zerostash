@@ -1,23 +1,16 @@
 //! `wipe` subcommand
 
 use crate::prelude::*;
-use clap::Parser;
 
-/// `wipe` subcommand
-///
-/// The `Clap` proc macro generates an option parser based on the struct
-/// definition, and is defined in the `gumdrop` crate. See their documentation
-/// for a more comprehensive example:
-///
-/// <https://docs.rs/gumdrop/>
-#[derive(Command, Debug, Parser)]
+#[derive(Command, Debug, Clone)]
 pub struct Wipe {
     stash: String,
 }
 
-impl Runnable for Wipe {
+#[async_trait]
+impl AsyncRunnable for Wipe {
     /// Start the application.
-    fn run(&self) {
+    async fn run(&self) {
         use crate::config::Backend::*;
 
         let config = APP.config();
@@ -26,7 +19,7 @@ impl Runnable for Wipe {
             Some(stash) => match &stash.backend {
                 Filesystem { path } => path.clone(),
                 _ => {
-                    status_info!("Wipe", "Non-local backend found, skipping...");
+                    println!("Wipe: Non-local backend found, skipping...");
                     return;
                 }
             },

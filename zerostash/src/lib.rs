@@ -26,8 +26,6 @@ pub mod prelude;
 
 // These dependencies are required for the e2e benchmark
 #[cfg(test)]
-use tokio as _;
-#[cfg(test)]
 use tracing as _;
 #[cfg(test)]
 use tracing_subscriber as _;
@@ -40,5 +38,3 @@ use dirs as _;
 use nix as _;
 #[cfg(windows)]
 use xdg as _;
-
-pub(crate) type Stash = infinitree::Infinitree<zerostash_files::Files>;
