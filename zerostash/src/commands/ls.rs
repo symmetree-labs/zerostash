@@ -110,19 +110,27 @@ impl Ls {
 #[cfg(unix)]
 fn get_uid(uid: Option<u32>) -> String {
     use nix::unistd::{Uid, User};
-    uid.and_then(|uid| User::from_uid(Uid::from_raw(uid)).ok())
-        .flatten()
-        .map(|u| u.name)
-        .unwrap_or_else(|| "---".to_string())
+    match uid {
+        Some(uid) => User::from_uid(Uid::from_raw(uid))
+            .ok()
+            .flatten()
+            .map(|u| u.name)
+            .unwrap_or_else(|| format!("{}", uid)),
+        None => "---".to_string(),
+    }
 }
 
 #[cfg(unix)]
 fn get_gid(gid: Option<u32>) -> String {
     use nix::unistd::{Gid, Group};
-    gid.and_then(|gid| Group::from_gid(Gid::from_raw(gid)).ok())
-        .flatten()
-        .map(|g| g.name)
-        .unwrap_or_else(|| "---".to_string())
+    match gid {
+        Some(gid) => Group::from_gid(Gid::from_raw(gid))
+            .ok()
+            .flatten()
+            .map(|u| u.name)
+            .unwrap_or_else(|| format!("{}", gid)),
+        None => "---".to_string(),
+    }
 }
 
 #[cfg(windows)]
