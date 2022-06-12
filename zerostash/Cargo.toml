@@ -42,7 +42,6 @@ abscissa_core = { version = "0.6.0", features = ["testing"] }
 abscissa_tokio = "0.6.0"
 walkdir = "2.3.2"
 tokio = { version = "1.18.2", features = ["rt", "macros", "rt-multi-thread", "parking_lot"] }
-num_cpus = "1.13.1"
 tracing-subscriber = "0.3.11"
 tracing = "0.1.34"
 

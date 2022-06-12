@@ -93,9 +93,10 @@ fn split_seasplit(c: &mut Criterion) {
         set_test_cwd();
         let file = File::open(PATH).unwrap();
         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
+        let hasher = infinitree::Hasher::new();
 
         b.iter(|| {
-            FileSplitter::<SeaSplit>::new(&mmap)
+            FileSplitter::<SeaSplit>::new(&mmap, hasher.clone())
                 .map(|(_, _, c)| c.len())
                 .sum::<usize>()
         });
@@ -107,9 +108,10 @@ fn split_bupsplit(c: &mut Criterion) {
         set_test_cwd();
         let file = File::open(PATH).unwrap();
         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
+        let hasher = infinitree::Hasher::new();
 
         b.iter(|| {
-            FileSplitter::<BupSplit>::new(&mmap)
+            FileSplitter::<BupSplit>::new(&mmap, hasher.clone())
                 .map(|(_, _, c)| c.len())
                 .sum::<usize>()
         });

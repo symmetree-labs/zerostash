@@ -1,9 +1,10 @@
 use crate::rollsum::Rollsum;
-use infinitree::{secure_hash, Digest};
+use infinitree::{Digest, Hasher};
 
 use std::marker::PhantomData;
 
 pub struct FileSplitter<'file, RS> {
+    hasher: Hasher,
     data: &'file [u8],
     cur: usize,
     _rs: PhantomData<RS>,
@@ -13,8 +14,9 @@ impl<'file, RS> FileSplitter<'file, RS>
 where
     RS: Rollsum,
 {
-    pub fn new(data: &'file [u8]) -> FileSplitter<'file, RS> {
+    pub fn new(data: &'file [u8], hasher: Hasher) -> FileSplitter<'file, RS> {
         FileSplitter {
+            hasher,
             data,
             _rs: PhantomData,
             cur: 0,
@@ -29,6 +31,7 @@ where
     type Item = (u64, Digest, &'file [u8]);
 
     fn next(&mut self) -> Option<Self::Item> {
+        self.hasher.reset();
         if self.cur >= self.data.len() {
             return None;
         }
@@ -38,7 +41,12 @@ where
         let data = &self.data[start..start + end];
         self.cur += end;
 
-        Some((start as u64, secure_hash(data), data))
+        self.hasher.update(data);
+        Some((
+            start as u64,
+            self.hasher.finalize().as_bytes().clone(),
+            data,
+        ))
     }
 }
 
@@ -57,7 +65,8 @@ mod tests {
         let metadata = file.metadata().unwrap();
         let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
-        let size: usize = FileSplitter::<SeaSplit>::new(&mmap)
+        let hasher = infinitree::Hasher::new();
+        let size: usize = FileSplitter::<SeaSplit>::new(&mmap, hasher)
             .map(|(_, _, c)| c.len())
             .sum();
         assert_eq!(size as u64, metadata.len());

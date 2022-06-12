@@ -172,6 +172,7 @@ fn start_workers(
     // make sure the input and output queues are generous
     let (sender, receiver) = mpsc::bounded(threads * 2);
     let balancer = Pool::new(NonZeroUsize::new(threads).unwrap(), stash.object_writer()?)?;
+    let hasher = stash.hasher()?;
 
     let workers = (0..threads)
         .map(|_| {
@@ -179,6 +180,7 @@ fn start_workers(
                 force,
                 receiver.clone(),
                 stash.index().clone(),
+                hasher.clone(),
                 balancer.clone(),
             ))
         })
@@ -191,6 +193,7 @@ async fn process_file_loop(
     force: bool,
     r: Receiver,
     index: crate::Files,
+    hasher: infinitree::Hasher,
     writer: Pool<impl Writer + Clone + 'static>,
 ) {
     let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
@@ -223,9 +226,17 @@ async fn process_file_loop(
             }
         };
 
-        index_file(entry, osfile, &mut buf, path.clone(), &index, &writer)
-            .instrument(debug_span!("indexing", ?path, size))
-            .await;
+        index_file(
+            entry,
+            osfile,
+            &mut buf,
+            path.clone(),
+            &index,
+            hasher.clone(),
+            &writer,
+        )
+        .instrument(debug_span!("indexing", ?path, size))
+        .await;
     }
 }
 
@@ -235,6 +246,7 @@ async fn index_file(
     buf: &mut Vec<u8>,
     path: PathBuf,
     index: &crate::Files,
+    hasher: infinitree::Hasher,
     writer: &Pool<impl Writer + Clone + 'static>,
 ) {
     let size = entry.size as usize;
@@ -246,9 +258,9 @@ async fn index_file(
     let mut mmap = MmappedFile::new(size, osfile.into_std().await);
 
     let splitter = if size < MAX_FILE_SIZE {
-        FileSplitter::<SeaSplit>::new(&buf[0..size])
+        FileSplitter::<SeaSplit>::new(&buf[0..size], hasher)
     } else {
-        FileSplitter::<SeaSplit>::new(mmap.open())
+        FileSplitter::<SeaSplit>::new(mmap.open(), hasher)
     };
 
     let chunks = splitter

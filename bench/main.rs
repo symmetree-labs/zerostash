@@ -32,7 +32,7 @@ async fn main() {
 
     tracing::subscriber::set_global_default(subscriber).expect("setting tracing default failed");
 
-    let threads = num_cpus::get() / 2 + 2;
+    let threads = std::thread::available_parallelism().unwrap().get();
     let path = args().nth(1).unwrap();
     let output = args().nth(2).unwrap();
     let restore_to = args().nth(3).unwrap();

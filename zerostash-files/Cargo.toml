@@ -38,7 +38,7 @@ chrono = "0.4.19"
 getrandom = "0.2.6"
 tokio = { version = "1.18.2", features = ["rt", "macros", "rt-multi-thread"] }
 criterion = "0.3.5"
-infinitree = { version = "0.8.1" }
+infinitree = { version = "0.8.1", features = ["test"]}
 
 [[bench]]
 name = "bench"

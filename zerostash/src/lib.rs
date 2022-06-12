@@ -26,6 +26,8 @@ pub mod prelude;
 
 // These dependencies are required for the e2e benchmark
 #[cfg(test)]
+use tokio as _;
+#[cfg(test)]
 use tracing as _;
 #[cfg(test)]
 use tracing_subscriber as _;
