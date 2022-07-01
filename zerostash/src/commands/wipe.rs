@@ -2,7 +2,7 @@
 
 use crate::prelude::*;
 
-#[derive(Command, Debug, Clone)]
+#[derive(Command, Debug)]
 pub struct Wipe {
     stash: String,
 }

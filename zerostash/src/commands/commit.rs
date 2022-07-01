@@ -2,10 +2,10 @@
 
 use crate::prelude::*;
 
-#[derive(Command, Debug, Clone)]
+#[derive(Command, Debug)]
 pub struct Commit {
-    /// Stash path or alias
-    stash: String,
+    #[clap(flatten)]
+    stash: StashArgs,
 
     #[clap(flatten)]
     options: zerostash_files::store::Options,
@@ -19,7 +19,7 @@ pub struct Commit {
 impl AsyncRunnable for Commit {
     /// Start the application.
     async fn run(&self) {
-        let mut stash = APP.open_stash(&self.stash);
+        let mut stash = self.stash.open();
         stash.load_all().unwrap();
 
         self.options

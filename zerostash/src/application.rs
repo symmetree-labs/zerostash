@@ -4,11 +4,11 @@ use crate::{commands::EntryPoint, prelude::*};
 use abscissa_core::{
     application::{self, AppCell},
     config::{self, CfgCell},
-    status_err, trace, Application, FrameworkError, StandardPaths,
+    trace, Application, FrameworkError, StandardPaths,
 };
 use abscissa_tokio::TokioComponent;
 use anyhow::Result;
-use std::{num::NonZeroUsize, process};
+use std::num::NonZeroUsize;
 
 /// Application state
 pub static APP: AppCell<ZerostashApp> = AppCell::new();
@@ -93,12 +93,6 @@ impl Application for ZerostashApp {
 }
 
 impl ZerostashApp {
-    #[allow(clippy::redundant_closure)]
-    pub(crate) fn open_stash(&self, pathy: impl AsRef<str>) -> Stash {
-        let stash = self.config().open(pathy);
-        stash.unwrap_or_else(|e| fatal_error(e))
-    }
-
     pub(crate) fn get_worker_threads(&self) -> usize {
         use std::cmp;
         cmp::min(
@@ -108,9 +102,4 @@ impl ZerostashApp {
             16,
         )
     }
-}
-
-pub fn fatal_error(err: impl Into<Box<dyn std::error::Error>>) -> ! {
-    status_err!("{} fatal error: {}", APP.name(), err.into());
-    process::exit(1)
 }

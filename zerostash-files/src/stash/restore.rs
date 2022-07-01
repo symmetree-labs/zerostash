@@ -150,7 +150,7 @@ impl Options {
                     self.force,
                     self.preserve.clone(),
                     receiver.clone(),
-                    stash.object_reader().unwrap(),
+                    stash.storage_reader().unwrap(),
                 ))
             })
             .collect::<Vec<_>>();

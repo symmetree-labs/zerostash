@@ -42,11 +42,7 @@ where
         self.cur += end;
 
         self.hasher.update(data);
-        Some((
-            start as u64,
-            self.hasher.finalize().as_bytes().clone(),
-            data,
-        ))
+        Some((start as u64, *self.hasher.finalize().as_bytes(), data))
     }
 }
 

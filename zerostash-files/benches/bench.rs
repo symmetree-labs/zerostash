@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use infinitree::{backends::test::*, Infinitree, Key};
+use infinitree::{backends::test::*, keys::UsernamePassword, Infinitree};
 use memmap2::MmapOptions;
 use std::fs::File;
 use std::sync::Arc;
@@ -48,8 +48,9 @@ fn bup_rollsum(c: &mut Criterion) {
 
 fn chunk_saturated_e2e(c: &mut Criterion) {
     c.bench_function("end-to-end chunking, saturated chunks list", |b| {
-        let key = "abcdef1234567890abcdef1234567890";
-        let key = Key::from_credentials(&key, &key).unwrap();
+        let key = "abcdef1234567890abcdef1234567890".to_string();
+        let key =
+            UsernamePassword::with_credentials(key.clone().into(), key.clone().into()).unwrap();
         let repo = Infinitree::<Files>::empty(Arc::new(NullBackend::default()), key).unwrap();
 
         let basic_rt = tokio::runtime::Runtime::new().unwrap();
@@ -70,8 +71,9 @@ fn chunk_saturated_e2e(c: &mut Criterion) {
 
 fn chunk_e2e(c: &mut Criterion) {
     c.bench_function("end-to-end chunking", |b| {
-        let key = "abcdef1234567890abcdef1234567890";
-        let key = Key::from_credentials(&key, &key).unwrap();
+        let key = "abcdef1234567890abcdef1234567890".to_string();
+        let key =
+            UsernamePassword::with_credentials(key.clone().into(), key.clone().into()).unwrap();
         let repo = Infinitree::<Files>::empty(Arc::new(NullBackend::default()), key).unwrap();
         let options = zerostash_files::store::Options {
             paths: vec![PATH_100.into()],

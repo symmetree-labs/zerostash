@@ -6,9 +6,14 @@
 
 use crate::prelude::Stash as InfiniStash;
 use anyhow::{Context, Result};
+use infinitree::keys::{yubikey::YubikeyCR, KeySource, UsernamePassword};
 use infinitree_backends::Region;
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, num::NonZeroUsize, path::PathBuf, str::FromStr, sync::Arc};
+
+mod keys;
+use keys::*;
 
 /// Zerostash Configuration
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
@@ -31,23 +36,77 @@ pub struct Stash {
 
 impl Stash {
     /// Try to open a stash with the config-stored credentials
-    pub fn try_open(&self, name: &str) -> Result<InfiniStash> {
-        let (user, pw) = self.key.get_credentials(name)?;
+    pub fn try_open(&self, name: &str, override_key: Option<Key>) -> Result<InfiniStash> {
+        let keysource = match override_key {
+            Some(key) => key,
+            None => self.key.clone(),
+        }
+        .get_credentials(name)?;
 
-        let key = || infinitree::Key::from_credentials(&user, &pw);
         let backend = self.backend.to_infinitree()?;
-
-        let stash = InfiniStash::open(backend.clone(), key()?)
-            .unwrap_or_else(move |_| InfiniStash::empty(backend, key().unwrap()).unwrap());
+        let stash = InfiniStash::open(backend.clone(), keysource.clone())
+            .or_else(|_| InfiniStash::empty(backend.clone(), keysource.clone()))?;
         Ok(stash)
     }
 }
 
 /// Contents of a key file
+#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+pub struct SymmetricKey {
+    #[serde(serialize_with = "ser_secret_string")]
+    user: Option<SecretString>,
+    #[serde(serialize_with = "ser_secret_string")]
+    password: Option<SecretString>,
+}
+
+impl SymmetricKey {
+    /// Ask for credentials on the standard input using [rpassword]
+    pub fn ensure_credentials(self) -> Result<(SecretString, SecretString)> {
+        let user = match self.user {
+            Some(u) => u,
+            None => rprompt::prompt_reply_stderr("Username: ")?.into(),
+        };
+
+        let pass = match self.password {
+            Some(p) => p,
+            None => rprompt::prompt_reply_stderr("Password: ")?.into(),
+        };
+
+        Ok((user, pass))
+    }
+}
+
+/// panics currently
+fn ser_secret_string<S>(val: &Option<SecretString>, ser: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    ser.serialize_str(val.as_ref().unwrap().expose_secret())
+}
+
+/// Contents of a key file
+#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+pub struct YubikeyCRConfig {
+    #[serde(default)]
+    slot: Option<YubikeyCRSlot>,
+    #[serde(default)]
+    key: Option<YubikeyCRKey>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct KeyFile {
-    user: String,
-    password: String,
+pub enum YubikeyCRSlot {
+    #[serde(rename = "slot1")]
+    Slot1,
+    #[serde(rename = "slot2")]
+    Slot2,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum YubikeyCRKey {
+    #[serde(rename = "hmac1")]
+    Hmac1,
+    #[serde(rename = "hmac2")]
+    Hmac2,
 }
 
 /// Credentials for a stash
@@ -58,7 +117,7 @@ pub enum Key {
     /// Plain text username/password pair
     #[serde(rename = "plaintext")]
     #[allow(missing_docs)]
-    Plaintext(KeyFile),
+    Plaintext(SymmetricKey),
 
     /// Get credentials through other interactive/command line methods
     #[serde(rename = "ask")]
@@ -69,6 +128,26 @@ pub enum Key {
     #[allow(missing_docs)]
     KeyFile { path: PathBuf },
 
+    /// User/Password pair + 2FA
+    #[serde(rename = "yubikey")]
+    #[allow(missing_docs)]
+    YubiKey {
+        #[serde(flatten)]
+        credentials: SymmetricKey,
+        #[serde(flatten)]
+        config: YubikeyCRConfig,
+    },
+
+    /// Use a different key for reading archives and appending
+    #[serde(rename = "split_key")]
+    #[allow(missing_docs)]
+    SplitKeyStorage {
+        #[serde(flatten)]
+        credentials: SymmetricKey,
+        #[serde(flatten)]
+        keys: SplitKeys,
+    },
+
     #[cfg(target_os = "macos")]
     #[serde(rename = "macos_keychain")]
     MacOsKeychain { user: String },
@@ -77,17 +156,64 @@ pub enum Key {
 impl Key {
     // On non-macos the parameter will generate a warning.
     #[allow(unused)]
-    fn get_credentials(&self, stash: &str) -> Result<(String, String)> {
+    fn get_credentials(self, stash: &str) -> Result<KeySource> {
         match self {
-            Self::Interactive => ask_credentials(),
-            Self::Plaintext(KeyFile { user, password }) => {
-                Ok((user.to_string(), password.to_string()))
+            Self::Interactive => {
+                let (user, pw) = SymmetricKey::default().ensure_credentials()?;
+                Ok(UsernamePassword::with_credentials(user, pw)?)
+            }
+            Self::Plaintext(k) => {
+                let (user, pw) = k.ensure_credentials()?;
+                Ok(UsernamePassword::with_credentials(user, pw)?)
             }
             Self::KeyFile { path } => {
                 let contents = std::fs::read_to_string(path)?;
-                let keys: KeyFile = toml::from_str(&contents)?;
-                Ok((keys.user, keys.password))
+                let keys: Key = toml::from_str(&contents)?;
+
+                // this is technically recursion, it may be an ouroboros
+                keys.get_credentials(stash)
             }
+            Self::YubiKey {
+                credentials,
+                config,
+            } => {
+                use infinitree::keys::yubikey::yubico_manager::{config::*, *};
+                let mut yk = Yubico::new();
+                let device = yk.find_yubikey()?;
+
+                let mut ykconfig = Config::default()
+                    .set_product_id(device.product_id)
+                    .set_vendor_id(device.vendor_id);
+
+                if let Some(slot) = config.slot {
+                    ykconfig = ykconfig.set_slot(match slot {
+                        YubikeyCRSlot::Slot1 => Slot::Slot1,
+                        YubikeyCRSlot::Slot2 => Slot::Slot2,
+                    });
+                }
+                if let Some(key) = config.key {
+                    ykconfig = ykconfig.set_command(match key {
+                        YubikeyCRKey::Hmac1 => Command::ChallengeHmac1,
+                        YubikeyCRKey::Hmac2 => Command::ChallengeHmac2,
+                    });
+                }
+
+                let (user, pw) = credentials.ensure_credentials()?;
+                Ok(YubikeyCR::with_credentials(user, pw, ykconfig)?)
+            }
+            Self::SplitKeyStorage { credentials, keys } => {
+                let (user, pw) = credentials.ensure_credentials()?;
+
+                Ok(match keys.read {
+                    Some(sk) => infinitree::keys::crypto_box::StorageOnly::encrypt_and_decrypt(
+                        user, pw, keys.write, sk,
+                    ),
+                    None => infinitree::keys::crypto_box::StorageOnly::encrypt_only(
+                        user, pw, keys.write,
+                    ),
+                }?)
+            }
+
             #[cfg(target_os = "macos")]
             Self::MacOsKeychain { user } => {
                 let service_name = "dev.symmetree.zerostash";
@@ -99,9 +225,8 @@ impl Key {
                 )
                 .map(|pass| String::from_utf8_lossy(&pass).to_string())
                 .unwrap_or_else(|_| {
-                    println!(
-                        "Keychain entry not found! Please enter the password to save in Keychain!"
-                    );
+                    println!("Enter a new password to save in Keychain!");
+                    println!("Press enter to generate a strong random password.");
                     let pw = rpassword::prompt_password("Password: ").expect("Invalid password");
 
                     security_framework::passwords::set_generic_password(
@@ -114,17 +239,13 @@ impl Key {
                     pw
                 });
 
-                Ok((user.clone(), pass))
+                Ok(UsernamePassword::with_credentials(
+                    user.into(),
+                    pass.into(),
+                )?)
             }
         }
     }
-}
-
-/// Ask for credentials on the standard input using [rpassword]
-pub fn ask_credentials() -> Result<(String, String)> {
-    let username = rprompt::prompt_reply_stderr("Username: ")?;
-    let password = rpassword::prompt_password("Password: ")?;
-    Ok((username, password))
 }
 
 /// Backend configuration
@@ -166,10 +287,10 @@ pub enum Backend {
 }
 
 impl Backend {
-    fn to_infinitree(&self) -> Result<Arc<dyn infinitree::Backend>> {
+    fn to_infinitree(&self) -> Result<Arc<dyn infinitree::backends::Backend>> {
         use Backend::*;
 
-        let backend: Arc<dyn infinitree::Backend> = match self {
+        let backend: Arc<dyn infinitree::backends::Backend> = match self {
             Filesystem { path } => infinitree::backends::Directory::new(path)?,
             S3 {
                 bucket,
@@ -286,14 +407,14 @@ impl ZerostashConfig {
         self.stashes.get(alias.as_ref()).cloned()
     }
 
-    pub fn open(&self, pathy: impl AsRef<str>) -> Result<InfiniStash> {
+    pub fn open(&self, pathy: impl AsRef<str>, override_key: Option<Key>) -> Result<InfiniStash> {
         let name = pathy.as_ref();
         let stash = self.resolve_stash(name).unwrap_or_else(|| Stash {
             key: crate::config::Key::Interactive,
             backend: name.parse().unwrap(),
         });
 
-        stash.try_open(name)
+        stash.try_open(name, override_key)
     }
 }
 
@@ -312,6 +433,27 @@ backend = { type = "fs", path = "/path/to/stash" }
 [stash.second]
 key = { source = "ask"}
 backend = { type = "fs", path = "/path/to/stash" }
+
+[stash.yubikey]
+key = { source = "yubikey", user = "123", password = "123", slot = "slot1", key = "hmac1" }
+backend = { type = "fs", path = "/path/to/stash" }
+
+[stash.yubikey2]
+key = { source = "yubikey", user = "123", password = "123" }
+backend = { type = "fs", path = "/path/to/stash" }
+
+[stash.writeonly]
+key = { source = "split_key", user = "123", password = "123", write = "p0s-1xqcrzvfjxgenxdp5x56nvd3hxuurswfev9skycnrvdjxget9venq9sue6u"}
+backend = { type = "fs", path = "/path/to/stash" }
+
+[stash.split_readwrite]
+backend = { type = "fs", path = "/path/to/stash" }
+[stash.split_readwrite.key]
+source = "split_key"
+user = "123"
+password = "123"
+write = "p0s-1xqcrzvfjxgenxdp5x56nvd3hxuurswfev9skycnrvdjxget9venq9sue6u"
+read = "s0s-1xqcrzvfjxgenxdp5x56nvd3hxuurswfev9skycnrvdjxget9venqn52utr"
 
 [stash.keyfile]
 key = { source = "file", path = "./example_keyfile.toml" }

@@ -8,9 +8,10 @@ use std::{io::Write, sync::Arc};
 use termcolor::{Color, ColorSpec, StandardStream, WriteColor};
 use zerostash_files::*;
 
-#[derive(Command, Debug, Clone)]
+#[derive(Command, Debug)]
 pub struct Ls {
-    stash: String,
+    #[clap(flatten)]
+    stash: StashArgs,
 
     #[clap(short = 'l', long)]
     list: bool,
@@ -26,9 +27,7 @@ pub struct Ls {
 impl AsyncRunnable for Ls {
     /// Start the application.
     async fn run(&self) {
-        let mut stash = APP.open_stash(&self.stash);
-
-        stash.load_all().unwrap();
+        let stash = self.stash.open();
         let count = self
             .options
             .list(&stash)
@@ -88,13 +87,13 @@ impl Ls {
                     .clone(),
             };
 
-            print(&stdout, ColorSpec::new(), mode);
-            print(&stdout, ColorSpec::new(), owner);
-            print(&stdout, ColorSpec::new(), group);
-            print(&stdout, ColorSpec::new(), size);
-            print(&stdout, ColorSpec::new(), formatted_time);
+            print(stdout, ColorSpec::new(), mode);
+            print(stdout, ColorSpec::new(), owner);
+            print(stdout, ColorSpec::new(), group);
+            print(stdout, ColorSpec::new(), size);
+            print(stdout, ColorSpec::new(), formatted_time);
             print(
-                &stdout,
+                stdout,
                 file_color,
                 if let FileType::Symlink(ref target) = entry.file_type {
                     format!("{} -> {:?}", entry.name, target)

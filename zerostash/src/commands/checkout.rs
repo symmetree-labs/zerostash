@@ -3,9 +3,10 @@
 use crate::prelude::*;
 use zerostash_files::restore;
 
-#[derive(Command, Debug, Clone)]
+#[derive(Command, Debug)]
 pub struct Checkout {
-    stash: String,
+    #[clap(flatten)]
+    stash: StashArgs,
 
     #[clap(flatten)]
     options: restore::Options,
@@ -15,8 +16,7 @@ pub struct Checkout {
 impl AsyncRunnable for Checkout {
     /// Start the application.
     async fn run(&self) {
-        let mut stash = APP.open_stash(&self.stash);
-        stash.load_all().unwrap();
+        let stash = self.stash.open();
 
         self.options
             .from_iter(&stash, APP.get_worker_threads())

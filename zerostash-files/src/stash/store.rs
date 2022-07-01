@@ -1,7 +1,7 @@
 use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Files};
 use anyhow::Context;
 use flume as mpsc;
-use futures::{future::join_all, stream::futures_unordered::FuturesUnordered};
+use futures::future::join_all;
 use ignore::{DirEntry, WalkBuilder};
 use infinitree::{
     object::{Pool, Writer},
@@ -171,7 +171,7 @@ fn start_workers(
 ) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
     // make sure the input and output queues are generous
     let (sender, receiver) = mpsc::bounded(threads * 2);
-    let balancer = Pool::new(NonZeroUsize::new(threads).unwrap(), stash.object_writer()?)?;
+    let balancer = Pool::new(NonZeroUsize::new(threads).unwrap(), stash.storage_writer()?)?;
     let hasher = stash.hasher()?;
 
     let workers = (0..threads)
@@ -263,19 +263,17 @@ async fn index_file(
         FileSplitter::<SeaSplit>::new(mmap.open(), hasher)
     };
 
-    let chunks = splitter
-        .map(|(start, hash, data)| {
-            let mut writer = writer.clone();
-            let data = data.to_vec();
-            let chunkindex = index.chunks.clone();
+    let chunks = splitter.map(|(start, hash, data)| {
+        let mut writer = writer.clone();
+        let data = data.to_vec();
+        let chunkindex = index.chunks.clone();
 
-            task::spawn_blocking(move || {
-                let store = || writer.write_chunk(&hash, &data).unwrap();
-                let ptr = chunkindex.insert_with(hash, store);
-                (start, ptr)
-            })
+        task::spawn_blocking(move || {
+            let store = || writer.write_chunk(&hash, &data).unwrap();
+            let ptr = chunkindex.insert_with(hash, store);
+            (start, ptr)
         })
-        .collect::<FuturesUnordered<_>>();
+    });
 
     entry
         .chunks

@@ -1,2 +1,3 @@
+source = "plaintext"
 user = "example@user.com"
 password = "this is a very long and secure password that you provision from secrets correct horse battery staple"

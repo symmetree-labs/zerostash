@@ -3,17 +3,17 @@
 use crate::prelude::*;
 use chrono::{DateTime, Utc};
 
-#[derive(Command, Debug, Clone)]
+#[derive(Command, Debug)]
 pub struct Log {
-    stash: String,
+    #[clap(flatten)]
+    stash: StashArgs,
 }
 
 #[async_trait]
 impl AsyncRunnable for Log {
     /// Start the application.
     async fn run(&self) {
-        let mut stash = APP.open_stash(&self.stash);
-        stash.load_all().unwrap();
+        let stash = self.stash.open();
 
         for commit in stash.commit_list().iter() {
             let time: DateTime<Utc> = commit.metadata.time.into();
