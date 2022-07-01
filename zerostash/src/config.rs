@@ -43,15 +43,24 @@ pub struct Stash {
 impl Stash {
     /// Try to open a stash with the config-stored credentials
     pub fn try_open(&self, name: &str, override_key: Option<Key>) -> Result<InfiniStash> {
+        let backend = self.backend.to_infinitree()?;
+
+        // This is to use absolute paths in the FS.
+        let nameref = if let Backend::Filesystem { path } = &self.backend {
+            path.clone()
+        } else {
+            name.to_string()
+        };
+
         let keysource = match override_key {
             Some(key) => key,
             None => self.key.clone(),
         }
-        .get_credentials(name)?;
+        .get_credentials(&nameref)?;
 
-        let backend = self.backend.to_infinitree()?;
         let stash = InfiniStash::open(backend.clone(), keysource.clone())
             .or_else(|_| InfiniStash::empty(backend.clone(), keysource.clone()))?;
+
         Ok(stash)
     }
 }

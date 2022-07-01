@@ -122,7 +122,16 @@ impl Key {
                 .unwrap_or_else(|_| {
                     println!("Enter a new password to save in Keychain!");
                     println!("Press enter to generate a strong random password.");
-                    let pw = rpassword::prompt_password("Password: ").expect("Invalid password");
+                    let pw = {
+                        let pw =
+                            rpassword::prompt_password("Password: ").expect("Invalid password");
+
+                        if pw.is_empty() {
+                            UsernamePassword::generate_password().expect("Random error")
+                        } else {
+                            pw
+                        }
+                    };
 
                     security_framework::passwords::set_generic_password(
                         service_name,

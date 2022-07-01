@@ -9,6 +9,7 @@ use std::{num::NonZeroUsize, str::FromStr, sync::Arc};
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub enum Backend {
     /// Use a directory on a local filesystem
     #[serde(rename = "fs")]
@@ -125,7 +126,9 @@ impl FromStr for Backend {
                 })
             }
             Some(_) => anyhow::bail!("protocol not supported"),
-            None => Ok(Self::Filesystem { path: s.into() }),
+            None => Ok(Self::Filesystem {
+                path: std::fs::canonicalize(s)?.to_string_lossy().into(),
+            }),
         }
     }
 }
