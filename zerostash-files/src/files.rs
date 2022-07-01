@@ -31,6 +31,11 @@ pub enum EntryError {
         #[from]
         source: io::Error,
     },
+    #[error("Errno: {source}")]
+    Errno {
+        #[from]
+        source: nix::errno::Errno,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -80,7 +85,7 @@ pub struct PreserveMetadata {
     )]
     pub ownership: bool,
 
-    /// Preserve owner/gid information. Requires root to restore.
+    /// Preserve modification and creation times.
     #[clap(
         short = 't',
         long = "preserve-times",
@@ -295,7 +300,15 @@ impl Entry {
         if preserve.times {
             let atime = SystemTime::now().duration_since(UNIX_EPOCH)?.into();
             let mtime = Duration::new(self.unix_secs as u64, self.unix_nanos).into();
-            nix::sys::stat::futimens(file.as_raw_fd(), &atime, &mtime).unwrap();
+            nix::sys::stat::futimens(file.as_raw_fd(), &atime, &mtime)?;
+        }
+
+        if preserve.ownership {
+            nix::unistd::fchown(
+                file.as_raw_fd(),
+                self.unix_uid.map(nix::unistd::Uid::from_raw),
+                self.unix_gid.map(nix::unistd::Gid::from_raw),
+            )?;
         }
 
         Ok(if self.file_type.is_file() {

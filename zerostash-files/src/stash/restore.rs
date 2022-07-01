@@ -143,12 +143,17 @@ impl Options {
         stash: &Infinitree<Files>,
         threads: usize,
     ) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
+        let mut preserve = self.preserve.clone();
+        if !nix::unistd::Uid::effective().is_root() {
+            preserve.ownership = false;
+        }
+
         let (sender, receiver) = mpsc::bounded(threads);
         let workers = (0..threads)
             .map(|_| {
                 task::spawn(process_packet_loop(
                     self.force,
-                    self.preserve.clone(),
+                    preserve.clone(),
                     receiver.clone(),
                     stash.storage_reader().unwrap(),
                 ))
