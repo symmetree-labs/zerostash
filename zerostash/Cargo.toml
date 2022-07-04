@@ -13,13 +13,13 @@ categories = ["cryptography", "filesystem", "command-line-utilities"]
 [dependencies]
 anyhow = "1.0.58"
 thiserror = "1.0.31"
-clap = "3.1.18"
+clap = "3.2.8"
 infinitree = { version = "0.8.1", features = ["cryptobox", "yubikey"] }
 infinitree-backends = { path = "../../infinitree/infinitree-backends", default-features = false, features = ["rustls"] }
 zerostash-files = { version = "0.4.1", path = "../zerostash-files" }
 rpassword = "6.0.1"
 rprompt = "1.0.5"
-serde = { version = "1.0.137", features = ["serde_derive"] }
+serde = { version = "1.0.138", features = ["serde_derive"] }
 toml = "0.5.9"
 bech32 = "0.9.0"
 
@@ -44,9 +44,9 @@ security-framework = "2.6.1"
 abscissa_core = { version = "0.6.0", features = ["testing"] }
 abscissa_tokio = "0.6.0"
 walkdir = "2.3.2"
-tokio = { version = "1.18.2", features = ["rt", "macros", "rt-multi-thread", "parking_lot"] }
-tracing-subscriber = "0.3.11"
-tracing = "0.1.34"
+tokio = { version = "1.19.2", features = ["rt", "macros", "rt-multi-thread", "parking_lot"] }
+tracing-subscriber = "0.3.14"
+tracing = "0.1.35"
 
 
 [[bench]]
