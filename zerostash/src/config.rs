@@ -6,6 +6,7 @@
 
 use crate::prelude::Stash as InfiniStash;
 use anyhow::Result;
+use infinitree::keys::KeySource;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 
@@ -16,10 +17,23 @@ pub use symmetric_key::*;
 mod yubikey;
 pub use yubikey::*;
 
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+pub use macos::*;
+
 mod key;
 pub use key::*;
 mod backend;
 pub use backend::*;
+
+pub trait KeyToSource {
+    fn to_keysource(self, _stash_name: &str) -> Result<KeySource>;
+}
+
+pub trait GenerateKey {
+    fn generate(self) -> Self;
+}
 
 /// Zerostash Configuration
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]

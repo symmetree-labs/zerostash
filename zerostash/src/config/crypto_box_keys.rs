@@ -1,9 +1,32 @@
+use super::*;
 use bech32::{FromBase32, ToBase32};
-use infinitree::keys::RawKey;
+use infinitree::keys::{crypto_box::StorageOnly, RawKey};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(clap::Args, Debug, Clone, Serialize, Deserialize)]
+pub struct SplitKeyStorage {
+    #[serde(flatten)]
+    #[clap(flatten)]
+    pub credentials: SymmetricKey,
+
+    #[serde(flatten)]
+    #[clap(flatten)]
+    pub keys: SplitKeys,
+}
+
+impl KeyToSource for SplitKeyStorage {
+    fn to_keysource(self, _stash_name: &str) -> Result<KeySource> {
+        let (user, pw) = self.credentials.ensure_credentials()?;
+
+        Ok(match self.keys.read {
+            Some(sk) => StorageOnly::encrypt_and_decrypt(user, pw, self.keys.write, sk),
+            None => StorageOnly::encrypt_only(user, pw, self.keys.write),
+        }?)
+    }
+}
+
+#[derive(clap::Args, Clone, Deserialize, Serialize)]
 pub struct SplitKeys {
     #[serde(
         serialize_with = "ser_public_key",
@@ -36,7 +59,7 @@ fn bech32_sk(k: &RawKey) -> String {
     .unwrap()
 }
 
-fn decode_bech32(check_hrp: &str, ser: &str) -> anyhow::Result<RawKey> {
+fn decode_bech32(check_hrp: &str, ser: &str) -> Result<RawKey> {
     let (hrp, data, _) = bech32::decode(ser)?;
     let bytes = Vec::from_base32(&data)?;
     if bytes.len() != 32 {

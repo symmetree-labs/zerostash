@@ -1,5 +1,7 @@
 //! Zerostash Subcommands
 
+mod keys;
+use keys::*;
 mod checkout;
 use checkout::*;
 mod commit;
@@ -12,7 +14,7 @@ mod wipe;
 use wipe::*;
 
 use crate::{
-    config::{Key, SymmetricKey, YubikeyCRConfig},
+    config::{Key, KeychainCredentials, SymmetricKey, YubikeyCRConfig, YubikeyCRKey},
     prelude::*,
 };
 use abscissa_core::{Command, Configurable, Runnable};
@@ -37,6 +39,9 @@ pub enum ZerostashCmd {
 
     /// List files in a stash
     Ls(Ls),
+
+    /// Key management & generation
+    Keys(Keys),
 
     /// Delete all data of a stash
     Wipe(Wipe),
@@ -67,7 +72,7 @@ pub struct EntryPoint {
 #[derive(clap::Args, Clone, Debug, Default)]
 #[clap(group(
             ArgGroup::new("key")
-                .args(&["set-key", "keyfile", "keystring", "yubikey", "macos_keychain"]),
+                .args(&["keyfile", "keystring", "yubikey"]),
         ))]
 pub struct StashArgs {
     /// Stash path or alias
@@ -102,12 +107,13 @@ impl StashArgs {
             } else if let Some(s) = args.keystring {
                 Some(toml::from_str(&s).expect("Invalid TOML"))
             } else if args.yubikey {
-                Some(Key::YubiKey {
+                Some(Key::Yubikey(YubikeyCRKey {
                     credentials: SymmetricKey::default(),
                     config: YubikeyCRConfig::default(),
-                })
+                }))
             } else if cfg!(target_os = "macos") {
-                args.macos_keychain.map(|user| Key::MacOsKeychain { user })
+                args.macos_keychain
+                    .map(|user| Key::MacOsKeychain(KeychainCredentials { user }))
             } else {
                 None
             }
@@ -127,6 +133,7 @@ impl Runnable for EntryPoint {
                 Commit(cmd) => cmd.run().await,
                 Log(cmd) => cmd.run().await,
                 Ls(cmd) => cmd.run().await,
+                Keys(cmd) => cmd.run().await,
                 Wipe(cmd) => cmd.run().await,
             }
         })

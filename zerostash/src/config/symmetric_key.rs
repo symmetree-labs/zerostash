@@ -1,14 +1,24 @@
-use super::Result;
+use super::{KeyToSource, Result};
+use infinitree::keys::{KeySource, UsernamePassword};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
 /// Contents of a key file
-#[derive(Default, Clone, Debug, Deserialize, Serialize)]
+#[derive(clap::Args, Default, Clone, Debug, Deserialize, Serialize)]
 pub struct SymmetricKey {
     #[serde(serialize_with = "ser_secret_string")]
-    user: Option<SecretString>,
+    pub user: Option<SecretString>,
+
     #[serde(serialize_with = "ser_secret_string")]
-    password: Option<SecretString>,
+    #[clap(skip)]
+    pub password: Option<SecretString>,
+}
+
+impl KeyToSource for SymmetricKey {
+    fn to_keysource(self, _stash_name: &str) -> Result<KeySource> {
+        let (user, pw) = self.ensure_credentials()?;
+        Ok(UsernamePassword::with_credentials(user, pw)?)
+    }
 }
 
 impl SymmetricKey {
