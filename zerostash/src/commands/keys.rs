@@ -1,4 +1,4 @@
-use crate::config::Key;
+use crate::keygen::Generate;
 use crate::prelude::*;
 use clap::ArgGroup;
 use std::path::PathBuf;
@@ -16,10 +16,6 @@ impl AsyncRunnable for Keys {
     }
 }
 
-// 0s keys generate split --read read.toml --write write.toml
-// 0s keys generate password -y -u username --keyfile yubikey.toml
-// 0s keys generate password --keyfile k.toml stash_name
-
 // 0s keys change <stash args> stash_name to <stash args>
 
 // 0s keys generate password -e username stash_name
@@ -33,22 +29,17 @@ pub enum KeyCommand {
     /// Change the keys for an existing stash
     #[clap(alias = "ch")]
     Change(Change),
-    /// Manage macOS Keychain
-    #[clap(alias = "rm")]
-    Delete,
 }
 
 #[async_trait]
 impl AsyncRunnable for KeyCommand {
     async fn run(&self) {
-        println!("ye");
+        use KeyCommand::*;
+        match self {
+            Generate(g) => g.run().await,
+            Change(c) => c.run().await,
+        }
     }
-}
-
-#[derive(Command, Debug)]
-pub struct Generate {
-    #[clap(subcommand)]
-    cmd: Key,
 }
 
 #[derive(Command, Debug)]
@@ -57,6 +48,13 @@ pub struct Change {
     from: StashArgs,
     #[clap(subcommand)]
     cmd: ChangeCmd,
+}
+
+#[async_trait]
+impl AsyncRunnable for Change {
+    async fn run(&self) {
+        todo!()
+    }
 }
 
 #[derive(clap::Subcommand, Debug)]

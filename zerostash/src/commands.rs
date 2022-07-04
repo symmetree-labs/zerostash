@@ -14,7 +14,7 @@ mod wipe;
 use wipe::*;
 
 use crate::{
-    config::{Key, KeychainCredentials, SymmetricKey, YubikeyCRConfig, YubikeyCRKey},
+    config::{Key, SymmetricKey, YubikeyCRConfig, YubikeyCRKey},
     prelude::*,
 };
 use abscissa_core::{Command, Configurable, Runnable};
@@ -78,6 +78,10 @@ pub struct StashArgs {
     /// Stash path or alias
     pub stash: String,
 
+    /// Username & password
+    #[clap(flatten)]
+    pub symmetric_key: SymmetricKey,
+
     /// Use a keyfile for the stash
     #[clap(short, long, value_name = "PATH")]
     pub keyfile: Option<PathBuf>,
@@ -89,11 +93,6 @@ pub struct StashArgs {
     /// Use a Yubikey for 2nd factor
     #[clap(short, long)]
     pub yubikey: bool,
-
-    /// Username for the stash in macOS Keychain
-    #[cfg(target_os = "macos")]
-    #[clap(short = 'e', long, value_name = "STASH_USER")]
-    pub macos_keychain: Option<String>,
 }
 
 impl StashArgs {
@@ -108,12 +107,11 @@ impl StashArgs {
                 Some(toml::from_str(&s).expect("Invalid TOML"))
             } else if args.yubikey {
                 Some(Key::Yubikey(YubikeyCRKey {
-                    credentials: SymmetricKey::default(),
+                    credentials: self.symmetric_key.clone(),
                     config: YubikeyCRConfig::default(),
                 }))
-            } else if cfg!(target_os = "macos") {
-                args.macos_keychain
-                    .map(|user| Key::MacOsKeychain(KeychainCredentials { user }))
+            } else if !self.symmetric_key.is_empty() {
+                Some(Key::Plaintext(self.symmetric_key.clone()))
             } else {
                 None
             }

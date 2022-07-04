@@ -17,11 +17,6 @@ pub use symmetric_key::*;
 mod yubikey;
 pub use yubikey::*;
 
-#[cfg(target_os = "macos")]
-mod macos;
-#[cfg(target_os = "macos")]
-pub use macos::*;
-
 mod key;
 pub use key::*;
 mod backend;
@@ -29,10 +24,6 @@ pub use backend::*;
 
 pub trait KeyToSource {
     fn to_keysource(self, _stash_name: &str) -> Result<KeySource>;
-}
-
-pub trait GenerateKey {
-    fn generate(self) -> Self;
 }
 
 /// Zerostash Configuration
@@ -70,7 +61,7 @@ impl Stash {
             Some(key) => key,
             None => self.key.clone(),
         }
-        .get_credentials(&nameref)?;
+        .to_keysource(&nameref)?;
 
         let stash = InfiniStash::open(backend.clone(), keysource.clone())
             .or_else(|_| InfiniStash::empty(backend.clone(), keysource.clone()))?;
@@ -123,7 +114,9 @@ impl ZerostashConfig {
     }
 }
 
+#[cfg(test)]
 mod tests {
+
     #[test]
     fn can_parse_config() {
         use super::ZerostashConfig;
@@ -216,7 +209,7 @@ backend = { type = "fs", path = "/path/to/stash" }
 
     #[test]
     fn load_keyfile() {
-        use super::Key;
+        use super::{Key, KeyToSource};
         use std::path::PathBuf;
 
         let mut path: PathBuf = std::env::var("CARGO_MANIFEST_DIR").unwrap().into();
@@ -224,7 +217,7 @@ backend = { type = "fs", path = "/path/to/stash" }
         path.push("keyfile.toml.example");
 
         let key = Key::KeyFile { path };
-        key.get_credentials("stash name").unwrap();
+        key.to_keysource("stash name").unwrap();
     }
 
     #[test]
@@ -311,14 +304,11 @@ backend = { type = "fs", path = "/path/to/stash" }
     }
 
     #[test]
+    #[should_panic]
     fn no_scheme_gets_file_backend() {
         use super::Backend;
 
-        assert_eq!(
-            "/example/path".parse::<Backend>().unwrap(),
-            Backend::Filesystem {
-                path: "/example/path".into()
-            }
-        )
+        // This should blow up during canonicalization
+        "/example/path".parse::<Backend>().unwrap();
     }
 }

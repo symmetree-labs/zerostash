@@ -1,23 +1,21 @@
 use super::*;
 use bech32::{FromBase32, ToBase32};
-use infinitree::keys::{crypto_box::StorageOnly, RawKey};
+use infinitree::keys::{crypto_box::*, RawKey};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(clap::Args, Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SplitKeyStorage {
     #[serde(flatten)]
-    #[clap(flatten)]
     pub credentials: SymmetricKey,
 
     #[serde(flatten)]
-    #[clap(flatten)]
     pub keys: SplitKeys,
 }
 
 impl KeyToSource for SplitKeyStorage {
-    fn to_keysource(self, _stash_name: &str) -> Result<KeySource> {
-        let (user, pw) = self.credentials.ensure_credentials()?;
+    fn to_keysource(self, stash: &str) -> Result<KeySource> {
+        let (user, pw) = self.credentials.interactive_credentials(stash)?;
 
         Ok(match self.keys.read {
             Some(sk) => StorageOnly::encrypt_and_decrypt(user, pw, self.keys.write, sk),
@@ -39,6 +37,26 @@ pub struct SplitKeys {
         default
     )]
     pub read: Option<RawKey>,
+}
+
+impl SplitKeys {
+    pub fn split(self) -> (Self, Self) {
+        let rw = self.clone();
+        let mut wo = self;
+        wo.read = None;
+
+        (rw, wo)
+    }
+}
+
+impl Default for SplitKeys {
+    fn default() -> Self {
+        let kp = Keypair::generate().unwrap();
+        SplitKeys {
+            read: Some(kp.secret_key),
+            write: kp.public_key,
+        }
+    }
 }
 
 fn bech32_pk(k: &RawKey) -> String {

@@ -9,19 +9,17 @@ use infinitree::keys::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(clap::Args, Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YubikeyCRKey {
     #[serde(flatten)]
-    #[clap(skip)]
     pub credentials: SymmetricKey,
 
     #[serde(flatten)]
-    #[clap(flatten)]
     pub config: YubikeyCRConfig,
 }
 
 impl KeyToSource for YubikeyCRKey {
-    fn to_keysource(self, _stash_name: &str) -> Result<KeySource> {
+    fn to_keysource(self, stash: &str) -> Result<KeySource> {
         let mut yk = Yubico::new();
         let device = yk.find_yubikey()?;
 
@@ -42,7 +40,7 @@ impl KeyToSource for YubikeyCRKey {
             });
         }
 
-        let (user, pw) = self.credentials.ensure_credentials()?;
+        let (user, pw) = self.credentials.interactive_credentials(stash)?;
         Ok(YubikeyCR::with_credentials(user, pw, ykconfig)?)
     }
 }

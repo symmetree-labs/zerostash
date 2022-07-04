@@ -22,6 +22,7 @@ pub mod application;
 pub mod commands;
 pub mod config;
 pub mod error;
+pub mod keygen;
 pub mod prelude;
 
 // These dependencies are required for the e2e benchmark
