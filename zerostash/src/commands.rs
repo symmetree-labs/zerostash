@@ -96,29 +96,33 @@ pub struct StashArgs {
 }
 
 impl StashArgs {
-    #[allow(clippy::redundant_closure)]
-    pub(crate) fn open(&self) -> Stash {
-        let key = {
-            let args = self.clone();
+    pub(crate) fn key(&self) -> Option<Key> {
+        let args = self.clone();
 
-            if let Some(path) = args.keyfile {
-                Some(Key::KeyFile { path })
-            } else if let Some(s) = args.keystring {
-                Some(toml::from_str(&s).expect("Invalid TOML"))
-            } else if args.yubikey {
-                Some(Key::Yubikey(YubikeyCRKey {
-                    credentials: self.symmetric_key.clone(),
-                    config: YubikeyCRConfig::default(),
-                }))
-            } else if !self.symmetric_key.is_empty() {
-                Some(Key::Plaintext(self.symmetric_key.clone()))
-            } else {
-                None
-            }
-        };
+        if let Some(path) = args.keyfile {
+            Some(Key::KeyFile { path })
+        } else if let Some(s) = args.keystring {
+            Some(toml::from_str(&s).expect("Invalid TOML"))
+        } else if args.yubikey {
+            Some(Key::Yubikey(YubikeyCRKey {
+                credentials: self.symmetric_key.clone(),
+                config: YubikeyCRConfig::default(),
+            }))
+        } else if !self.symmetric_key.is_empty() {
+            Some(Key::Plaintext(self.symmetric_key.clone()))
+        } else {
+            None
+        }
+    }
 
+    pub(crate) fn open_with(&self, key: Option<Key>) -> Stash {
         let stash = APP.config().open(&self.stash, key);
         stash.unwrap_or_else(|e| fatal_error(e))
+    }
+
+    #[allow(clippy::redundant_closure)]
+    pub(crate) fn open(&self) -> Stash {
+        self.open_with(self.key())
     }
 }
 

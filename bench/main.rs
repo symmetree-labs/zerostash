@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 
-use infinitree::{backends, Infinitree, UsernamePassword};
+use infinitree::{backends, keys::UsernamePassword, Infinitree};
 use zerostash_files::{restore, store, Files};
 
 use std::{collections::HashMap, env::args, fs::metadata, time::Instant};
@@ -40,7 +40,7 @@ async fn main() {
 
     let key = || {
         let key = "abcdef1234567890abcdef1234567890";
-        UsernamePassword::from_credentials(key.to_string().into(), key.to_string().into()).unwrap()
+        UsernamePassword::with_credentials(key.to_string().into(), key.to_string().into()).unwrap()
     };
 
     println!("o: {}", output);
@@ -151,7 +151,7 @@ async fn main() {
     if action == "both" || action == "restore" {
         let (tsize, _tlen) = dir_stat(&output);
 
-        let mut repo: Infinitree<Files> = Infinitree::open(
+        let repo: Infinitree<Files> = Infinitree::open(
             backends::Directory::with_open_file_limit(&output, MAX_OBJECT_LRU).unwrap(),
             (key)(),
         )

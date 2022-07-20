@@ -17,7 +17,7 @@ pub struct WriteToFile<T> {
     pub file: PathBuf,
 }
 
-#[derive(Command, Debug)]
+#[derive(Command, Debug, Clone)]
 pub struct Generate {
     /// Name of the stash
     pub stash: String,

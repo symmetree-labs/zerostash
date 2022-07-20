@@ -49,8 +49,7 @@ fn bup_rollsum(c: &mut Criterion) {
 fn chunk_saturated_e2e(c: &mut Criterion) {
     c.bench_function("end-to-end chunking, saturated chunks list", |b| {
         let key = "abcdef1234567890abcdef1234567890".to_string();
-        let key =
-            UsernamePassword::with_credentials(key.clone().into(), key.clone().into()).unwrap();
+        let key = UsernamePassword::with_credentials(key.clone(), key.clone()).unwrap();
         let repo = Infinitree::<Files>::empty(Arc::new(NullBackend::default()), key).unwrap();
 
         let basic_rt = tokio::runtime::Runtime::new().unwrap();
@@ -72,8 +71,7 @@ fn chunk_saturated_e2e(c: &mut Criterion) {
 fn chunk_e2e(c: &mut Criterion) {
     c.bench_function("end-to-end chunking", |b| {
         let key = "abcdef1234567890abcdef1234567890".to_string();
-        let key =
-            UsernamePassword::with_credentials(key.clone().into(), key.clone().into()).unwrap();
+        let key = UsernamePassword::with_credentials(key.clone(), key.clone()).unwrap();
         let repo = Infinitree::<Files>::empty(Arc::new(NullBackend::default()), key).unwrap();
         let options = zerostash_files::store::Options {
             paths: vec![PATH_100.into()],

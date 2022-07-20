@@ -1,3 +1,4 @@
+use crate::config::{Key, KeyToSource};
 use crate::keygen::Generate;
 use crate::prelude::*;
 use clap::ArgGroup;
@@ -53,20 +54,53 @@ pub struct Change {
 #[async_trait]
 impl AsyncRunnable for Change {
     async fn run(&self) {
-        todo!()
+        let new_key = self
+            .cmd
+            .key()
+            .unwrap_or_else(|_| fatal_error("Invalid new key"));
+
+        let key = self
+            .from
+            .key()
+            .or_else(|| APP.config().resolve_stash(&self.from.stash).map(|s| s.key))
+            .unwrap_or_default()
+            .change_to(new_key);
+
+        let mut stash = self.from.open_with(Some(key));
+        if stash.reseal().is_err() {
+            fatal_error("Failed to change key");
+        }
     }
 }
 
-#[derive(clap::Subcommand, Debug)]
+#[derive(clap::Subcommand, Debug, Clone)]
 pub enum ChangeCmd {
     To(ChangeTo),
 }
 
-#[derive(Command, Debug)]
+impl ChangeCmd {
+    fn key(&self) -> anyhow::Result<Key> {
+        match self {
+            Self::To(ch) => {
+                if let Some(ref path) = ch.keyfile {
+                    return Ok(Key::KeyFile { path: path.clone() });
+                }
+
+                if let Some(ref key) = ch.keystring {
+                    return Ok(toml::from_str::<Key>(key)?);
+                }
+
+                unreachable!()
+            }
+        }
+    }
+}
+
+#[derive(Command, Debug, Clone)]
 #[clap(group(
             ArgGroup::new("key")
 	        .required(true)
-                .args(&["keyfile", "keystring"]),
+                .args(&["keyfile", "keystring", "generate"]),
         ))]
 pub struct ChangeTo {
     /// Use a keyfile for the stash
@@ -76,4 +110,11 @@ pub struct ChangeTo {
     /// Use a key specification TOML. Eg: '{ source = "yubikey" }'
     #[clap(short = 'K', value_name = "TOML", long)]
     pub keystring: Option<String>,
+}
+
+impl KeyToSource for ChangeCmd {
+    type Target = infinitree::Key;
+    fn to_keysource(self, stash: &str) -> anyhow::Result<Self::Target> {
+        self.key()?.to_keysource(stash)
+    }
 }

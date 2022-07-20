@@ -1,5 +1,5 @@
 use super::{KeyToSource, Result};
-use infinitree::keys::{KeySource, UsernamePassword};
+use infinitree::keys::UsernamePassword;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +24,6 @@ pub struct SymmetricKey {
     /// Use macOS Keychain for storing the password
     #[serde(default, skip_serializing_if = "is_false")]
     #[clap(short = 'e', long = "keychain")]
-    #[cfg(target_os = "macos")]
     pub keychain: bool,
 }
 
@@ -33,7 +32,9 @@ fn is_false(v: &bool) -> bool {
 }
 
 impl KeyToSource for SymmetricKey {
-    fn to_keysource(self, stash: &str) -> Result<KeySource> {
+    type Target = UsernamePassword;
+
+    fn to_keysource(self, stash: &str) -> Result<Self::Target> {
         let (user, pw) = self.interactive_credentials(stash)?;
         Ok(UsernamePassword::with_credentials(user, pw)?)
     }

@@ -1,11 +1,8 @@
 use super::{symmetric_key::SymmetricKey, KeyToSource};
 use anyhow::Result;
-use infinitree::keys::{
-    yubikey::{
-        yubico_manager::{config::*, *},
-        YubikeyCR,
-    },
-    KeySource,
+use infinitree::keys::yubikey::{
+    yubico_manager::{config::*, *},
+    YubikeyCR,
 };
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +16,9 @@ pub struct YubikeyCRKey {
 }
 
 impl KeyToSource for YubikeyCRKey {
-    fn to_keysource(self, stash: &str) -> Result<KeySource> {
+    type Target = YubikeyCR;
+
+    fn to_keysource(self, stash: &str) -> Result<Self::Target> {
         let mut yk = Yubico::new();
         let device = yk.find_yubikey()?;
 

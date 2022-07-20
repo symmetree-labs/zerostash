@@ -1,6 +1,6 @@
 use super::*;
 use bech32::{FromBase32, ToBase32};
-use infinitree::keys::{crypto_box::*, RawKey};
+use infinitree::keys::{cryptobox::*, RawKey};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -14,7 +14,8 @@ pub struct SplitKeyStorage {
 }
 
 impl KeyToSource for SplitKeyStorage {
-    fn to_keysource(self, stash: &str) -> Result<KeySource> {
+    type Target = StorageOnly;
+    fn to_keysource(self, stash: &str) -> Result<Self::Target> {
         let (user, pw) = self.credentials.interactive_credentials(stash)?;
 
         Ok(match self.keys.read {

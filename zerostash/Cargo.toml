@@ -44,7 +44,7 @@ security-framework = "2.6.1"
 abscissa_core = { version = "0.6.0", features = ["testing"] }
 abscissa_tokio = "0.6.0"
 walkdir = "2.3.2"
-tokio = { version = "1.19.2", features = ["rt", "macros", "rt-multi-thread", "parking_lot"] }
+tokio = { version = "1.19.2", features = ["rt", "macros", "rt-multi-thread"] }
 tracing-subscriber = "0.3.14"
 tracing = "0.1.35"
 

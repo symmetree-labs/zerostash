@@ -27,9 +27,9 @@ backend = { type = "fs", path = "/path/to/stash" }
 # This configuration item is only available on macOS, and the
 # configuration file will fail to load on other systems.
 #
-# [stash.example_keychain]
-# key = { source = "macos_keychain", user = "user@example.com"}
-# backend = { type = "fs", path = "/path/to/stash" }
+[stash.example_keychain]
+key = { source = "plaintext", user = "user@example.com", keychain = true }
+backend = { type = "fs", path = "/path/to/stash" }
 
 
 ####################################################

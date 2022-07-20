@@ -6,7 +6,6 @@
 
 use crate::prelude::Stash as InfiniStash;
 use anyhow::Result;
-use infinitree::keys::KeySource;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 
@@ -23,7 +22,8 @@ mod backend;
 pub use backend::*;
 
 pub trait KeyToSource {
-    fn to_keysource(self, _stash_name: &str) -> Result<KeySource>;
+    type Target;
+    fn to_keysource(self, _stash_name: &str) -> Result<Self::Target>;
 }
 
 /// Zerostash Configuration
@@ -106,7 +106,7 @@ impl ZerostashConfig {
     pub fn open(&self, pathy: impl AsRef<str>, override_key: Option<Key>) -> Result<InfiniStash> {
         let name = pathy.as_ref();
         let stash = self.resolve_stash(name).unwrap_or_else(|| Stash {
-            key: crate::config::Key::Interactive,
+            key: Default::default(),
             backend: name.parse().unwrap(),
         });
 
@@ -200,7 +200,7 @@ region = { name = "custom", details = { endpoint = "https://127.0.0.1:8080/", "r
         ZerostashConfig::load_toml(
             r#"
 [stash.macos_keychain]
-key = { source = "macos_keychain", user = "user@example.com"}
+key = { source = "plaintext", user = "user@example.com", keychain = true }
 backend = { type = "fs", path = "/path/to/stash" }
 "#,
         )
