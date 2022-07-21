@@ -17,11 +17,6 @@ impl AsyncRunnable for Keys {
     }
 }
 
-// 0s keys change <stash args> stash_name to <stash args>
-
-// 0s keys generate password -e username stash_name
-// 0s keys del -e username stash_ref
-
 #[derive(Command, Debug)]
 pub enum KeyCommand {
     /// Generate and export new keys to keyfiles
@@ -54,19 +49,20 @@ pub struct Change {
 #[async_trait]
 impl AsyncRunnable for Change {
     async fn run(&self) {
+        let old_key = self
+            .from
+            .key()
+            .or_else(|| APP.config().resolve_stash(&self.from.stash).map(|s| s.key))
+            .unwrap_or_default();
+
         let new_key = self
             .cmd
             .key()
             .unwrap_or_else(|_| fatal_error("Invalid new key"));
 
-        let key = self
-            .from
-            .key()
-            .or_else(|| APP.config().resolve_stash(&self.from.stash).map(|s| s.key))
-            .unwrap_or_default()
-            .change_to(new_key);
+        let key = old_key.change_to(new_key);
 
-        let mut stash = self.from.open_with(Some(key));
+        let mut stash = self.from.try_open(Some(key));
         if stash.reseal().is_err() {
             fatal_error("Failed to change key");
         }
@@ -82,6 +78,10 @@ impl ChangeCmd {
     fn key(&self) -> anyhow::Result<Key> {
         match self {
             Self::To(ch) => {
+                if ch.interactive {
+                    return Ok(Key::Interactive);
+                }
+
                 if let Some(ref path) = ch.keyfile {
                     return Ok(Key::KeyFile { path: path.clone() });
                 }
@@ -100,7 +100,7 @@ impl ChangeCmd {
 #[clap(group(
             ArgGroup::new("key")
 	        .required(true)
-                .args(&["keyfile", "keystring", "generate"]),
+                .args(&["keyfile", "keystring", "interactive"]),
         ))]
 pub struct ChangeTo {
     /// Use a keyfile for the stash
@@ -110,6 +110,10 @@ pub struct ChangeTo {
     /// Use a key specification TOML. Eg: '{ source = "yubikey" }'
     #[clap(short = 'K', value_name = "TOML", long)]
     pub keystring: Option<String>,
+
+    /// Use a key specification TOML. Eg: '{ source = "yubikey" }'
+    #[clap(short = 'i', long)]
+    pub interactive: bool,
 }
 
 impl KeyToSource for ChangeCmd {

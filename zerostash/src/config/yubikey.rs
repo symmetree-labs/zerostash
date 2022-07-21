@@ -1,6 +1,6 @@
 use super::{symmetric_key::SymmetricKey, KeyToSource};
 use anyhow::Result;
-use infinitree::keys::yubikey::{
+use infinitree::crypto::yubikey::{
     yubico_manager::{config::*, *},
     YubikeyCR,
 };

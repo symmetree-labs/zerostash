@@ -115,12 +115,17 @@ impl StashArgs {
         }
     }
 
-    pub(crate) fn open_with(&self, key: Option<Key>) -> Stash {
-        let stash = APP.config().open(&self.stash, key);
-        stash.unwrap_or_else(|e| fatal_error(e))
+    pub(crate) fn try_open(&self, key: Option<Key>) -> Stash {
+        APP.config()
+            .stash_for_name(&self.stash)
+            .try_open(&self.stash, key)
+            .unwrap()
     }
 
-    #[allow(clippy::redundant_closure)]
+    pub(crate) fn open_with(&self, key: Option<Key>) -> Stash {
+        APP.config().open(&self.stash, key).unwrap()
+    }
+
     pub(crate) fn open(&self) -> Stash {
         self.open_with(self.key())
     }

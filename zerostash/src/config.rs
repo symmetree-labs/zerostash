@@ -7,7 +7,7 @@
 use crate::prelude::Stash as InfiniStash;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 mod crypto_box_keys;
 pub use crypto_box_keys::*;
@@ -46,8 +46,11 @@ pub struct Stash {
 }
 
 impl Stash {
-    /// Try to open a stash with the config-stored credentials
-    pub fn try_open(&self, name: &str, override_key: Option<Key>) -> Result<InfiniStash> {
+    fn get_locators(
+        &self,
+        name: &str,
+        override_key: Option<Key>,
+    ) -> Result<(Arc<dyn infinitree::backends::Backend>, infinitree::Key)> {
         let backend = self.backend.to_infinitree()?;
 
         // This is to use absolute paths in the FS.
@@ -63,8 +66,20 @@ impl Stash {
         }
         .to_keysource(&nameref)?;
 
-        let stash = InfiniStash::open(backend.clone(), keysource.clone())
-            .or_else(|_| InfiniStash::empty(backend.clone(), keysource.clone()))?;
+        Ok((backend, keysource))
+    }
+
+    /// Try to open a stash with the config-stored credentials
+    pub fn try_open(&self, name: &str, override_key: Option<Key>) -> Result<InfiniStash> {
+        let (backend, key) = self.get_locators(name, override_key)?;
+        println!("opening");
+        Ok(InfiniStash::open(backend, key)?)
+    }
+
+    pub fn open_or_new(&self, name: &str, override_key: Option<Key>) -> Result<InfiniStash> {
+        let (backend, key) = self.get_locators(name, override_key)?;
+        let stash = InfiniStash::open(backend.clone(), key.clone())
+            .or_else(|_| InfiniStash::empty(backend, key))?;
 
         Ok(stash)
     }
@@ -103,14 +118,19 @@ impl ZerostashConfig {
         self.stashes.get(alias.as_ref()).cloned()
     }
 
-    pub fn open(&self, pathy: impl AsRef<str>, override_key: Option<Key>) -> Result<InfiniStash> {
-        let name = pathy.as_ref();
-        let stash = self.resolve_stash(name).unwrap_or_else(|| Stash {
+    pub fn stash_for_name(&self, alias: impl AsRef<str>) -> Stash {
+        let name = alias.as_ref();
+        self.resolve_stash(name).unwrap_or_else(|| Stash {
             key: Default::default(),
             backend: name.parse().unwrap(),
-        });
+        })
+    }
 
-        stash.try_open(name, override_key)
+    pub fn open(&self, pathy: impl AsRef<str>, override_key: Option<Key>) -> Result<InfiniStash> {
+        let name = pathy.as_ref();
+        let stash = self.stash_for_name(name);
+
+        stash.open_or_new(name, override_key)
     }
 }
 

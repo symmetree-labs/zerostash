@@ -51,17 +51,25 @@ impl Key {
 
 macro_rules! change_key {
     ($stash:ident, $old:expr, $new:expr) => {
-        Arc::new(infinitree::keys::ChangeHeaderKey::swap_on_seal(
+        Arc::new(infinitree::crypto::ChangeHeaderKey::swap_on_seal(
             $old.to_keysource($stash)?,
             $new.to_keysource($stash)?,
         ))
     };
 }
 
-macro_rules! interactive {
-    () => {
+macro_rules! old {
+    () => {{
+        println!("Current credentials for the stash:\n");
         super::SymmetricKey::default()
-    };
+    }};
+}
+
+macro_rules! new {
+    () => {{
+        println!("New credentials:\n");
+        super::SymmetricKey::default()
+    }};
 }
 
 impl KeyToSource for Key {
@@ -83,16 +91,16 @@ impl KeyToSource for Key {
 
             Self::ChangeTo { old, new } => match (*old, *new) {
                 (Key::Interactive, Key::Interactive) => {
-                    change_key!(stash, interactive!(), interactive!())
+                    change_key!(stash, old!(), new!())
                 }
-                (Key::Interactive, Key::Plaintext(new)) => change_key!(stash, interactive!(), new),
-                (Key::Interactive, Key::Yubikey(new)) => change_key!(stash, interactive!(), new),
+                (Key::Interactive, Key::Plaintext(new)) => change_key!(stash, old!(), new),
+                (Key::Interactive, Key::Yubikey(new)) => change_key!(stash, old!(), new),
 
-                (Key::Plaintext(old), Key::Interactive) => change_key!(stash, old, interactive!()),
+                (Key::Plaintext(old), Key::Interactive) => change_key!(stash, old, new!()),
                 (Key::Plaintext(old), Key::Plaintext(new)) => change_key!(stash, old, new),
                 (Key::Plaintext(old), Key::Yubikey(new)) => change_key!(stash, old, new),
 
-                (Key::Yubikey(old), Key::Interactive) => change_key!(stash, old, interactive!()),
+                (Key::Yubikey(old), Key::Interactive) => change_key!(stash, old, new!()),
                 (Key::Yubikey(old), Key::Plaintext(new)) => change_key!(stash, old, new),
                 (Key::Yubikey(old), Key::Yubikey(new)) => change_key!(stash, old, new),
 

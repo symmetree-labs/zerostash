@@ -1,6 +1,6 @@
 use super::*;
 use bech32::{FromBase32, ToBase32};
-use infinitree::keys::{cryptobox::*, RawKey};
+use infinitree::crypto::{cryptobox::*, RawKey};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use infinitree::{backends::test::*, keys::UsernamePassword, Infinitree};
+use infinitree::{backends::test::*, crypto::UsernamePassword, Infinitree};
 use memmap2::MmapOptions;
 use std::fs::File;
 use std::sync::Arc;

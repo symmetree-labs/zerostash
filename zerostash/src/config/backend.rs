@@ -126,9 +126,12 @@ impl FromStr for Backend {
                 })
             }
             Some(_) => anyhow::bail!("protocol not supported"),
-            None => Ok(Self::Filesystem {
-                path: std::fs::canonicalize(s)?.to_string_lossy().into(),
-            }),
+            None => {
+                std::fs::create_dir_all(s)?;
+                let path = std::fs::canonicalize(s)?.to_string_lossy().into();
+
+                Ok(Self::Filesystem { path })
+            }
         }
     }
 }

@@ -1,5 +1,5 @@
 use super::{KeyToSource, Result};
-use infinitree::keys::UsernamePassword;
+use infinitree::crypto::UsernamePassword;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
@@ -81,7 +81,7 @@ impl SymmetricKey {
         } else {
             match self.password {
                 Some(p) => p,
-                None => rprompt::prompt_reply_stderr("Password: ")?.into(),
+                None => rpassword::prompt_password("Password: ")?.into(),
             }
         };
 
