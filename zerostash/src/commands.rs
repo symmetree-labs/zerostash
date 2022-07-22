@@ -109,7 +109,7 @@ impl StashArgs {
                 config: YubikeyCRConfig::default(),
             }))
         } else if !self.symmetric_key.is_empty() {
-            Some(Key::Plaintext(self.symmetric_key.clone()))
+            Some(Key::Userpass(self.symmetric_key.clone()))
         } else {
             None
         }

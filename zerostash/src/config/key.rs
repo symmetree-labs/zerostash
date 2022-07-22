@@ -10,7 +10,7 @@ use std::{path::PathBuf, sync::Arc};
 pub enum Key {
     /// Plain text username/password pair
     #[serde(rename = "plaintext")]
-    Plaintext(super::SymmetricKey),
+    Userpass(super::SymmetricKey),
 
     /// 2 factor authentication with a Yubikey
     #[serde(rename = "yubikey")]
@@ -85,7 +85,7 @@ impl KeyToSource for Key {
                 keys.to_keysource(stash)?
             }
             Self::Interactive => Arc::new(super::SymmetricKey::default().to_keysource(stash)?),
-            Self::Plaintext(k) => Arc::new(k.to_keysource(stash)?),
+            Self::Userpass(k) => Arc::new(k.to_keysource(stash)?),
             Self::Yubikey(k) => Arc::new(k.to_keysource(stash)?),
             Self::SplitKeyStorage(k) => Arc::new(k.to_keysource(stash)?),
 
@@ -93,15 +93,15 @@ impl KeyToSource for Key {
                 (Key::Interactive, Key::Interactive) => {
                     change_key!(stash, old!(), new!())
                 }
-                (Key::Interactive, Key::Plaintext(new)) => change_key!(stash, old!(), new),
+                (Key::Interactive, Key::Userpass(new)) => change_key!(stash, old!(), new),
                 (Key::Interactive, Key::Yubikey(new)) => change_key!(stash, old!(), new),
 
-                (Key::Plaintext(old), Key::Interactive) => change_key!(stash, old, new!()),
-                (Key::Plaintext(old), Key::Plaintext(new)) => change_key!(stash, old, new),
-                (Key::Plaintext(old), Key::Yubikey(new)) => change_key!(stash, old, new),
+                (Key::Userpass(old), Key::Interactive) => change_key!(stash, old, new!()),
+                (Key::Userpass(old), Key::Userpass(new)) => change_key!(stash, old, new),
+                (Key::Userpass(old), Key::Yubikey(new)) => change_key!(stash, old, new),
 
                 (Key::Yubikey(old), Key::Interactive) => change_key!(stash, old, new!()),
-                (Key::Yubikey(old), Key::Plaintext(new)) => change_key!(stash, old, new),
+                (Key::Yubikey(old), Key::Userpass(new)) => change_key!(stash, old, new),
                 (Key::Yubikey(old), Key::Yubikey(new)) => change_key!(stash, old, new),
 
                 (Key::SplitKeyStorage(old), Key::SplitKeyStorage(new)) => {

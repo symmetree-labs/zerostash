@@ -3,6 +3,7 @@ use crate::{
     prelude::*,
 };
 use anyhow::Result;
+use serde::Serialize;
 use std::path::PathBuf;
 
 pub trait GenerateKey
@@ -15,6 +16,13 @@ where
 pub struct WriteToFile<T> {
     pub obj: T,
     pub file: PathBuf,
+}
+
+impl<T: Serialize> WriteToFile<T> {
+    pub fn write(&self) {
+        let bytes = toml::ser::to_vec(&self.obj).expect("Can't serialize native object");
+        std::fs::write(&self.file, &bytes).expect("Can't write to output file");
+    }
 }
 
 #[derive(Command, Debug, Clone)]
@@ -36,8 +44,7 @@ impl AsyncRunnable for Generate {
             .generate(self)
             .expect("Generation gone wrong")
         {
-            let bytes = toml::ser::to_vec(&file.obj).expect("Can't serialize native object");
-            std::fs::write(&file.file, &bytes).expect("Can't write to output file");
+            file.write()
         }
     }
 }
@@ -45,13 +52,14 @@ impl AsyncRunnable for Generate {
 /// Credentials for a stash
 #[derive(Command, Clone, Debug)]
 pub enum GenKeyCmd {
-    /// Plain text username/password pair
-    Plaintext(SymmetricKey),
+    /// Generate a username/password pair
+    Userpass(SymmetricKey),
 
-    /// 2 factor authentication with a Yubikey
+    /// Generate a username/password pair with 2 factor authentication using a Yubikey
     Yubikey(YubikeyCRKey),
 
-    /// Use a different key for reading archives and appending
+    /// Generate split keys with read/write and write-only permissions.
+    /// Changing the read/write keys is NOT supported!
     #[clap(name = "split_key")]
     SplitKeyStorage(SplitKeyStorage),
 }
@@ -59,7 +67,7 @@ pub enum GenKeyCmd {
 impl GenerateKey for GenKeyCmd {
     fn generate(self, gen: &Generate) -> Result<Vec<WriteToFile<Key>>> {
         match self {
-            Self::Plaintext(k) => k.generate(gen),
+            Self::Userpass(k) => k.generate(gen),
             Self::Yubikey(k) => k.generate(gen),
             Self::SplitKeyStorage(k) => k.generate(gen),
         }
@@ -99,7 +107,7 @@ impl GenerateKey for SymmetricKey {
 
         Ok(vec![WriteToFile {
             file,
-            obj: Key::Plaintext(key),
+            obj: Key::Userpass(key),
         }])
     }
 }

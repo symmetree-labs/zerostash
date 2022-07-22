@@ -1,6 +1,7 @@
-use crate::config::{Key, KeyToSource};
-use crate::keygen::Generate;
+use crate::config::Key;
+use crate::keygen::{GenKeyCmd, Generate, GenerateKey};
 use crate::prelude::*;
+use anyhow::{anyhow, bail};
 use clap::ArgGroup;
 use std::path::PathBuf;
 
@@ -55,12 +56,10 @@ impl AsyncRunnable for Change {
             .or_else(|| APP.config().resolve_stash(&self.from.stash).map(|s| s.key))
             .unwrap_or_default();
 
-        let new_key = self
+        let key = self
             .cmd
-            .key()
+            .key(old_key, &self.from.stash)
             .unwrap_or_else(|_| fatal_error("Invalid new key"));
-
-        let key = old_key.change_to(new_key);
 
         let mut stash = self.from.try_open(Some(key));
         if stash.reseal().is_err() {
@@ -71,28 +70,61 @@ impl AsyncRunnable for Change {
 
 #[derive(clap::Subcommand, Debug, Clone)]
 pub enum ChangeCmd {
-    To(ChangeTo),
+    Toml(ChangeTo),
+
+    #[clap(flatten)]
+    Generate(GenKeyCmd),
 }
 
 impl ChangeCmd {
-    fn key(&self) -> anyhow::Result<Key> {
-        match self {
-            Self::To(ch) => {
-                if ch.interactive {
-                    return Ok(Key::Interactive);
-                }
-
+    fn key(&self, old_key: Key, stash: &str) -> anyhow::Result<Key> {
+        let new_key = match self {
+            Self::Toml(ch) => {
                 if let Some(ref path) = ch.keyfile {
-                    return Ok(Key::KeyFile { path: path.clone() });
+                    Key::KeyFile { path: path.clone() };
                 }
 
                 if let Some(ref key) = ch.keystring {
-                    return Ok(toml::from_str::<Key>(key)?);
+                    toml::from_str::<Key>(key)?;
                 }
 
                 unreachable!()
             }
-        }
+            ChangeCmd::Generate(cmd) => {
+                let g = Generate {
+                    stash: stash.to_string(),
+                    cmd: cmd.clone(),
+                };
+
+                let keys = g.clone().cmd.generate(&g)?;
+                let effective = keys
+                    .get(0)
+                    .ok_or_else(|| anyhow!("Could not generate key!"))
+                    .map(|w| w.obj.clone())?;
+
+                for mut writer in keys {
+                    if let Key::SplitKeyStorage(new) = &mut writer.obj {
+                        if let Key::SplitKeyStorage(old) = &old_key {
+                            new.keys.write = old.keys.write.clone();
+
+                            if new.keys.read.is_some() && old.keys.read.is_none() {
+                                continue;
+                            } else {
+                                new.keys.read = old.keys.read.clone();
+                            }
+                        } else {
+                            bail!("Invalid new key");
+                        }
+                    }
+
+                    writer.write();
+                }
+
+                effective
+            }
+        };
+
+        Ok(old_key.change_to(new_key))
     }
 }
 
@@ -100,8 +132,9 @@ impl ChangeCmd {
 #[clap(group(
             ArgGroup::new("key")
 	        .required(true)
-                .args(&["keyfile", "keystring", "interactive"]),
+                .args(&["keyfile", "keystring"]),
         ))]
+/// Read the key configuration from a TOML file
 pub struct ChangeTo {
     /// Use a keyfile for the stash
     #[clap(short, long, value_name = "PATH")]
@@ -110,15 +143,4 @@ pub struct ChangeTo {
     /// Use a key specification TOML. Eg: '{ source = "yubikey" }'
     #[clap(short = 'K', value_name = "TOML", long)]
     pub keystring: Option<String>,
-
-    /// Use a key specification TOML. Eg: '{ source = "yubikey" }'
-    #[clap(short = 'i', long)]
-    pub interactive: bool,
-}
-
-impl KeyToSource for ChangeCmd {
-    type Target = infinitree::Key;
-    fn to_keysource(self, stash: &str) -> anyhow::Result<Self::Target> {
-        self.key()?.to_keysource(stash)
-    }
 }
