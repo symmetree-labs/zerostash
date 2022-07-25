@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 
-use infinitree::{backends, keys::UsernamePassword, Infinitree};
+use infinitree::{backends, crypto::UsernamePassword, Infinitree};
 use zerostash_files::{restore, store, Files};
 
 use std::{collections::HashMap, env::args, fs::metadata, time::Instant};
@@ -40,7 +40,7 @@ async fn main() {
 
     let key = || {
         let key = "abcdef1234567890abcdef1234567890";
-        UsernamePassword::with_credentials(key.to_string().into(), key.to_string().into()).unwrap()
+        UsernamePassword::with_credentials(key.to_string(), key.to_string()).unwrap()
     };
 
     println!("o: {}", output);

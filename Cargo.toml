@@ -1,9 +1,7 @@
 [profile.release]
 panic = "abort"
 lto = true
-debug = false
-strip = true
-				   
+
 [workspace]
 members = [
     "zerostash-files",
