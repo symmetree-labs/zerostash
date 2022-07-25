@@ -24,7 +24,7 @@ ignore = "0.4.18"
 
 flume = "0.10.14"
 futures = "0.3.21"
-tokio = { version = "1.20.0", features = ["fs", "io-util", "rt", "sync"] }
+tokio = { version = "1.20.1", features = ["fs", "io-util", "rt", "sync"] }
 
 itertools = "0.10.3"
 seahash = "4.1.0"
@@ -32,11 +32,11 @@ seahash = "4.1.0"
 libc = "0.2.126"
 nix = { version = "0.24.2", default-features = false, features = ["fs"] }
 
-chrono = "0.4.19"
+chrono = { version = "0.4.19", default_features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
 getrandom = "0.2.7"
-tokio = { version = "1.20.0", features = ["rt", "macros", "rt-multi-thread"] }
+tokio = { version = "1.20.1", features = ["rt", "macros", "rt-multi-thread"] }
 criterion = "0.3.6"
 infinitree = { version = "0.9.0", features = ["test"] }
 
