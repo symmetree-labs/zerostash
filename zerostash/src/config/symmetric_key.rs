@@ -55,13 +55,17 @@ impl SymmetricKey {
 
         if self.password.is_none() {
             let pw: SecretString = UsernamePassword::generate_password()?.into();
-            if cfg!(target_os = "macos") && self.keychain {
+
+            #[cfg(target_os = "macos")]
+            if self.keychain {
                 set_keychain_pw(
                     stash,
                     self.user.as_ref().unwrap().expose_secret(),
                     pw.expose_secret(),
                 )?;
-            } else {
+            }
+
+            if !self.keychain {
                 self.password = Some(pw);
             }
         }
@@ -76,13 +80,20 @@ impl SymmetricKey {
             None => rprompt::prompt_reply_stderr("Username: ")?.into(),
         };
 
-        let pass = if cfg!(target_os = "macos") && self.keychain {
+        #[cfg(target_os = "macos")]
+        let pass = if self.keychain {
             ask_keychain_pass(stash, &user)?
         } else {
             match self.password {
                 Some(p) => p,
                 None => rpassword::prompt_password("Password: ")?.into(),
             }
+        };
+
+        #[cfg(not(target_os = "macos"))]
+        let pass = match self.password {
+            Some(p) => p,
+            None => rpassword::prompt_password("Password: ")?.into(),
         };
 
         Ok((user, pass))

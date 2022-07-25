@@ -90,10 +90,20 @@ pub struct SymmetricKey {
 }
 
 impl SymmetricKey {
+    #[cfg(target_os = "macos")]
     fn fill_random(self, stash: &str) -> Result<crate::config::SymmetricKey> {
         crate::config::SymmetricKey {
             user: Some(self.user.into()),
             keychain: self.keychain,
+            ..Default::default()
+        }
+        .fill_random(stash)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn fill_random(self, stash: &str) -> Result<crate::config::SymmetricKey> {
+        crate::config::SymmetricKey {
+            user: Some(self.user.into()),
             ..Default::default()
         }
         .fill_random(stash)
