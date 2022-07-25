@@ -144,6 +144,8 @@ impl Options {
         threads: usize,
     ) -> anyhow::Result<(Sender, Vec<task::JoinHandle<()>>)> {
         let mut preserve = self.preserve.clone();
+
+        #[cfg(not(target_os = "windows"))]
         if !nix::unistd::Uid::effective().is_root() {
             preserve.ownership = false;
         }

@@ -1,10 +1,12 @@
 use chrono::{DateTime, TimeZone, Utc};
 use infinitree::ChunkPointer;
+#[cfg(not(target_os = "windows"))]
+use std::time::UNIX_EPOCH;
 use std::{
     fs, io,
     path::{Component, Path, PathBuf},
     sync::Arc,
-    time::{SystemTimeError, UNIX_EPOCH},
+    time::SystemTimeError,
 };
 
 macro_rules! if_yes {
@@ -31,6 +33,8 @@ pub enum EntryError {
         #[from]
         source: io::Error,
     },
+
+    #[cfg(not(target_os = "windows"))]
     #[error("Errno: {source}")]
     Errno {
         #[from]

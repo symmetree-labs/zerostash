@@ -168,9 +168,17 @@ impl GenerateKey for SplitKeyStorage {
     fn generate(self, gen: &Generate) -> Result<Vec<WriteToFile<Key>>> {
         let (rw, wo) = crate::config::SplitKeys::default().split();
 
+        #[cfg(target_os = "macos")]
         let key: crate::config::SymmetricKey = SymmetricKey {
             user: self.user,
             keychain: self.keychain,
+            ..Default::default()
+        }
+        .fill_random(&gen.stash)?;
+
+        #[cfg(not(target_os = "macos"))]
+        let key: crate::config::SymmetricKey = SymmetricKey {
+            user: self.user,
             ..Default::default()
         }
         .fill_random(&gen.stash)?;
