@@ -4,7 +4,7 @@ description = "Safe and secure backup library"
 authors = ["Peter Parkanyi <p@symmetree.dev>"]
 repository = "https://github.com/symmetree-labs/zerostash"
 license = "MIT/Apache-2.0"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 keywords = ["crypto", "api", "security", "filesystem", "backup"]
 categories = ["cryptography", "filesystem"]
@@ -14,7 +14,7 @@ infinitree = { version = "0.9.0", features = ["mmap"] }
 serde = { version = "1.0.140", features = ["rc"] }
 serde_derive = "1.0.140"
 tracing = "0.1.35"
-clap = { version = "3.2.14", features = ["derive"] }
+clap = { version = "3.2.15", features = ["derive"] }
 anyhow = "1.0.58"
 thiserror = "1.0.31"
 
@@ -32,7 +32,7 @@ seahash = "4.1.0"
 libc = "0.2.126"
 nix = { version = "0.24.2", default-features = false, features = ["fs"] }
 
-chrono = { version = "0.4.19", default_features = false, features = ["std", "clock"] }
+chrono = { version = "0.4.19", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
 getrandom = "0.2.7"
