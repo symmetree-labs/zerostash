@@ -73,7 +73,7 @@ impl Stash {
     pub fn try_open(&self, name: &str, override_key: Option<Key>) -> Result<InfiniStash> {
         let (backend, key) = self.get_locators(name, override_key)?;
         println!("opening");
-        Ok(InfiniStash::open(backend, key)?)
+        InfiniStash::open(backend, key)
     }
 
     pub fn open_or_new(&self, name: &str, override_key: Option<Key>) -> Result<InfiniStash> {

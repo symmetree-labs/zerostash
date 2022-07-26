@@ -79,17 +79,7 @@ pub enum ChangeCmd {
 impl ChangeCmd {
     fn key(&self, old_key: Key, stash: &str) -> anyhow::Result<Key> {
         let new_key = match self {
-            Self::Toml(ch) => {
-                if let Some(ref path) = ch.keyfile {
-                    Key::KeyFile { path: path.clone() };
-                }
-
-                if let Some(ref key) = ch.keystring {
-                    toml::from_str::<Key>(key)?;
-                }
-
-                unreachable!()
-            }
+            Self::Toml(ch) => ch.get_key()?,
             ChangeCmd::Generate(cmd) => {
                 let g = Generate {
                     stash: stash.to_string(),
@@ -143,4 +133,18 @@ pub struct ChangeTo {
     /// Use a key specification TOML. Eg: '{ source = "yubikey" }'
     #[clap(short = 'K', value_name = "TOML", long)]
     pub keystring: Option<String>,
+}
+
+impl ChangeTo {
+    fn get_key(&self) -> anyhow::Result<Key> {
+        if let Some(ref path) = self.keyfile {
+            return Ok(Key::KeyFile { path: path.clone() });
+        }
+
+        if let Some(ref key) = self.keystring {
+            return Ok(toml::from_str::<Key>(key)?);
+        }
+
+        unreachable!()
+    }
 }

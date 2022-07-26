@@ -134,7 +134,7 @@ impl FromStr for Backend {
             None => {
                 let path = match std::fs::canonicalize(s) {
                     Ok(s) => s,
-                    Err(_) => normalize_path(&Path::new(s)),
+                    Err(_) => normalize_path(Path::new(s)),
                 }
                 .to_string_lossy()
                 .to_string();
