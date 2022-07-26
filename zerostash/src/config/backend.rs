@@ -2,7 +2,12 @@ use super::Result;
 use anyhow::Context;
 use infinitree_backends::Region;
 use serde::{Deserialize, Serialize};
-use std::{num::NonZeroUsize, str::FromStr, sync::Arc};
+use std::{
+    num::NonZeroUsize,
+    path::{Component, Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
+};
 
 /// Backend configuration
 /// This may be specific to the backend type
@@ -127,11 +132,91 @@ impl FromStr for Backend {
             }
             Some(_) => anyhow::bail!("protocol not supported"),
             None => {
-                std::fs::create_dir_all(s)?;
-                let path = std::fs::canonicalize(s)?.to_string_lossy().into();
+                let path = match std::fs::canonicalize(s) {
+                    Ok(s) => s,
+                    Err(_) => normalize_path(&Path::new(s)),
+                }
+                .to_string_lossy()
+                .to_string();
 
                 Ok(Self::Filesystem { path })
             }
         }
+    }
+}
+
+// originally lifted from
+// https://github.com/rust-lang/cargo/blob/fede83ccf973457de319ba6fa0e36ead454d2e20/src/cargo/util/paths.rs#L61
+pub fn normalize_path(path: &Path) -> PathBuf {
+    let current_dir = std::env::current_dir().unwrap();
+    let mut components = path.components().peekable();
+
+    let mut ret = match components.peek().cloned() {
+        Some(c @ Component::Prefix(..)) => {
+            components.next();
+            PathBuf::from(c.as_os_str())
+        }
+        Some(c @ Component::RootDir) => {
+            components.next();
+            c.as_os_str().into()
+        }
+        _ => current_dir,
+    };
+
+    for component in components {
+        match component {
+            Component::Prefix(..) => unreachable!(),
+            Component::RootDir => {
+                ret.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                ret.pop();
+            }
+            Component::Normal(c) => {
+                ret.push(c);
+            }
+        }
+    }
+    ret
+}
+
+#[cfg(test)]
+mod test {
+    use std::path::PathBuf;
+
+    // Ignore this test on Windows because file path prefixes make
+    // checking equality something i can't debug on a CI.
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn normalize_path() {
+        use super::normalize_path;
+        use std::fs::canonicalize;
+        use std::path::Path;
+
+        let current_dir = std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        assert_eq!(
+            normalize_path(Path::new("../zerostash")),
+            canonicalize(format!("{}/../zerostash", current_dir)).unwrap()
+        );
+
+        assert_eq!(
+            normalize_path(Path::new("./src")),
+            canonicalize(format!("{}/src", current_dir)).unwrap()
+        );
+
+        assert_eq!(
+            normalize_path(Path::new("src")),
+            canonicalize(format!("{}/src", current_dir)).unwrap()
+        );
+
+        assert_eq!(
+            normalize_path(Path::new("/zerostash")),
+            PathBuf::from("/zerostash")
+        );
     }
 }

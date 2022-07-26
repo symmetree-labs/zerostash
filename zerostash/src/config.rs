@@ -324,11 +324,13 @@ backend = { type = "fs", path = "/path/to/stash" }
     }
 
     #[test]
-    #[should_panic]
     fn no_scheme_gets_file_backend() {
         use super::Backend;
 
-        // This should blow up during canonicalization
-        "/example/path".parse::<Backend>().unwrap();
+        if let Backend::Filesystem { .. } = "example/path".parse::<Backend>().unwrap() {
+            assert!(true);
+        } else {
+            assert!(false);
+        }
     }
 }
