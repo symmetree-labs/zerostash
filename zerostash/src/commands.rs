@@ -69,7 +69,7 @@ pub struct EntryPoint {
     pub insecure_config: bool,
 }
 
-#[derive(clap::Args, Clone, Debug, Default)]
+#[derive(clap::Args, Clone, Debug)]
 #[clap(group(
             ArgGroup::new("key")
                 .args(&["keyfile", "keystring", "yubikey"]),
