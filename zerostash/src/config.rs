@@ -72,7 +72,6 @@ impl Stash {
     /// Try to open a stash with the config-stored credentials
     pub fn try_open(&self, name: &str, override_key: Option<Key>) -> Result<InfiniStash> {
         let (backend, key) = self.get_locators(name, override_key)?;
-        println!("opening");
         InfiniStash::open(backend, key)
     }
 
