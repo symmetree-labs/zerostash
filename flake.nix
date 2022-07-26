@@ -18,9 +18,9 @@
         # Get a specific rust version
         mozilla = pkgs.callPackage (mozillapkgs + "/package-set.nix") { };
         rust = (mozilla.rustChannelOf {
-          date = "2022-05-19";
+          date = "2022-07-19";
           channel = "stable";
-          sha256 = "oro0HsosbLRAuZx68xd0zfgPl6efNj2AQruKRq3KA2g=";
+          sha256 = "Et8XFyXhlf5OyVqJkxrmkxv44NRN54uU2CLUTZKUjtM=";
         }).rust;
 
         naersk-lib = naersk.lib."${system}".override {
@@ -40,23 +40,19 @@
             platforms = platforms.all;
           };
 
+          pname = "0s";
           name = "zerostash";
-          version = "0.4.1";
+          version = "0.5.0";
 
           src = ./.;
           root = ./.;
         };
 
         apps.zerostash = utils.lib.mkApp { drv = packages.zerostash; };
-
         devShell = pkgs.mkShell {
           inputsFrom = [ self.defaultPackage.${system} ];
           nativeBuildInputs = with pkgs; [
-            cargo
-            rustc
-            rust-analyzer
-            rustfmt
-            clippy
+            rust
           ];
         };
 
@@ -141,6 +137,14 @@
                         '';
                       };
 
+                      user = mkOption {
+                        type = types.str;
+                        default = "root";
+                        description = ''
+			  The username under which to run the backup process.
+                        '';
+                      };
+
                       stashName = mkOption {
                         type = with types; nullOr str;
                         default = null;
@@ -206,7 +210,7 @@
                         };
                       options = concatStringsSep " " backup.options;
                       paths = concatStringsSep " " backup.paths;
-                      command = "${cfg.package}/bin/0s -c ${configFile} commit ${options} ${name} ${paths}";
+                      command = "${cfg.package}/bin/0s --insecure-config -c ${configFile} commit ${options} ${name} ${paths}";
                     in
                     nameValuePair "zerostash-${name}" ({
                       restartIfChanged = false;
