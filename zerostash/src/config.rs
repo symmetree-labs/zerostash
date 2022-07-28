@@ -4,10 +4,11 @@
 //! application's configuration file and/or command-line options
 //! for specifying it.
 
-use crate::prelude::Stash as InfiniStash;
+use crate::{application::APP, prelude::Stash as InfiniStash};
+use abscissa_core::Application;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
 
 mod crypto_box_keys;
 pub use crypto_box_keys::*;
@@ -43,40 +44,59 @@ pub struct Stash {
     pub key: Key,
     /// Backend configuration for the stash
     pub backend: Backend,
+
+    /// Name as referenced by the user. We can't deserialize this.
+    /// However, when reading the config, `resolve_stash` will populate it.
+    #[serde(skip)]
+    pub alias: String,
+}
+
+impl FromStr for Stash {
+    type Err = anyhow::Error;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        let mut stash = match APP.config().resolve_stash(name) {
+            Some(stash) => stash,
+            None => Stash {
+                backend: name.parse()?,
+                alias: name.to_string(),
+                key: Default::default(),
+            },
+        };
+
+        if let Backend::Filesystem { path } = &stash.backend {
+            stash.alias = path.clone();
+        };
+
+        Ok(stash)
+    }
 }
 
 impl Stash {
     fn get_locators(
         &self,
-        name: &str,
         override_key: Option<Key>,
     ) -> Result<(Arc<dyn infinitree::backends::Backend>, infinitree::Key)> {
         let backend = self.backend.to_infinitree()?;
 
         // This is to use absolute paths in the FS.
-        let nameref = if let Backend::Filesystem { path } = &self.backend {
-            path.clone()
-        } else {
-            name.to_string()
-        };
-
         let keysource = match override_key {
             Some(key) => key,
             None => self.key.clone(),
         }
-        .to_keysource(&nameref)?;
+        .to_keysource(&self.alias)?;
 
         Ok((backend, keysource))
     }
 
     /// Try to open a stash with the config-stored credentials
-    pub fn try_open(&self, name: &str, override_key: Option<Key>) -> Result<InfiniStash> {
-        let (backend, key) = self.get_locators(name, override_key)?;
+    pub fn try_open(&self, override_key: Option<Key>) -> Result<InfiniStash> {
+        let (backend, key) = self.get_locators(override_key)?;
         InfiniStash::open(backend, key)
     }
 
-    pub fn open_or_new(&self, name: &str, override_key: Option<Key>) -> Result<InfiniStash> {
-        let (backend, key) = self.get_locators(name, override_key)?;
+    pub fn open_or_new(&self, override_key: Option<Key>) -> Result<InfiniStash> {
+        let (backend, key) = self.get_locators(override_key)?;
         let stash = InfiniStash::open(backend.clone(), key.clone())
             .or_else(|_| InfiniStash::empty(backend, key))?;
 
@@ -114,22 +134,13 @@ impl ZerostashConfig {
     /// Find a stash by name in the config, and return a read-only
     /// reference if found
     pub fn resolve_stash(&self, alias: impl AsRef<str>) -> Option<Stash> {
-        self.stashes.get(alias.as_ref()).cloned()
-    }
-
-    pub fn stash_for_name(&self, alias: impl AsRef<str>) -> Stash {
-        let name = alias.as_ref();
-        self.resolve_stash(name).unwrap_or_else(|| Stash {
-            key: Default::default(),
-            backend: name.parse().unwrap(),
-        })
-    }
-
-    pub fn open(&self, pathy: impl AsRef<str>, override_key: Option<Key>) -> Result<InfiniStash> {
-        let name = pathy.as_ref();
-        let stash = self.stash_for_name(name);
-
-        stash.open_or_new(name, override_key)
+        match self.stashes.get(alias.as_ref()).cloned() {
+            Some(mut stash) => {
+                stash.alias = alias.as_ref().to_string();
+                Some(stash)
+            }
+            None => None,
+        }
     }
 }
 

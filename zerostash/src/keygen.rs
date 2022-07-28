@@ -1,5 +1,5 @@
 use crate::{
-    config::{Backend, Key, YubikeyCRConfig},
+    config::{Key, YubikeyCRConfig},
     prelude::*,
 };
 use anyhow::Result;
@@ -38,28 +38,10 @@ pub struct Generate {
 #[async_trait]
 impl AsyncRunnable for Generate {
     async fn run(&self) {
-        let stash = APP.config().resolve_stash(&self.stash);
-        let generator = if stash.is_none() {
-            let backend: Backend = self.stash.parse().expect("Unable to parse stash name!");
-
-            let stash_name = if let Backend::Filesystem { path } = backend {
-                path
-            } else {
-                self.stash.clone()
-            };
-
-            Generate {
-                stash: stash_name,
-                cmd: self.cmd.clone(),
-            }
-        } else {
-            self.clone()
-        };
-
         let files = self
             .cmd
             .clone()
-            .generate(&generator)
+            .generate(self)
             .expect("Generation gone wrong");
 
         for file in files {

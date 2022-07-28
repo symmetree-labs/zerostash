@@ -19,7 +19,7 @@ use crate::{
 };
 use abscissa_core::{Command, Configurable, Runnable};
 use clap::{ArgGroup, Parser};
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 /// Zerostash Configuration Filename
 pub const CONFIG_FILE: &str = "zerostash.toml";
@@ -115,15 +115,15 @@ impl StashArgs {
         }
     }
 
-    pub(crate) fn try_open(&self, key: Option<Key>) -> Stash {
-        APP.config()
-            .stash_for_name(&self.stash)
-            .try_open(&self.stash, key)
-            .unwrap()
+    pub(crate) fn parse_stash(&self) -> crate::config::Stash {
+        crate::config::Stash::from_str(&self.stash).unwrap()
     }
 
     pub(crate) fn open_with(&self, key: Option<Key>) -> Stash {
-        APP.config().open(&self.stash, key).unwrap()
+        crate::config::Stash::from_str(&self.stash)
+            .unwrap()
+            .open_or_new(key)
+            .unwrap()
     }
 
     pub(crate) fn open(&self) -> Stash {

@@ -50,18 +50,15 @@ pub struct Change {
 #[async_trait]
 impl AsyncRunnable for Change {
     async fn run(&self) {
-        let old_key = self
-            .from
-            .key()
-            .or_else(|| APP.config().resolve_stash(&self.from.stash).map(|s| s.key))
-            .unwrap_or_default();
+        let stash_cfg = self.from.parse_stash();
+        let old_key = self.from.key().unwrap_or_else(|| stash_cfg.key.clone());
 
         let key = self
             .cmd
-            .key(old_key, &self.from.stash)
+            .key(old_key, &stash_cfg.alias)
             .unwrap_or_else(|_| fatal_error("Invalid new key"));
 
-        let mut stash = self.from.try_open(Some(key));
+        let mut stash = stash_cfg.try_open(Some(key)).unwrap();
         if stash.reseal().is_err() {
             fatal_error("Failed to change key");
         }
@@ -77,12 +74,12 @@ pub enum ChangeCmd {
 }
 
 impl ChangeCmd {
-    fn key(&self, old_key: Key, stash: &str) -> anyhow::Result<Key> {
+    fn key(&self, old_key: Key, stash: impl Into<String>) -> anyhow::Result<Key> {
         let new_key = match self {
             Self::Toml(ch) => ch.get_key()?,
             ChangeCmd::Generate(cmd) => {
                 let g = Generate {
-                    stash: stash.to_string(),
+                    stash: stash.into(),
                     cmd: cmd.clone(),
                 };
 
