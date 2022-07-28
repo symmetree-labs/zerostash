@@ -1,6 +1,7 @@
 [profile.release]
 panic = "abort"
 lto = true
+strip = "symbols"
 
 [workspace]
 members = [
