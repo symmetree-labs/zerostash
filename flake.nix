@@ -62,7 +62,7 @@
           apps.vm = utils.lib.mkApp { drv = packages.vm; exePath = "/bin/run-nixos-vm"; };
 
           packages.nixosTest = import ./nix/nixos-test.nix { inherit (self) nixosModule; inherit pkgs; };
-          apps.nixosTest = utils.lib.mkApp { drv = packages.nixosTest; };
+          apps.nixosTest = utils.lib.mkApp { drv = packages.nixosTest.driver; exePath = "/bin/nixos-test-driver"; };
         }) //
     {
       nixosModule = {
