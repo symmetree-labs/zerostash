@@ -60,6 +60,9 @@
 
           packages.vm = self.nixosConfigurations.test.config.system.build.vm;
           apps.vm = utils.lib.mkApp { drv = packages.vm; exePath = "/bin/run-nixos-vm"; };
+
+          packages.nixosTest = import ./nix/nixos-test.nix { inherit (self) nixosModule; inherit pkgs; };
+          apps.nixosTest = utils.lib.mkApp { drv = packages.nixosTest; };
         }) //
     {
       nixosModule = {

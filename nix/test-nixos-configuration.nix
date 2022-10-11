@@ -32,7 +32,7 @@
           key = {
             source = "plaintext";
             user = "123";
-            password = "123";
+            password = "123"; # DO NOT include your password in the NixOS configuration, use a keyfile!
           };
           backend = {
             type = "fs";
