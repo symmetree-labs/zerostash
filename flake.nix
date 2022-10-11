@@ -65,10 +65,10 @@
           apps.nixosTest = utils.lib.mkApp { drv = packages.nixosTest.driver; exePath = "/bin/nixos-test-driver"; };
         }) //
     {
-      nixosModule = {
+      nixosModule = { pkgs, ... }: {
         imports = [
           ./nix/zerostash-nixos-module.nix
-          ({ pkgs, ... }: { nixpkgs.overlays = [ (_: _: { zerostash = self.packages.${pkgs.system}.zerostash; }) ]; })
+          { nixpkgs.overlays = [ (_: _: { zerostash = self.packages.${pkgs.system}.zerostash; }) ]; }
         ];
       };
 
