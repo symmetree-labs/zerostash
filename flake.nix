@@ -45,7 +45,7 @@
           name = "zerostash";
           version = "0.5.0";
 
-          src = ./.;
+          src = pkgs.lib.sourceFilesBySuffices ./. [".toml" ".rs"];
           root = ./.;
         };
 
