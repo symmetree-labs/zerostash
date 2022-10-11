@@ -18,9 +18,9 @@
         # Get a specific rust version
         mozilla = pkgs.callPackage (mozillapkgs + "/package-set.nix") { };
         rust = (mozilla.rustChannelOf {
-          date = "2022-07-19";
+          date = "2022-09-22";
           channel = "stable";
-          sha256 = "Et8XFyXhlf5OyVqJkxrmkxv44NRN54uU2CLUTZKUjtM=";
+          sha256 = "8len3i8oTwJSOJZMosGGXHBL5BVuGQnWOT2St5YAUFU=";
         }).rust;
 
         naersk-lib = naersk.lib."${system}".override {
@@ -31,6 +31,7 @@
       rec {
         defaultPackage = packages.zerostash;
         defaultApp = apps.zerostash;
+        apps.default = apps.zerostash;
 
         packages.zerostash = naersk-lib.buildPackage {
           meta = with pkgs.lib; {
