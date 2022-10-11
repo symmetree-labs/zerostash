@@ -45,7 +45,7 @@
           name = "zerostash";
           version = "0.5.0";
 
-          src = pkgs.lib.sourceFilesBySuffices ./. [".toml" ".rs"];
+          src = pkgs.lib.sourceFilesBySuffices ./. [ ".toml" ".rs" ];
           root = ./.;
         };
 
@@ -80,7 +80,7 @@
               package = mkOption {
                 type = types.package;
                 default = self.packages.${system}.zerostash;
-                description = "zerostash package to use";
+                description = "zerostash package to use.";
               };
 
               backups =
@@ -134,7 +134,7 @@
                           repository, in the format of an <literal>EnvironmentFile</literal>
                           as described by <citerefentry>
                           <citerefentrytitle>systemd.exec</citerefentrytitle>
-                          <manvolnum>5</manvolnum></citerefentry>
+                          <manvolnum>5</manvolnum></citerefentry>.
                         '';
                       };
 
@@ -142,7 +142,7 @@
                         type = types.str;
                         default = "root";
                         description = ''
-			  The username under which to run the backup process.
+                          The username under which to run the backup process.
                         '';
                       };
 
@@ -154,7 +154,7 @@
                           as the configuration file for the backup operation, and
                           <option>stashName</stash> as the target stash.
 
-                          This is a mutually exclusive setting with <option>stash</option>
+                          This setting is mutually exclusive with <option>stash</option>.
                         '';
                       };
 
@@ -162,8 +162,8 @@
                         type = with types; nullOr attrs;
                         default = null;
                         description = ''
-                          The configuration of the stash to use as backup. This
-                          is a mutually exclusive setting with
+                          The configuration of the stash to use as backup.
+                          This setting is mutually exclusive with
                           <option>stashName</option>.
                         '';
                       };
@@ -183,7 +183,7 @@
                         stash = {
                           key = {
                             source = "file";
-                            path = "path_to_keyfile.toml";
+                            path = "/path/to/keyfile.toml";
                           };
                           backend = {
                             type = "s3";
@@ -193,7 +193,7 @@
                         };
                       };
                     };
-                  description = "Declarative backup config";
+                  description = "Declarative backup configuration.";
                 };
             };
             config = mkIf cfg.enable {
