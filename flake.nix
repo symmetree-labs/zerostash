@@ -57,12 +57,23 @@
               rust
             ];
           };
+
+          packages.vm = self.nixosConfigurations.test.config.system.build.vm;
+          apps.vm = utils.lib.mkApp { drv = packages.vm; exePath = "/bin/run-nixos-vm"; };
         }) //
     {
       nixosModule = {
         imports = [
           ./nix/zerostash-nixos-module.nix
           ({ pkgs, ... }: { nixpkgs.overlays = [ (_: _: { zerostash = self.packages.${pkgs.system}.zerostash; }) ]; })
+        ];
+      };
+
+      nixosConfigurations.test = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModule
+          (import ./nix/test-nixos-configuration.nix)
         ];
       };
     };
