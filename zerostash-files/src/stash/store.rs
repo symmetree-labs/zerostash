@@ -8,8 +8,8 @@ use infinitree::{
     Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
-use std::{num::NonZeroUsize, path::PathBuf};
-use tokio::{fs, io::AsyncReadExt, task};
+use std::{fs, io::Read, num::NonZeroUsize, path::PathBuf};
+use tokio::task;
 use tracing::{debug, debug_span, error, trace, warn, Instrument};
 
 type Sender = mpsc::Sender<(PathBuf, files::Entry)>;
@@ -218,7 +218,7 @@ async fn process_file_loop(
             continue;
         }
 
-        let osfile = match fs::File::open(&path).await {
+        let osfile = match fs::File::open(&path) {
             Ok(f) => f,
             Err(error) => {
                 warn!(%error, ?path, "failed to open file; skipping");
@@ -252,32 +252,32 @@ async fn index_file(
     let size = entry.size as usize;
 
     if size < MAX_FILE_SIZE {
-        osfile.read_to_end(buf).await.unwrap();
+        osfile.read_to_end(buf).unwrap();
     }
 
-    let mut mmap = MmappedFile::new(size, osfile.into_std().await);
+    let mut mmap = MmappedFile::new(size, osfile);
+    let (_, chunks) = async_scoped::TokioScope::scope_and_block(|s| {
+        let splitter = if size < MAX_FILE_SIZE {
+            FileSplitter::<SeaSplit>::new(&buf[0..size], hasher)
+        } else {
+            FileSplitter::<SeaSplit>::new(mmap.open(), hasher)
+        };
 
-    let splitter = if size < MAX_FILE_SIZE {
-        FileSplitter::<SeaSplit>::new(&buf[0..size], hasher)
-    } else {
-        FileSplitter::<SeaSplit>::new(mmap.open(), hasher)
-    };
+        for (start, hash, data) in splitter {
+            let mut writer = writer.clone();
 
-    let chunks = splitter.map(|(start, hash, data)| {
-        let mut writer = writer.clone();
-        let data = data.to_vec();
-        let chunkindex = index.chunks.clone();
-
-        task::spawn_blocking(move || {
-            let store = || writer.write_chunk(&hash, &data).unwrap();
-            let ptr = chunkindex.insert_with(hash, store);
-            (start, ptr)
-        })
+            s.spawn(async move {
+                let store = || writer.write_chunk(&hash, data).unwrap();
+                let ptr = index.chunks.insert_with(hash, store);
+                (start, ptr)
+            })
+        }
     });
 
-    entry
-        .chunks
-        .extend(join_all(chunks).await.into_iter().map(Result::unwrap));
+    _ = std::mem::replace(
+        &mut entry.chunks,
+        chunks.into_iter().collect::<Result<Vec<_>, _>>().unwrap(),
+    );
 
     debug!(?path, chunks = entry.chunks.len(), "indexed");
 
