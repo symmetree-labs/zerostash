@@ -11,24 +11,24 @@ categories = ["cryptography", "filesystem", "command-line-utilities"]
 
 
 [dependencies]
-anyhow = "1.0.58"
-thiserror = "1.0.31"
-clap = "3.2.15"
+anyhow = "1.0.65"
+thiserror = "1.0.37"
+clap = "3.2.22"
 infinitree = { version = "0.9.0", features = ["cryptobox", "yubikey"] }
 infinitree-backends = { version = "0.9.0", default-features = false, features = ["rustls"] }
 zerostash-files = { version = "0.5.0", path = "../zerostash-files" }
 rpassword = "7.0.0"
 rprompt = "1.0.5"
-serde = { version = "1.0.140", features = ["serde_derive"] }
+serde = { version = "1.0.145", features = ["serde_derive"] }
 toml = "0.5.9"
-bech32 = "0.9.0"
+bech32 = "0.9.1"
 
 dirs = "4.0.0"
 xdg = "2.4.1"
 
-async-trait = "0.1.56"
+async-trait = "0.1.57"
 humansize = "1.1.1"
-chrono = { version = "0.4.19", default-features = false, features = ["std", "clock"] }
+chrono = { version = "0.4.22", default-features = false, features = ["std", "clock"] }
 termcolor = "1.1.3"
 nix = { version = "0.24.2", default-features = false, features = ["user"] }
 abscissa_tokio= "0.6.0"
@@ -38,15 +38,15 @@ regex = "1.6.0"
 secrecy = { version = "0.8.0", features = ["serde"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-security-framework = "2.6.1"
+security-framework = "2.7.0"
 
 [dev-dependencies]
 abscissa_core = { version = "0.6.0", features = ["testing"] }
 abscissa_tokio = "0.6.0"
 walkdir = "2.3.2"
-tokio = { version = "1.20.1", features = ["rt", "macros", "rt-multi-thread"] }
-tracing-subscriber = "0.3.15"
-tracing = "0.1.35"
+tokio = { version = "1.21.2", features = ["rt", "macros", "rt-multi-thread"] }
+tracing-subscriber = "0.3.16"
+tracing = "0.1.37"
 
 
 [[bench]]
