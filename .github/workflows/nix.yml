@@ -6,7 +6,9 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: cachix/install-nix-action@v18
+    - uses: actions/checkout@8230315d06ad95c617244d2f265d237a1682d445
+    - uses: cachix/install-nix-action@11f4ad19be46fd34c005a2864996d8f197fb51c6
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
     - run: nix build
     - run: nix run .#vm
