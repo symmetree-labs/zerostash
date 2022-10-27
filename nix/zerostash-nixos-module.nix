@@ -12,7 +12,6 @@ with lib; {
         TOML configuration file to use for the scheduled backups.
         If <option>configFile</option> is null, the configuration for each backup listed in <option>services.zerostash.backups.<backupName>.repository</option> will be used.
 
-        The file must be only readable by the user as which the backup runs!
         See <link xlink:href="https://github.com/symmetree-labs/zerostash/blob/master/config.toml.example ">the example file in the repository</link> for options.'';
       type = with types; nullOr path;
       default = null;
