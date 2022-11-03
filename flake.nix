@@ -28,29 +28,43 @@
             cargo = rust;
             rustc = rust;
           };
+
+          ifTestable = block: if (pkgs.stdenv.isLinux && pkgs.stdenv.isx86_64) then block else rec {};
         in
         rec {
           defaultPackage = packages.zerostash;
           defaultApp = apps.zerostash;
-          apps.default = apps.zerostash;
 
-          packages.zerostash = naersk-lib.buildPackage {
-            meta = with pkgs.lib; {
-              description = "Secure, speedy, distributed backups";
-              homepage = "https://symmetree.dev";
-              license = licenses.mit;
-              platforms = platforms.all;
+          packages = {
+	    zerostash = naersk-lib.buildPackage {
+              meta = with pkgs.lib; {
+                description = "Secure, speedy, distributed backups";
+                homepage = "https://symmetree.dev";
+                license = licenses.mit;
+                platforms = platforms.all;
+              };
+
+              pname = "0s";
+              name = "zerostash";
+              version = "0.5.0";
+
+              src = pkgs.lib.sourceFilesBySuffices ./. [ ".toml" ".rs" ];
+              root = ./.;
             };
 
-            pname = "0s";
-            name = "zerostash";
-            version = "0.5.0";
+            vm = self.nixosConfigurations.test.config.system.build.vm;
+	  } // (ifTestable rec {
+            nixosTest = import ./nix/nixos-test.nix { inherit (self) nixosModule; inherit pkgs; };
+	    });
 
-            src = pkgs.lib.sourceFilesBySuffices ./. [ ".toml" ".rs" ];
-            root = ./.;
-          };
+          apps = rec {
+            zerostash = utils.lib.mkApp { drv = packages.zerostash; };
+	    default = zerostash;
+            vm = utils.lib.mkApp { drv = packages.vm; exePath = "/bin/run-nixos-vm"; };
+          } // (ifTestable rec {
+            nixosTest = utils.lib.mkApp { drv = packages.nixosTest.driver; exePath = "/bin/nixos-test-driver"; };
+	    });
 
-          apps.zerostash = utils.lib.mkApp { drv = packages.zerostash; };
           devShell = pkgs.mkShell {
             inputsFrom = [ self.defaultPackage.${system} ];
             nativeBuildInputs = with pkgs; [
@@ -58,11 +72,6 @@
             ];
           };
 
-          packages.vm = self.nixosConfigurations.test.config.system.build.vm;
-          apps.vm = utils.lib.mkApp { drv = packages.vm; exePath = "/bin/run-nixos-vm"; };
-
-          packages.nixosTest = import ./nix/nixos-test.nix { inherit (self) nixosModule; inherit pkgs; };
-          apps.nixosTest = utils.lib.mkApp { drv = packages.nixosTest.driver; exePath = "/bin/nixos-test-driver"; };
         }) //
     {
       nixosModule = { pkgs, ... }: {
