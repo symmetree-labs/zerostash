@@ -2,7 +2,7 @@
 
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, path::Path};
 
@@ -46,12 +46,24 @@ fn mount(
     options: &restore::Options,
     mountpoint: &str,
 ) -> anyhow::Result<()> {
-    let filesystem = SimpleFs::open(stash, options).unwrap();
+    let (tx, finished) = mpsc::sync_channel(2);
+    let destroy_tx = tx.clone();
+    ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
+        .expect("Error setting Ctrl-C handler");
+
+    let filesystem = SimpleFs::open(stash, options, destroy_tx).unwrap();
     let fuse_args = [OsStr::new("-o"), OsStr::new("fsname=zerostash")];
 
     let fs = fuse_mt::FuseMT::new(filesystem, 1);
 
-    fuse_mt::mount(fs, mountpoint, &fuse_args[..])?;
+    // Mount the filesystem.
+    let handle = spawn_mount(fs, mountpoint, &fuse_args[..])?;
+
+    // Wait until we are done.
+    finished.recv().expect("Could not receive from channel.");
+
+    // Ensure the filesystem is unmounted.
+    handle.join();
 
     Ok(())
 }
@@ -62,6 +74,7 @@ type FileContent = Vec<u8>;
 type Metadata = Arc<Entry>;
 
 struct SimpleFs {
+    destroy_tx: mpsc::SyncSender<()>,
     stash: Infinitree<Files>,
     file_map: HashMap<FilePath, Metadata>,
     file_content: Mutex<HashMap<FilePath, FileContent>>,
@@ -119,7 +132,11 @@ pub fn match_filetype(file_type: &zerostash_files::FileType) -> FileType {
 }
 
 impl SimpleFs {
-    pub fn open(stash: Infinitree<Files>, options: &restore::Options) -> Result<Self> {
+    pub fn open(
+        stash: Infinitree<Files>,
+        options: &restore::Options,
+        destroy_tx: mpsc::SyncSender<()>,
+    ) -> Result<Self> {
         let mut dir_map: HashMap<DirPath, Vec<DirectoryEntry>> = HashMap::new();
         dir_map.insert(PathBuf::new(), vec![]);
         let mut file_map = HashMap::new();
@@ -133,6 +150,7 @@ impl SimpleFs {
         }
 
         Ok(SimpleFs {
+            destroy_tx,
             stash,
             file_map,
             file_content: Mutex::new(HashMap::new()),
@@ -167,6 +185,11 @@ fn strip_path(path: &Path) -> &Path {
 }
 
 impl FilesystemMT for SimpleFs {
+    fn destroy(&self) {
+        self.destroy_tx
+            .send(())
+            .expect("Could not send signal on channel.")
+    }
     fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
         println!("getattr = {:?}", path);
 
