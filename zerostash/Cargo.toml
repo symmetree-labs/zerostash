@@ -34,6 +34,7 @@ nix = { version = "0.26.2", default-features = false, features = ["user"] }
 abscissa_tokio= "0.7.0"
 abscissa_core= "0.7.0"
 regex = "1.8.1"
+fuse_mt = "0.6.0"
 
 secrecy = { version = "0.8.0", features = ["serde"] }
 
