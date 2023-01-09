@@ -36,6 +36,7 @@ abscissa_core= "0.7.0"
 regex = "1.8.1"
 fuse_mt = "0.6.0"
 ctrlc = "3.2.3"
+tracing = "0.1.37"
 
 secrecy = { version = "0.8.0", features = ["serde"] }
 

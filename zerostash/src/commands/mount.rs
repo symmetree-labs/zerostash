@@ -1,17 +1,20 @@
 //! `mount` subcommand
 
+use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::vec;
 use std::{collections::HashMap, path::Path};
+use tracing::debug;
 
 use std::io::Result;
 
 use crate::prelude::*;
 use fuse_mt::*;
 use infinitree::object::Reader;
-use infinitree::Infinitree;
+use infinitree::{ChunkPointer, Infinitree};
 use nix::libc;
 use zerostash_files::{restore, Entry, Files};
 
@@ -41,7 +44,7 @@ impl AsyncRunnable for Mount {
     }
 }
 
-fn mount(
+pub fn mount(
     stash: Infinitree<Files>,
     options: &restore::Options,
     mountpoint: &str,
@@ -51,7 +54,7 @@ fn mount(
     ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
         .expect("Error setting Ctrl-C handler");
 
-    let filesystem = SimpleFs::open(stash, options, destroy_tx).unwrap();
+    let filesystem = ZerostashFS::open(stash, options, destroy_tx).unwrap();
     let fuse_args = [OsStr::new("-o"), OsStr::new("fsname=zerostash")];
 
     let fs = fuse_mt::FuseMT::new(filesystem, 1);
@@ -68,22 +71,19 @@ fn mount(
     Ok(())
 }
 
-type DirPath = PathBuf;
-type FilePath = PathBuf;
-type FileContent = Vec<u8>;
-type Metadata = Arc<Entry>;
+type ChunkData = (Vec<u8>, usize, usize);
 
-struct SimpleFs {
+struct ZerostashFS {
+    commit_timestamp: SystemTime,
     destroy_tx: mpsc::SyncSender<()>,
     stash: Infinitree<Files>,
-    file_map: HashMap<FilePath, Metadata>,
-    file_content: Mutex<HashMap<FilePath, FileContent>>,
-    dir_map: HashMap<DirPath, Vec<DirectoryEntry>>,
-    file_attr_memory: Mutex<HashMap<PathBuf, FileAttr>>,
+    file_map: HashMap<PathBuf, Arc<Entry>>,
+    dir_map: HashMap<PathBuf, Vec<DirectoryEntry>>,
+    stack: Mutex<HashMap<PathBuf, RefCell<ChunkData>>>,
 }
 
 fn add_dir_to_map(
-    dir_map: &mut HashMap<DirPath, Vec<DirectoryEntry>>,
+    dir_map: &mut HashMap<PathBuf, Vec<DirectoryEntry>>,
     path: &Path,
     kind: FileType,
 ) {
@@ -131,13 +131,13 @@ pub fn match_filetype(file_type: &zerostash_files::FileType) -> FileType {
     }
 }
 
-impl SimpleFs {
+impl ZerostashFS {
     pub fn open(
         stash: Infinitree<Files>,
         options: &restore::Options,
         destroy_tx: mpsc::SyncSender<()>,
     ) -> Result<Self> {
-        let mut dir_map: HashMap<DirPath, Vec<DirectoryEntry>> = HashMap::new();
+        let mut dir_map = HashMap::new();
         dir_map.insert(PathBuf::new(), vec![]);
         let mut file_map = HashMap::new();
 
@@ -148,32 +148,38 @@ impl SimpleFs {
             add_dir_to_map(&mut dir_map, &file_name_path, filetype);
             file_map.insert(file_name_path, file.clone());
         }
+        let commit_timestamp = stash.commit_list().last().unwrap().metadata.time;
 
-        Ok(SimpleFs {
+        Ok(ZerostashFS {
+            commit_timestamp,
             destroy_tx,
             stash,
             file_map,
-            file_content: Mutex::new(HashMap::new()),
             dir_map,
-            file_attr_memory: Mutex::new(HashMap::new()),
+            stack: Mutex::new(HashMap::new()),
         })
     }
 }
 
 const TTL: Duration = Duration::from_secs(1);
 
-pub fn file_to_fuse(file: &Arc<Entry>) -> FileAttr {
+pub fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
+    let mtime = UNIX_EPOCH
+        + Duration::from_secs(file.unix_secs as u64)
+        + Duration::from_nanos(file.unix_nanos as u64);
     FileAttr {
         size: file.size,
         blocks: 1,
-        atime: SystemTime::now(),
-        mtime: SystemTime::now(),
-        ctime: SystemTime::now(),
+        atime,
+        mtime,
+        ctime: mtime,
         crtime: SystemTime::UNIX_EPOCH,
         kind: FileType::RegularFile,
         perm: 0o444,
         nlink: 1,
-        gid: file.unix_gid.unwrap_or(0),
+        gid: file
+            .unix_gid
+            .unwrap_or_else(|| nix::unistd::getgid().into()),
         uid: file.unix_uid.unwrap_or(0),
         rdev: 0,
         flags: 0,
@@ -184,27 +190,24 @@ fn strip_path(path: &Path) -> &Path {
     path.strip_prefix("/").unwrap()
 }
 
-impl FilesystemMT for SimpleFs {
+impl FilesystemMT for ZerostashFS {
     fn destroy(&self) {
+        debug!("destroy");
         self.destroy_tx
             .send(())
             .expect("Could not send signal on channel.")
     }
     fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
-        println!("getattr = {:?}", path);
+        debug!("gettattr = {:?}", path);
 
         let real_path = strip_path(path);
-        let mut file_attr_memory = self.file_attr_memory.lock().unwrap();
 
         if self.dir_map.contains_key(real_path) {
             Ok((TTL, DIR_ATTR))
-        } else if let Some(file_attr) = file_attr_memory.get(real_path) {
-            Ok((TTL, *file_attr))
         } else {
             match self.file_map.get(real_path) {
                 Some(metadata) => {
-                    let fuse = file_to_fuse(metadata);
-                    file_attr_memory.insert(real_path.into(), fuse);
+                    let fuse = file_to_fuse(metadata, self.commit_timestamp);
                     Ok((TTL, fuse))
                 }
                 None => Err(libc::ENOENT),
@@ -213,12 +216,12 @@ impl FilesystemMT for SimpleFs {
     }
 
     fn opendir(&self, _req: RequestInfo, _path: &Path, _flags: u32) -> ResultOpen {
-        println!("(opendir: {:?} flags = {:#o})", _path, _flags);
+        debug!("opendir");
         Ok((0, 0))
     }
 
     fn readdir(&self, _req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
-        println!("readdir: {:?}", path);
+        debug!("readdir: {:?}", path);
         Ok(self
             .dir_map
             .get(strip_path(path))
@@ -226,25 +229,10 @@ impl FilesystemMT for SimpleFs {
             .unwrap_or_default())
     }
     fn open(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
-        println!("open: {:?} (flags = {:#x})", path, _flags);
-
-        let mut file_content = self.file_content.lock().unwrap();
+        debug!("open: {:?}", path);
         let real_path = strip_path(path);
-
-        if file_content.get(real_path).is_none() {
-            let metadata = self.file_map.get(real_path).unwrap();
-            let mut objectreader = self.stash.storage_reader().unwrap();
-            let mut buf = vec![];
-            buf.resize(metadata.size as usize, 0);
-
-            for (start, cp) in metadata.chunks.iter() {
-                let start = *start as usize;
-                objectreader.read_chunk(cp, &mut buf[start..]).unwrap();
-            }
-
-            file_content.insert(PathBuf::from(real_path), buf);
-        }
-
+        let mut stack = self.stack.lock().unwrap();
+        stack.insert(real_path.to_path_buf(), RefCell::new((vec![], 0, 0)));
         Ok((0, 0))
     }
     fn read(
@@ -256,24 +244,102 @@ impl FilesystemMT for SimpleFs {
         size: u32,
         callback: impl FnOnce(ResultSlice<'_>) -> CallbackResult,
     ) -> CallbackResult {
-        println!("read: {:?} {:#x} @ {:#x}", path, size, offset);
-
-        let file_content = self.file_content.lock().unwrap();
+        debug!("read: {:?} {:#x} @ {:#x}", path, size, offset);
+        let size = size as usize;
+        let offset = offset as usize;
         let real_path = strip_path(path);
         let metadata = self.file_map.get(real_path).unwrap();
+        let metadata_size = metadata.size as usize;
+        let mut chunks = metadata.chunks.clone();
+        chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let mut stack = self.stack.lock().unwrap();
+        let stack = stack
+            .entry(real_path.to_path_buf())
+            .or_insert(RefCell::new((vec![], 0, 0)));
+        let mut stack = stack.borrow_mut();
+        let mut objectreader = self.stash.storage_reader().unwrap();
 
-        if offset > metadata.size {
+        if offset > metadata_size {
             return callback(Err(libc::EINVAL));
         }
 
-        let buf: Vec<u8> = match file_content.get(real_path) {
-            Some(buf) => buf.to_vec(),
-            None => return callback(Err(libc::ENOENT)),
-        };
+        let current_read = stack.2;
+        if current_read == offset {
+            let end = usize::min(size, metadata_size - offset);
+            if stack.0.len() < end {
+                loop {
+                    let (start, chunk_p) = chunks.get(stack.1).unwrap();
+                    let arc = (metadata_size as u64, Arc::new(ChunkPointer::default()));
+                    let (next_start, _) = chunks.get(stack.1 + 1).unwrap_or(&arc);
+                    let buf_size = next_start - start;
+                    let mut buf = vec![0; buf_size as usize];
+                    objectreader.read_chunk(chunk_p, &mut buf).unwrap();
+                    stack.0.append(&mut buf);
+                    stack.1 = stack.1.wrapping_add(1);
+                    if stack.0.len() >= usize::min(size, metadata_size - offset) {
+                        break;
+                    }
+                }
+            }
+            let ret_buf = stack.0[..end].to_vec();
+            stack.0 = stack.0[end..].to_vec();
+            stack.2 = offset + end;
+            return callback(Ok(&ret_buf));
+        }
 
-        let end = usize::min(offset as usize + size as usize, metadata.size as usize);
-        let buf: Vec<u8> = buf[offset as usize..end].to_vec();
+        for (i, (chunk_offset, _)) in chunks.iter().enumerate() {
+            let chunk_offset = *chunk_offset as usize;
+            if offset < chunk_offset {
+                let mut chunk_index = usize::max(i - 1, 0); //0
+                let mut buf = vec![];
+                let mut from;
+                let to;
+                let (start_offset, _) = chunks.get(chunk_index).unwrap();
+                loop {
+                    let (start, chunk_p) = chunks.get(chunk_index).unwrap();
+                    let arc = (metadata_size as u64, Arc::new(ChunkPointer::default()));
+                    let (next_start, _) = chunks.get(chunk_index + 1).unwrap_or(&arc);
+                    chunk_index += 1;
+                    let buf_size = next_start - start;
+                    let mut temp_buf = vec![0; buf_size as usize];
+                    objectreader.read_chunk(chunk_p, &mut temp_buf).unwrap();
+                    buf.append(&mut temp_buf);
+                    from = offset - *start_offset as usize;
+                    if buf[from..].len() > size {
+                        from = offset - *start_offset as usize;
+                        to = from + size;
+                        break;
+                    }
+                }
+                return callback(Ok(&buf[from..to]));
+            }
+        }
 
-        callback(Ok(&buf))
+        let (c_offset, pointer) = chunks.last().unwrap();
+        let c_offset = *c_offset as usize;
+        let buf_size = metadata_size - c_offset;
+        let mut buf = vec![0; buf_size];
+        objectreader.read_chunk(pointer, &mut buf).unwrap();
+        let from = offset - c_offset;
+        let to = usize::min(from + size, buf.len());
+        callback(Ok(&buf[from..to]))
+    }
+
+    fn release(
+        &self,
+        _req: RequestInfo,
+        path: &Path,
+        _fh: u64,
+        _flags: u32,
+        _lock_owner: u64,
+        _flush: bool,
+    ) -> ResultEmpty {
+        debug!("release {:?}", path);
+        let real_path = strip_path(path);
+        let mut stack = self.stack.lock().unwrap();
+
+        stack.remove(real_path);
+
+        Ok(())
     }
 }
