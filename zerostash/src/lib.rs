@@ -34,6 +34,8 @@ use tracing as _;
 use tracing_subscriber as _;
 #[cfg(test)]
 use walkdir as _;
+#[cfg(test)]
+use criterion as _;
 
 #[cfg(unix)]
 use dirs as _;

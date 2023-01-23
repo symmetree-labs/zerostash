@@ -1,4 +1,4 @@
-use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Files};
+use crate::{directory::Dir, files, rollsum::SeaSplit, splitter::FileSplitter, FileType, Files};
 use anyhow::Context;
 use flume as mpsc;
 use futures::future::join_all;
@@ -8,7 +8,7 @@ use infinitree::{
     Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
-use std::{fs, io::Read, num::NonZeroUsize, path::PathBuf};
+use std::{fs, io::Read, num::NonZeroUsize, path::PathBuf, sync::Mutex, vec};
 use tokio::task;
 use tracing::{debug, debug_span, error, trace, warn, Instrument};
 
@@ -90,7 +90,36 @@ impl Options {
             };
 
             let metadata = match metadata {
-                Ok(md) if md.is_file() || md.is_symlink() => md,
+                Ok(md) if cfg!(unix) && md.is_dir() => {
+                    let index = &stash.index().directories;
+                    let parent = path.parent().unwrap();
+                    let dir = Dir::new(path.clone(), FileType::Directory);
+                    match index.get(parent) {
+                        Some(parent_map) => {
+                            parent_map.lock().unwrap().push(dir);
+                        }
+                        None => {
+                            index.insert(parent.to_path_buf(), Mutex::new(vec![dir]));
+                        }
+                    }
+                    continue;
+                }
+                Ok(md) if md.is_file() || md.is_symlink() => {
+                    if cfg!(unix) {
+                        let index = &stash.index().directories;
+                        let file = Dir::new(path.clone(), FileType::File);
+                        let parent = path.parent().unwrap();
+                        match index.get(parent) {
+                            Some(path_map) => {
+                                path_map.lock().unwrap().push(file);
+                            }
+                            None => {
+                                index.insert(parent.to_path_buf(), Mutex::new(vec![file]));
+                            }
+                        }
+                    }
+                    md
+                }
                 Err(error) => {
                     warn!(%error, ?path, "failed to get file metadata; skipping");
                     continue;

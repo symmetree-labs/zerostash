@@ -1,22 +1,24 @@
 //! `mount` subcommand
 
-use std::cell::RefCell;
 use std::ffi::OsStr;
+
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::vec;
 use std::{collections::HashMap, path::Path};
+
+use infinitree::fields::VersionedMap;
 use tracing::debug;
+use zerostash_files::directory::Dir;
 
 use std::io::Result;
 
 use crate::prelude::*;
 use fuse_mt::*;
-use infinitree::object::Reader;
+use infinitree::object::{AEADReader, PoolRef, Reader};
 use infinitree::{ChunkPointer, Infinitree};
 use nix::libc;
-use zerostash_files::{restore, Entry, Files};
+use zerostash_files::{restore, transform, Entry, Files};
 
 #[derive(Command, Debug)]
 pub struct Mount {
@@ -71,40 +73,66 @@ pub fn mount(
     Ok(())
 }
 
-type ChunkData = (Vec<u8>, usize, usize);
-
-struct ZerostashFS {
-    commit_timestamp: SystemTime,
-    destroy_tx: mpsc::SyncSender<()>,
-    stash: Infinitree<Files>,
-    file_map: HashMap<PathBuf, Arc<Entry>>,
-    dir_map: HashMap<PathBuf, Vec<DirectoryEntry>>,
-    stack: Mutex<HashMap<PathBuf, RefCell<ChunkData>>>,
+#[derive(Default)]
+pub struct ChunkDataStack {
+    stack: Vec<u8>,
+    chunk_index: usize,
+    last_read_offset: usize,
 }
 
-fn add_dir_to_map(
-    dir_map: &mut HashMap<PathBuf, Vec<DirectoryEntry>>,
-    path: &Path,
-    kind: FileType,
-) {
-    let name = path
-        .file_name()
-        .expect("All files have filenames")
-        .to_owned();
-
-    let parent = path
-        .parent()
-        .expect("Paths should have parents")
-        .to_path_buf();
-
-    if !dir_map.contains_key(&parent) {
-        add_dir_to_map(dir_map, &parent, FileType::Directory);
+impl ChunkDataStack {
+    fn increment_index(&mut self) {
+        self.chunk_index = self.chunk_index.wrapping_add(1);
     }
+    fn split_buf(&mut self, end: usize) -> Vec<u8> {
+        let ret_buf = self.stack[..end].to_vec();
+        self.stack = self.stack[end..].to_vec();
+        ret_buf
+    }
+    fn update_current_read(&mut self, new_current: usize) {
+        self.last_read_offset = new_current;
+    }
+    #[inline(always)]
+    fn add_chunks(
+        &mut self,
+        chunks: &[(u64, Arc<ChunkPointer>)],
+        file_size: usize,
+        objectreader: &mut PoolRef<AEADReader>,
+    ) -> anyhow::Result<(), ChunkDataError> {
+        let (start, chunk_p) = match chunks.get(self.chunk_index) {
+            Some((a, b)) => (a, b),
+            None => return Err(ChunkDataError::NullChunkPointer),
+        };
+        let next_start = get_next_chunk_offset(file_size, chunks, self.chunk_index);
+        let mut temp_buf = vec![0; next_start - (*start as usize)];
+        objectreader.read_chunk(chunk_p, &mut temp_buf).unwrap();
+        self.stack.append(&mut temp_buf);
+        self.increment_index();
+        Ok(())
+    }
+}
 
-    dir_map
-        .entry(parent)
-        .or_default()
-        .push(DirectoryEntry { name, kind });
+fn get_next_chunk_offset(
+    file_size: usize,
+    chunks: &[(u64, Arc<ChunkPointer>)],
+    chunk_index: usize,
+) -> usize {
+    let arc = (file_size as u64, Arc::new(ChunkPointer::default()));
+    let (chunk_offset, _) = chunks.get(chunk_index + 1).unwrap_or(&arc);
+    *chunk_offset as usize
+}
+
+#[derive(Debug)]
+pub enum ChunkDataError {
+    NullChunkPointer,
+}
+
+pub struct ZerostashFS {
+    pub commit_timestamp: SystemTime,
+    pub destroy_tx: mpsc::SyncSender<()>,
+    pub stash: Infinitree<Files>,
+    pub dir_map: HashMap<PathBuf, Vec<DirectoryEntry>>,
+    pub stack: Mutex<HashMap<PathBuf, ChunkDataStack>>,
 }
 
 const DIR_ATTR: FileAttr = FileAttr {
@@ -131,30 +159,49 @@ pub fn match_filetype(file_type: &zerostash_files::FileType) -> FileType {
     }
 }
 
+pub fn walk_dir_up(index: &VersionedMap<PathBuf, Mutex<Vec<Dir>>>, path: PathBuf) {
+    if let Some(parent) = path.parent() {
+        let dir = Dir::new(path.clone(), zerostash_files::FileType::Directory);
+        match index.get(parent) {
+            Some(parent_map) => {
+                if !parent_map.lock().unwrap().contains(&dir) {
+                    parent_map.lock().unwrap().push(dir);
+                }
+            }
+            None => {
+                index.insert(parent.to_path_buf(), Mutex::new(vec![dir]));
+            }
+        }
+        walk_dir_up(index, parent.to_path_buf());
+    }
+}
+
 impl ZerostashFS {
     pub fn open(
         stash: Infinitree<Files>,
-        options: &restore::Options,
+        _options: &restore::Options,
         destroy_tx: mpsc::SyncSender<()>,
     ) -> Result<Self> {
-        let mut dir_map = HashMap::new();
-        dir_map.insert(PathBuf::new(), vec![]);
-        let mut file_map = HashMap::new();
+        let dir_map = HashMap::new();
+        stash.load_all().unwrap();
 
-        for file in options.list(&stash) {
-            let file_name_path = PathBuf::from(&file.name);
-            let filetype = match_filetype(&file.file_type);
-
-            add_dir_to_map(&mut dir_map, &file_name_path, filetype);
-            file_map.insert(file_name_path, file.clone());
-        }
         let commit_timestamp = stash.commit_list().last().unwrap().metadata.time;
+        let mut temp_paths: Vec<PathBuf> = vec![];
+
+        {
+            stash.index().directories.for_each(|k, _| {
+                temp_paths.push(k.to_path_buf());
+            });
+            for k in temp_paths.iter() {
+                let index = &stash.index().directories;
+                walk_dir_up(index, k.to_path_buf());
+            }
+        }
 
         Ok(ZerostashFS {
             commit_timestamp,
             destroy_tx,
             stash,
-            file_map,
             dir_map,
             stack: Mutex::new(HashMap::new()),
         })
@@ -180,7 +227,9 @@ pub fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
         gid: file
             .unix_gid
             .unwrap_or_else(|| nix::unistd::getgid().into()),
-        uid: file.unix_uid.unwrap_or(0),
+        uid: file
+            .unix_uid
+            .unwrap_or_else(|| nix::unistd::getuid().into()),
         rdev: 0,
         flags: 0,
     }
@@ -202,12 +251,13 @@ impl FilesystemMT for ZerostashFS {
 
         let real_path = strip_path(path);
 
-        if self.dir_map.contains_key(real_path) {
+        if self.stash.index().directories.contains(&path.to_path_buf()) {
             Ok((TTL, DIR_ATTR))
         } else {
-            match self.file_map.get(real_path) {
+            let path_string = real_path.to_str().unwrap();
+            match self.stash.index().files.get(path_string) {
                 Some(metadata) => {
-                    let fuse = file_to_fuse(metadata, self.commit_timestamp);
+                    let fuse = file_to_fuse(&metadata, self.commit_timestamp);
                     Ok((TTL, fuse))
                 }
                 None => Err(libc::ENOENT),
@@ -222,17 +272,16 @@ impl FilesystemMT for ZerostashFS {
 
     fn readdir(&self, _req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
         debug!("readdir: {:?}", path);
-        Ok(self
-            .dir_map
-            .get(strip_path(path))
-            .cloned()
-            .unwrap_or_default())
+        let entries = self.stash.index().directories.get(path).unwrap_or_default();
+        let entries = entries.lock().unwrap();
+        let transformed_entries = transform(entries.to_vec());
+        Ok(transformed_entries)
     }
     fn open(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
         debug!("open: {:?}", path);
         let real_path = strip_path(path);
         let mut stack = self.stack.lock().unwrap();
-        stack.insert(real_path.to_path_buf(), RefCell::new((vec![], 0, 0)));
+        stack.insert(real_path.to_path_buf(), ChunkDataStack::default());
         Ok((0, 0))
     }
     fn read(
@@ -245,84 +294,74 @@ impl FilesystemMT for ZerostashFS {
         callback: impl FnOnce(ResultSlice<'_>) -> CallbackResult,
     ) -> CallbackResult {
         debug!("read: {:?} {:#x} @ {:#x}", path, size, offset);
-        let size = size as usize;
-        let offset = offset as usize;
-        let real_path = strip_path(path);
-        let metadata = self.file_map.get(real_path).unwrap();
-        let metadata_size = metadata.size as usize;
-        let mut chunks = metadata.chunks.clone();
-        chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
-        let mut stack = self.stack.lock().unwrap();
-        let stack = stack
-            .entry(real_path.to_path_buf())
-            .or_insert(RefCell::new((vec![], 0, 0)));
-        let mut stack = stack.borrow_mut();
-        let mut objectreader = self.stash.storage_reader().unwrap();
 
-        if offset > metadata_size {
+        let real_path = strip_path(path);
+        let path_string = real_path.to_str().unwrap();
+        let metadata = self.stash.index().files.get(path_string).unwrap();
+        let file_size = metadata.size as usize;
+        let offset = offset as usize;
+
+        if offset > file_size {
             return callback(Err(libc::EINVAL));
         }
 
-        let current_read = stack.2;
-        if current_read == offset {
-            let end = usize::min(size, metadata_size - offset);
-            if stack.0.len() < end {
-                loop {
-                    let (start, chunk_p) = chunks.get(stack.1).unwrap();
-                    let arc = (metadata_size as u64, Arc::new(ChunkPointer::default()));
-                    let (next_start, _) = chunks.get(stack.1 + 1).unwrap_or(&arc);
-                    let buf_size = next_start - start;
-                    let mut buf = vec![0; buf_size as usize];
-                    objectreader.read_chunk(chunk_p, &mut buf).unwrap();
-                    stack.0.append(&mut buf);
-                    stack.1 = stack.1.wrapping_add(1);
-                    if stack.0.len() >= usize::min(size, metadata_size - offset) {
-                        break;
-                    }
-                }
-            }
-            let ret_buf = stack.0[..end].to_vec();
-            stack.0 = stack.0[end..].to_vec();
-            stack.2 = offset + end;
-            return callback(Ok(&ret_buf));
-        }
+        let size = size as usize;
+        let mut chunks = metadata.chunks.clone();
+        chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let mut objectreader = self.stash.storage_reader().unwrap();
 
-        for (i, (chunk_offset, _)) in chunks.iter().enumerate() {
-            let chunk_offset = *chunk_offset as usize;
-            if offset < chunk_offset {
-                let mut chunk_index = usize::max(i - 1, 0); //0
-                let mut buf = vec![];
-                let mut from;
-                let to;
-                let (start_offset, _) = chunks.get(chunk_index).unwrap();
-                loop {
-                    let (start, chunk_p) = chunks.get(chunk_index).unwrap();
-                    let arc = (metadata_size as u64, Arc::new(ChunkPointer::default()));
-                    let (next_start, _) = chunks.get(chunk_index + 1).unwrap_or(&arc);
-                    chunk_index += 1;
-                    let buf_size = next_start - start;
-                    let mut temp_buf = vec![0; buf_size as usize];
-                    objectreader.read_chunk(chunk_p, &mut temp_buf).unwrap();
-                    buf.append(&mut temp_buf);
-                    from = offset - *start_offset as usize;
-                    if buf[from..].len() > size {
-                        from = offset - *start_offset as usize;
-                        to = from + size;
-                        break;
+        {
+            let mut stack = self.stack.lock().unwrap();
+            let stack = stack
+                .entry(real_path.to_path_buf())
+                .or_insert_with(ChunkDataStack::default);
+
+            if stack.last_read_offset == offset {
+                let end = size.min(file_size - offset);
+                if stack.stack.len() < end {
+                    loop {
+                        if stack
+                            .add_chunks(&chunks, file_size, &mut objectreader)
+                            .is_err()
+                        {
+                            return callback(Err(libc::EINVAL));
+                        }
+                        if stack.stack.len() >= size.min(file_size - offset) {
+                            break;
+                        }
                     }
                 }
-                return callback(Ok(&buf[from..to]));
+
+                let ret_buf = stack.split_buf(end);
+                stack.update_current_read(offset + end);
+                return callback(Ok(&ret_buf));
             }
         }
 
-        let (c_offset, pointer) = chunks.last().unwrap();
-        let c_offset = *c_offset as usize;
-        let buf_size = metadata_size - c_offset;
-        let mut buf = vec![0; buf_size];
-        objectreader.read_chunk(pointer, &mut buf).unwrap();
-        let from = offset - c_offset;
-        let to = usize::min(from + size, buf.len());
-        callback(Ok(&buf[from..to]))
+        let mut buf = vec![];
+        let mut from = None;
+        for (i, (c_offset, pointer)) in chunks.iter().enumerate() {
+            let c_offset = *c_offset as usize;
+
+            let next_c_offset = get_next_chunk_offset(file_size, &chunks, i);
+
+            if !buf.is_empty() || offset < next_c_offset {
+                if from.is_none() {
+                    from = Some(offset - c_offset);
+                }
+                let mut temp_buf = vec![0; next_c_offset - c_offset];
+                objectreader.read_chunk(pointer, &mut temp_buf).unwrap();
+                buf.append(&mut temp_buf);
+            }
+
+            if let Some(from) = from {
+                if buf[from..].len() >= size.min(file_size - offset) {
+                    let to = buf.len().min(from + size);
+                    return callback(Ok(&buf[from..to]));
+                }
+            }
+        }
+        callback(Err(libc::EINVAL))
     }
 
     fn release(
