@@ -131,7 +131,6 @@ pub struct ZerostashFS {
     pub commit_timestamp: SystemTime,
     pub destroy_tx: mpsc::SyncSender<()>,
     pub stash: Infinitree<Files>,
-    pub dir_map: HashMap<PathBuf, Vec<DirectoryEntry>>,
     pub stack: Mutex<HashMap<PathBuf, ChunkDataStack>>,
 }
 
@@ -182,7 +181,6 @@ impl ZerostashFS {
         _options: &restore::Options,
         destroy_tx: mpsc::SyncSender<()>,
     ) -> Result<Self> {
-        let dir_map = HashMap::new();
         stash.load_all().unwrap();
 
         let commit_timestamp = stash.commit_list().last().unwrap().metadata.time;
@@ -202,7 +200,6 @@ impl ZerostashFS {
             commit_timestamp,
             destroy_tx,
             stash,
-            dir_map,
             stack: Mutex::new(HashMap::new()),
         })
     }
