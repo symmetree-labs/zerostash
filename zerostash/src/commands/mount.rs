@@ -2,6 +2,7 @@
 
 use std::ffi::OsStr;
 
+use std::mem;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -18,7 +19,7 @@ use fuse_mt::*;
 use infinitree::object::{AEADReader, PoolRef, Reader};
 use infinitree::{ChunkPointer, Infinitree};
 use nix::libc;
-use zerostash_files::{restore, transform, Entry, Files};
+use zerostash_files::{restore, Entry, Files};
 
 #[derive(Command, Debug)]
 pub struct Mount {
@@ -85,8 +86,8 @@ impl ChunkDataStack {
         self.chunk_index = self.chunk_index.wrapping_add(1);
     }
     fn split_buf(&mut self, end: usize) -> Vec<u8> {
-        let ret_buf = self.stack[..end].to_vec();
-        self.stack = self.stack[end..].to_vec();
+        let mut ret_buf = self.stack.split_off(end);
+        mem::swap(&mut self.stack, &mut ret_buf);
         ret_buf
     }
     fn update_current_read(&mut self, new_current: usize) {
@@ -100,7 +101,7 @@ impl ChunkDataStack {
         objectreader: &mut PoolRef<AEADReader>,
     ) -> anyhow::Result<(), ChunkDataError> {
         let (start, chunk_p) = match chunks.get(self.chunk_index) {
-            Some((a, b)) => (a, b),
+            Some(chunk) => chunk,
             None => return Err(ChunkDataError::NullChunkPointer),
         };
         let next_start = get_next_chunk_offset(file_size, chunks, self.chunk_index);
@@ -108,6 +109,7 @@ impl ChunkDataStack {
         objectreader.read_chunk(chunk_p, &mut temp_buf).unwrap();
         self.stack.append(&mut temp_buf);
         self.increment_index();
+
         Ok(())
     }
 }
@@ -243,6 +245,7 @@ impl FilesystemMT for ZerostashFS {
             .send(())
             .expect("Could not send signal on channel.")
     }
+
     fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
         debug!("gettattr = {:?}", path);
 
@@ -269,18 +272,24 @@ impl FilesystemMT for ZerostashFS {
 
     fn readdir(&self, _req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
         debug!("readdir: {:?}", path);
+
         let entries = self.stash.index().directories.get(path).unwrap_or_default();
         let entries = entries.lock().unwrap();
         let transformed_entries = transform(entries.to_vec());
+
         Ok(transformed_entries)
     }
+
     fn open(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
         debug!("open: {:?}", path);
+
         let real_path = strip_path(path);
         let mut stack = self.stack.lock().unwrap();
         stack.insert(real_path.to_path_buf(), ChunkDataStack::default());
+
         Ok((0, 0))
     }
+
     fn read(
         &self,
         _req: RequestInfo,
@@ -358,6 +367,7 @@ impl FilesystemMT for ZerostashFS {
                 }
             }
         }
+
         callback(Err(libc::EINVAL))
     }
 
@@ -379,3 +389,19 @@ impl FilesystemMT for ZerostashFS {
         Ok(())
     }
 }
+
+pub fn transform(entries: Vec<Dir>) -> Vec<DirectoryEntry> {
+    let mut vec = vec![];
+    for entry in entries.iter() {
+        let new_entry = DirectoryEntry {
+            name: entry.path.file_name().unwrap().into(),
+            kind: match entry.file_type {
+                zerostash_files::FileType::Directory => fuse_mt::FileType::Directory,
+                _ => fuse_mt::FileType::RegularFile,
+            },
+        };
+        vec.push(new_entry);
+    }
+    vec
+}
+

@@ -1,8 +1,6 @@
 use core::fmt;
 use std::path::PathBuf;
 
-use fuse_mt::DirectoryEntry;
-
 use crate::FileType;
 
 #[derive(Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -31,19 +29,4 @@ impl Dir {
             inside: parent,
         }
     }
-}
-
-pub fn transform(entries: Vec<Dir>) -> Vec<DirectoryEntry>{
-    let mut vec = vec![];
-    for entry in entries.iter() {
-        let new_entry = DirectoryEntry {
-            name: entry.path.file_name().unwrap().into(),
-            kind: match entry.file_type {
-                FileType::Directory => fuse_mt::FileType::Directory,
-                _ => fuse_mt::FileType::RegularFile,
-            },
-        };
-        vec.push(new_entry);
-    }
-    vec
 }

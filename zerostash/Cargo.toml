@@ -56,6 +56,9 @@ criterion = "0.3.6"
 [[bench]]
 name = "bench"
 harness = false
-#path = "../bench/bench.rs"
-#path = "../benches/bench.rs"
+path = "../bench/main.rs"
+
+[[bench-cri]]
+name = "bench-cri"
+harness = false
 path = "benches/bench.rs"
