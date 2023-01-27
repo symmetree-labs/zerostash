@@ -37,7 +37,7 @@ impl AsyncRunnable for Ls {
             })
             .count();
 
-        writeln!(stderr().lock(), "Total entries: {}", count).unwrap();
+        writeln!(stderr().lock(), "Total entries: {count}").unwrap();
     }
 }
 
@@ -62,7 +62,7 @@ impl Ls {
             };
 
             let mode = if let Some(mode) = entry.unix_perm {
-                format!("{:o}", mode)
+                format!("{mode:o}")
             } else if entry.readonly.unwrap_or_default() {
                 "ro".into()
             } else {
@@ -111,7 +111,7 @@ fn get_uid(uid: Option<u32>) -> String {
             .ok()
             .flatten()
             .map(|u| u.name)
-            .unwrap_or_else(|| format!("{}", uid)),
+            .unwrap_or_else(|| format!("{uid}")),
         None => "---".to_string(),
     }
 }
@@ -124,7 +124,7 @@ fn get_gid(gid: Option<u32>) -> String {
             .ok()
             .flatten()
             .map(|u| u.name)
-            .unwrap_or_else(|| format!("{}", gid)),
+            .unwrap_or_else(|| format!("{gid}")),
         None => "---".to_string(),
     }
 }

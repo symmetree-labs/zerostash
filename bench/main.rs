@@ -43,7 +43,7 @@ async fn main() {
         UsernamePassword::with_credentials(key.to_string(), key.to_string()).unwrap()
     };
 
-    println!("o: {}", output);
+    println!("o: {output}");
 
     if action == "both" || action == "commit" {
         let _ = std::fs::remove_dir_all(&output);

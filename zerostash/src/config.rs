@@ -337,10 +337,9 @@ backend = { type = "fs", path = "/path/to/stash" }
     fn no_scheme_gets_file_backend() {
         use super::Backend;
 
-        if let Backend::Filesystem { .. } = "example/path".parse::<Backend>().unwrap() {
-            assert!(true);
-        } else {
-            assert!(false);
-        }
+        assert!(matches!(
+            "example/path".parse::<Backend>().unwrap(),
+            Backend::Filesystem { .. },
+        ))
     }
 }

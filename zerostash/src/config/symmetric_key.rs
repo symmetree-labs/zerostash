@@ -138,7 +138,7 @@ fn ask_keychain_pass(stash: &str, user: &SecretString) -> Result<SecretString> {
 #[cfg(target_os = "macos")]
 fn get_keychain_pw(stash: &str, user: &str) -> Result<SecretString> {
     use security_framework::passwords::get_generic_password;
-    let account_name = format!("{}#:0s:#{}", stash, user);
+    let account_name = format!("{stash}#:0s:#{user}");
 
     Ok(get_generic_password(SERVICE_NAME, &account_name)
         .map(|pass| SecretString::new(String::from_utf8_lossy(&pass).to_string()))?)
@@ -147,7 +147,7 @@ fn get_keychain_pw(stash: &str, user: &str) -> Result<SecretString> {
 #[cfg(target_os = "macos")]
 fn set_keychain_pw(stash: &str, user: &str, pw: &str) -> Result<()> {
     use security_framework::passwords::set_generic_password;
-    let account_name = format!("{}#:0s:#{}", stash, user);
+    let account_name = format!("{stash}#:0s:#{user}");
 
     Ok(set_generic_password(
         SERVICE_NAME,

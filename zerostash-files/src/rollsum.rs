@@ -59,7 +59,7 @@ impl BupSplit {
         self.s1 = self.s1.wrapping_add(u32::from(add.wrapping_sub(drop)));
         self.s2 = self.s2.wrapping_add(
             self.s1
-                .wrapping_sub((WINDOWSIZE * (u32::from(drop) + ROLLSUM_CHAR_OFFSET)) as u32),
+                .wrapping_sub(WINDOWSIZE * (u32::from(drop) + ROLLSUM_CHAR_OFFSET)),
         );
     }
 
@@ -106,8 +106,8 @@ mod tests {
     fn rollsum_sum(buf: &[u8], ofs: usize, len: usize) -> u32 {
         use super::{BupSplit, Rollsum};
         let mut r = BupSplit::new();
-        for count in ofs..len {
-            r.roll(buf[count]);
+        for b in buf.iter().take(len).skip(ofs) {
+            r.roll(*b);
         }
         r.digest()
     }

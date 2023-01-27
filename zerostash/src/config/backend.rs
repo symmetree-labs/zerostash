@@ -201,17 +201,17 @@ mod test {
 
         assert_eq!(
             normalize_path(Path::new("../zerostash")),
-            canonicalize(format!("{}/../zerostash", current_dir)).unwrap()
+            canonicalize(format!("{current_dir}/../zerostash")).unwrap()
         );
 
         assert_eq!(
             normalize_path(Path::new("./src")),
-            canonicalize(format!("{}/src", current_dir)).unwrap()
+            canonicalize(format!("{current_dir}/src")).unwrap()
         );
 
         assert_eq!(
             normalize_path(Path::new("src")),
-            canonicalize(format!("{}/src", current_dir)).unwrap()
+            canonicalize(format!("{current_dir}/src")).unwrap()
         );
 
         assert_eq!(
