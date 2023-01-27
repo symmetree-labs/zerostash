@@ -46,12 +46,7 @@ pub struct Options {
     pub case_insensitive: bool,
 
     /// Respect ignore rules from parent directories (.gitignore and .ignore files)
-    #[clap(
-        short = 'P',
-        long = "inherit-parent-ignore",
-        default_value = "true",
-        parse(try_from_str)
-    )]
+    #[clap(short = 'P', long = "inherit-parent-ignore", default_value = "true")]
     pub parents: bool,
 
     /// Respect global gitignore rules (from `core.excludesFile` setting, or $XDG_CONFIG_HOME/git/ignore)

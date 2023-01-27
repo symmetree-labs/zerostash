@@ -72,30 +72,15 @@ impl FileType {
 #[derive(clap::Args, Clone, Debug, Default)]
 pub struct PreserveMetadata {
     /// Preserve permissions.
-    #[clap(
-        short = 'p',
-        long = "preserve-permissions",
-        default_value = "true",
-        parse(try_from_str)
-    )]
+    #[clap(short = 'p', long = "preserve-permissions", default_value = "true")]
     pub permissions: bool,
 
     /// Preserve owner/gid information. Requires root to restore.
-    #[clap(
-        short = 'o',
-        long = "preserve-ownership",
-        default_value = "true",
-        parse(try_from_str)
-    )]
+    #[clap(short = 'o', long = "preserve-ownership", default_value = "true")]
     pub ownership: bool,
 
     /// Preserve modification and creation times.
-    #[clap(
-        short = 't',
-        long = "preserve-times",
-        default_value = "true",
-        parse(try_from_str)
-    )]
+    #[clap(short = 't', long = "preserve-times", default_value = "true")]
     pub times: bool,
 }
 
@@ -138,7 +123,7 @@ impl From<&Entry> for PathBuf {
 
 impl From<&Entry> for DateTime<Utc> {
     fn from(e: &Entry) -> Self {
-        Utc.timestamp(e.unix_secs, e.unix_nanos)
+        Utc.timestamp_opt(e.unix_secs, e.unix_nanos).unwrap()
     }
 }
 

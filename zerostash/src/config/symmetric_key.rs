@@ -77,7 +77,16 @@ impl SymmetricKey {
     pub fn interactive_credentials(self, stash: &str) -> Result<(SecretString, SecretString)> {
         let user = match self.user {
             Some(ref u) => u.clone(),
-            None => rprompt::prompt_reply_stderr("Username: ")?.into(),
+            None => {
+                let stdin = std::io::stdin();
+                let stderr = std::io::stdout();
+                rprompt::prompt_reply_from_bufread(
+                    &mut stdin.lock(),
+                    &mut stderr.lock(),
+                    "Username: ",
+                )?
+                .into()
+            }
         };
 
         #[cfg(target_os = "macos")]

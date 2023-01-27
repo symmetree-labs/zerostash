@@ -11,40 +11,40 @@ categories = ["cryptography", "filesystem", "command-line-utilities"]
 
 
 [dependencies]
-anyhow = "1.0.65"
-thiserror = "1.0.37"
-clap = "3.2.22"
-infinitree = { version = "0.9.0", features = ["cryptobox", "yubikey"] }
-infinitree-backends = { version = "0.9.0", default-features = false, features = ["rustls"] }
+anyhow = "1.0.68"
+thiserror = "1.0.38"
+clap = "4.1.4"
+infinitree = { version = "0.9.1", features = ["cryptobox", "yubikey"] }
+infinitree-backends = { version = "0.9.1", default-features = false, features = ["rustls"] }
 zerostash-files = { version = "0.5.0", path = "../zerostash-files" }
-rpassword = "7.0.0"
-rprompt = "1.0.5"
-serde = { version = "1.0.145", features = ["serde_derive"] }
-toml = "0.5.9"
+rpassword = "7.2.0"
+rprompt = "2.0.2"
+serde = { version = "1.0.152", features = ["serde_derive"] }
+toml = "0.7.0"
 bech32 = "0.9.1"
 
 dirs = "4.0.0"
 xdg = "2.4.1"
 
-async-trait = "0.1.57"
-humansize = "1.1.1"
-chrono = { version = "0.4.22", default-features = false, features = ["std", "clock"] }
-termcolor = "1.1.3"
-nix = { version = "0.24.2", default-features = false, features = ["user"] }
-abscissa_tokio= "0.6.0"
-abscissa_core= "0.6.0"
-regex = "1.6.0"
+async-trait = "0.1.63"
+humansize = "2.1.3"
+chrono = { version = "0.4.23", default-features = false, features = ["std", "clock"] }
+termcolor = "1.2.0"
+nix = { version = "0.26.2", default-features = false, features = ["user"] }
+abscissa_tokio= "0.7.0"
+abscissa_core= "0.7.0"
+regex = "1.7.1"
 
 secrecy = { version = "0.8.0", features = ["serde"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-security-framework = "2.7.0"
+security-framework = "2.8.1"
 
 [dev-dependencies]
-abscissa_core = { version = "0.6.0", features = ["testing"] }
-abscissa_tokio = "0.6.0"
+abscissa_core = { version = "0.7.0", features = ["testing"] }
+abscissa_tokio = "0.7.0"
 walkdir = "2.3.2"
-tokio = { version = "1.21.2", features = ["rt", "macros", "rt-multi-thread"] }
+tokio = { version = "1.24.2", features = ["rt", "macros", "rt-multi-thread"] }
 tracing-subscriber = "0.3.16"
 tracing = "0.1.37"
 

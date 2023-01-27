@@ -3,9 +3,9 @@
 use infinitree::{backends, crypto::UsernamePassword, Infinitree};
 use zerostash_files::{restore, store, Files};
 
-use std::{collections::HashMap, env::args, fs::metadata, time::Instant};
+use std::{collections::HashMap, env::args, fs::metadata, num::NonZeroUsize, time::Instant};
 
-const MAX_OBJECT_LRU: usize = 64;
+const MAX_OBJECT_LRU: Option<NonZeroUsize> = NonZeroUsize::new(64);
 
 fn mb(m: f64) -> f64 {
     m / 1024.0 / 1024.0
@@ -55,7 +55,8 @@ async fn main() {
         // but i can't be bothered to find it
         let (store_time, commit_time, ol, fl, cl, creuse_sum, creuse_cnt, ssize, tlen, tsize) = {
             let mut repo = Infinitree::<Files>::empty(
-                backends::Directory::with_open_file_limit(&output, MAX_OBJECT_LRU).unwrap(),
+                backends::Directory::with_open_file_limit(&output, MAX_OBJECT_LRU.unwrap())
+                    .unwrap(),
                 (key)(),
             )
             .unwrap();
@@ -152,7 +153,7 @@ async fn main() {
         let (tsize, _tlen) = dir_stat(&output);
 
         let repo: Infinitree<Files> = Infinitree::open(
-            backends::Directory::with_open_file_limit(&output, MAX_OBJECT_LRU).unwrap(),
+            backends::Directory::with_open_file_limit(&output, MAX_OBJECT_LRU.unwrap()).unwrap(),
             (key)(),
         )
         .unwrap();
