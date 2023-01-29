@@ -4,11 +4,19 @@ use flume as mpsc;
 use futures::future::join_all;
 use ignore::{DirEntry, WalkBuilder};
 use infinitree::{
+    fields::VersionedMap,
     object::{Pool, Writer},
     Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
-use std::{fs, io::Read, num::NonZeroUsize, path::PathBuf, sync::Mutex, vec};
+use std::{
+    fs,
+    io::Read,
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+    sync::Mutex,
+    vec,
+};
 use tokio::task;
 use tracing::{debug, debug_span, error, trace, warn, Instrument};
 
@@ -92,31 +100,15 @@ impl Options {
             let metadata = match metadata {
                 Ok(md) if cfg!(unix) && md.is_dir() => {
                     let index = &stash.index().directories;
-                    let parent = path.parent().unwrap();
                     let dir = Dir::new(path.clone(), FileType::Directory);
-                    match index.get(parent) {
-                        Some(parent_map) => {
-                            parent_map.lock().unwrap().push(dir);
-                        }
-                        None => {
-                            index.insert(parent.to_path_buf(), Mutex::new(vec![dir]));
-                        }
-                    }
+                    insert_directories(index, &path, dir);
                     continue;
                 }
                 Ok(md) if md.is_file() || md.is_symlink() => {
                     if cfg!(unix) {
                         let index = &stash.index().directories;
                         let file = Dir::new(path.clone(), FileType::File);
-                        let parent = path.parent().unwrap();
-                        match index.get(parent) {
-                            Some(path_map) => {
-                                path_map.lock().unwrap().push(file);
-                            }
-                            None => {
-                                index.insert(parent.to_path_buf(), Mutex::new(vec![file]));
-                            }
-                        }
+                        insert_directories(index, &path, file);
                     }
                     md
                 }
@@ -337,5 +329,17 @@ impl MmappedFile {
                 .map(&self._file)
                 .unwrap()
         })
+    }
+}
+
+fn insert_directories(index: &VersionedMap<PathBuf, Mutex<Vec<Dir>>>, path: &Path, file: Dir) {
+    let parent = path.parent().unwrap();
+    match index.get(parent) {
+        Some(parent_map) => {
+            parent_map.lock().unwrap().push(file);
+        }
+        None => {
+            index.insert(parent.to_path_buf(), Mutex::new(vec![file]));
+        }
     }
 }

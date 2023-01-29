@@ -25,6 +25,7 @@ bech32 = "0.9.1"
 
 dirs = "5.0.1"
 xdg = "2.5.0"
+scc = "1.8.0"
 
 async-trait = "0.1.68"
 humansize = "2.1.3"
@@ -53,12 +54,12 @@ tracing = "0.1.37"
 criterion = "0.3.6"
 
 
-[[bench]]
-name = "bench"
-harness = false
-path = "../bench/main.rs"
+#[[bench]]
+#name = "bench"
+#harness = false
+#path = "../bench/main.rs"
 
-[[bench-cri]]
+[[bench]]
 name = "bench-cri"
 harness = false
 path = "benches/bench.rs"

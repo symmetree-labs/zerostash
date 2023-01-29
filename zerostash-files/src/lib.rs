@@ -8,10 +8,10 @@ use directory::Dir;
 use infinitree::*;
 
 pub mod directory;
+pub use directory::*;
 mod files;
 pub use files::*;
 mod zfs_snapshots;
-pub use directory::*;
 pub use zfs_snapshots::*;
 pub mod rollsum;
 pub mod splitter;

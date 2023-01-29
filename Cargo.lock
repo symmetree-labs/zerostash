@@ -3402,6 +3402,7 @@ dependencies = [
  "regex",
  "rpassword",
  "rprompt",
+ "scc",
  "secrecy",
  "security-framework",
  "serde",

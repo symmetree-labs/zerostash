@@ -3,10 +3,11 @@
 use std::ffi::OsStr;
 
 use std::mem;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{collections::HashMap, path::Path};
+use std::vec::IntoIter;
 
 use infinitree::fields::VersionedMap;
 use tracing::debug;
@@ -74,54 +75,31 @@ pub fn mount(
     Ok(())
 }
 
-#[derive(Default)]
-pub struct ChunkDataStack {
-    stack: Vec<u8>,
-    chunk_index: usize,
-    last_read_offset: usize,
+type Chunks = IntoIter<(u64, Arc<ChunkPointer>)>;
+
+pub struct ChunksIter {
+    pub chunks: std::iter::Peekable<Chunks>,
 }
 
-impl ChunkDataStack {
-    fn increment_index(&mut self) {
-        self.chunk_index = self.chunk_index.wrapping_add(1);
+impl ChunksIter {
+    fn new(chunks: Chunks) -> Self {
+        let chunks = chunks.peekable();
+        Self { chunks }
     }
-    fn split_buf(&mut self, end: usize) -> Vec<u8> {
-        let mut ret_buf = self.stack.split_off(end);
-        mem::swap(&mut self.stack, &mut ret_buf);
-        ret_buf
+
+    fn peek_next_offset(&mut self, file_size: usize) -> usize {
+        let arc = (file_size as u64, Arc::new(ChunkPointer::default()));
+        let (chunk_offset, _) = self.chunks.peek().unwrap_or(&arc);
+        *chunk_offset as usize
     }
-    fn update_current_read(&mut self, new_current: usize) {
-        self.last_read_offset = new_current;
-    }
-    #[inline(always)]
-    fn add_chunks(
-        &mut self,
-        chunks: &[(u64, Arc<ChunkPointer>)],
-        file_size: usize,
-        objectreader: &mut PoolRef<AEADReader>,
-    ) -> anyhow::Result<(), ChunkDataError> {
-        let (start, chunk_p) = match chunks.get(self.chunk_index) {
-            Some(chunk) => chunk,
-            None => return Err(ChunkDataError::NullChunkPointer),
+
+    fn get_next(&mut self) -> Option<(usize, Arc<ChunkPointer>)> {
+        let (c_offset, pointer) = match self.chunks.next() {
+            Some((o, p)) => (o as usize, p),
+            None => return None,
         };
-        let next_start = get_next_chunk_offset(file_size, chunks, self.chunk_index);
-        let mut temp_buf = vec![0; next_start - (*start as usize)];
-        objectreader.read_chunk(chunk_p, &mut temp_buf).unwrap();
-        self.stack.append(&mut temp_buf);
-        self.increment_index();
-
-        Ok(())
+        Some((c_offset, pointer))
     }
-}
-
-fn get_next_chunk_offset(
-    file_size: usize,
-    chunks: &[(u64, Arc<ChunkPointer>)],
-    chunk_index: usize,
-) -> usize {
-    let arc = (file_size as u64, Arc::new(ChunkPointer::default()));
-    let (chunk_offset, _) = chunks.get(chunk_index + 1).unwrap_or(&arc);
-    *chunk_offset as usize
 }
 
 #[derive(Debug)]
@@ -129,11 +107,108 @@ pub enum ChunkDataError {
     NullChunkPointer,
 }
 
+pub struct ChunkStackCache {
+    pub chunks: ChunksIter,
+    pub buf: Vec<u8>,
+    pub last_read_offset: usize,
+}
+
+impl ChunkStackCache {
+    fn new(chunks: ChunksIter) -> Self {
+        Self {
+            chunks,
+            buf: Default::default(),
+            last_read_offset: Default::default(),
+        }
+    }
+
+    fn set_current_read(&mut self, val: usize) {
+        self.last_read_offset = val;
+    }
+
+    fn split_buf(&mut self, end: usize) -> Vec<u8> {
+        let mut ret_buf = self.buf.split_off(end);
+        mem::swap(&mut self.buf, &mut ret_buf);
+        ret_buf
+    }
+
+    #[inline(always)]
+    fn read_next(
+        &mut self,
+        file_size: usize,
+        objectreader: &mut PoolRef<AEADReader>,
+    ) -> anyhow::Result<(), ChunkDataError> {
+        let (c_offset, pointer) = match self.chunks.get_next() {
+            Some(chunk) => chunk,
+            None => return Err(ChunkDataError::NullChunkPointer),
+        };
+        let next_c_offset = self.chunks.peek_next_offset(file_size);
+
+        let mut temp_buf = vec![0; next_c_offset - c_offset];
+        objectreader.read_chunk(&pointer, &mut temp_buf).unwrap();
+        self.buf.append(&mut temp_buf);
+
+        Ok(())
+    }
+}
+
+pub struct ChunkStack {
+    pub chunks: ChunksIter,
+    pub buf: Vec<u8>,
+    pub start: Option<usize>,
+    pub end: Option<usize>,
+}
+
+impl ChunkStack {
+    fn new(chunks: ChunksIter) -> Self {
+        Self {
+            chunks,
+            buf: Default::default(),
+            start: None,
+            end: None,
+        }
+    }
+
+    #[inline(always)]
+    fn read_next(
+        &mut self,
+        file_size: usize,
+        offset: usize,
+        objectreader: &mut PoolRef<AEADReader>,
+    ) -> anyhow::Result<(), ChunkDataError> {
+        let (c_offset, pointer) = match self.chunks.get_next() {
+            Some(chunk) => chunk,
+            None => return Err(ChunkDataError::NullChunkPointer),
+        };
+        let next_c_offset = self.chunks.peek_next_offset(file_size);
+
+        if !self.buf.is_empty() || offset < next_c_offset {
+            if self.start.is_none() {
+                self.start = Some(offset - c_offset);
+            }
+            let mut temp_buf = vec![0; next_c_offset - c_offset];
+            objectreader.read_chunk(&pointer, &mut temp_buf).unwrap();
+            self.buf.append(&mut temp_buf);
+        }
+        Ok(())
+    }
+
+    fn is_full(&mut self, size: usize, file_size: usize, offset: usize) -> bool {
+        if let Some(from) = self.start {
+            if self.buf[from..].len() >= size.min(file_size - offset) {
+                self.end = Some(self.buf.len().min(from + size));
+                return true;
+            }
+        }
+        false
+    }
+}
+
 pub struct ZerostashFS {
     pub commit_timestamp: SystemTime,
     pub destroy_tx: mpsc::SyncSender<()>,
     pub stash: Infinitree<Files>,
-    pub stack: Mutex<HashMap<PathBuf, ChunkDataStack>>,
+    pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
 }
 
 const DIR_ATTR: FileAttr = FileAttr {
@@ -186,7 +261,7 @@ impl ZerostashFS {
         stash.load_all().unwrap();
 
         let commit_timestamp = stash.commit_list().last().unwrap().metadata.time;
-        let mut temp_paths: Vec<PathBuf> = vec![];
+        let mut temp_paths = vec![];
 
         {
             stash.index().directories.for_each(|k, _| {
@@ -202,7 +277,7 @@ impl ZerostashFS {
             commit_timestamp,
             destroy_tx,
             stash,
-            stack: Mutex::new(HashMap::new()),
+            chunks_cache: scc::HashMap::new(),
         })
     }
 }
@@ -282,11 +357,6 @@ impl FilesystemMT for ZerostashFS {
 
     fn open(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
         debug!("open: {:?}", path);
-
-        let real_path = strip_path(path);
-        let mut stack = self.stack.lock().unwrap();
-        stack.insert(real_path.to_path_buf(), ChunkDataStack::default());
-
         Ok((0, 0))
     }
 
@@ -312,63 +382,55 @@ impl FilesystemMT for ZerostashFS {
         }
 
         let size = size as usize;
-        let mut chunks = metadata.chunks.clone();
-        chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
-        let mut objectreader = self.stash.storage_reader().unwrap();
+        let sort_chunks = || {
+            let mut chunks = metadata.chunks.clone();
+            chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
+            chunks.into_iter()
+        };
+        let mut obj_reader = self.stash.storage_reader().unwrap();
 
         {
-            let mut stack = self.stack.lock().unwrap();
-            let stack = stack
+            let mut chunks = self
+                .chunks_cache
                 .entry(real_path.to_path_buf())
-                .or_insert_with(ChunkDataStack::default);
+                .or_insert_with(|| ChunkStackCache::new(ChunksIter::new(sort_chunks())));
+            let chunks = chunks.get_mut();
 
-            if stack.last_read_offset == offset {
+            if chunks.last_read_offset == offset {
                 let end = size.min(file_size - offset);
-                if stack.stack.len() < end {
+                if chunks.buf.len() < end {
                     loop {
-                        if stack
-                            .add_chunks(&chunks, file_size, &mut objectreader)
-                            .is_err()
-                        {
+                        if chunks.read_next(file_size, &mut obj_reader).is_err() {
                             return callback(Err(libc::EINVAL));
                         }
-                        if stack.stack.len() >= size.min(file_size - offset) {
+
+                        if chunks.buf.len() >= end {
                             break;
                         }
                     }
                 }
-
-                let ret_buf = stack.split_buf(end);
-                stack.update_current_read(offset + end);
+                let ret_buf = chunks.split_buf(end);
+                chunks.set_current_read(offset + end);
                 return callback(Ok(&ret_buf));
             }
         }
 
-        let mut buf = vec![];
-        let mut from = None;
-        for (i, (c_offset, pointer)) in chunks.iter().enumerate() {
-            let c_offset = *c_offset as usize;
+        let mut chunks = ChunkStack::new(ChunksIter::new(sort_chunks()));
 
-            let next_c_offset = get_next_chunk_offset(file_size, &chunks, i);
-
-            if !buf.is_empty() || offset < next_c_offset {
-                if from.is_none() {
-                    from = Some(offset - c_offset);
-                }
-                let mut temp_buf = vec![0; next_c_offset - c_offset];
-                objectreader.read_chunk(pointer, &mut temp_buf).unwrap();
-                buf.append(&mut temp_buf);
+        loop {
+            if chunks
+                .read_next(file_size, offset, &mut obj_reader)
+                .is_err()
+            {
+                return callback(Err(libc::EINVAL));
             }
 
-            if let Some(from) = from {
-                if buf[from..].len() >= size.min(file_size - offset) {
-                    let to = buf.len().min(from + size);
-                    return callback(Ok(&buf[from..to]));
-                }
+            if chunks.is_full(size, file_size, offset) {
+                let from = chunks.start.unwrap();
+                let to = chunks.end.unwrap();
+                return callback(Ok(&chunks.buf[from..to]));
             }
         }
-
-        callback(Err(libc::EINVAL))
     }
 
     fn release(
@@ -382,9 +444,8 @@ impl FilesystemMT for ZerostashFS {
     ) -> ResultEmpty {
         debug!("release {:?}", path);
         let real_path = strip_path(path);
-        let mut stack = self.stack.lock().unwrap();
 
-        stack.remove(real_path);
+        self.chunks_cache.remove(real_path);
 
         Ok(())
     }
@@ -404,4 +465,3 @@ pub fn transform(entries: Vec<Dir>) -> Vec<DirectoryEntry> {
     }
     vec
 }
-
