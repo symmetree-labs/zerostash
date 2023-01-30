@@ -75,6 +75,237 @@ pub fn mount(
     Ok(())
 }
 
+pub struct ZerostashFS {
+    pub base_path: PathBuf,
+    pub commit_timestamp: SystemTime,
+    pub destroy_tx: mpsc::SyncSender<()>,
+    pub stash: Infinitree<Files>,
+    pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
+}
+
+
+impl ZerostashFS {
+    pub fn open(
+        stash: Infinitree<Files>,
+        _options: &restore::Options,
+        destroy_tx: mpsc::SyncSender<()>,
+    ) -> Result<Self> {
+        stash.load_all().unwrap();
+
+        let commit_timestamp = stash.commit_list().last().unwrap().metadata.time;
+        let mut temp_paths = vec![];
+
+        {
+            stash.index().directories.for_each(|k, _| {
+                temp_paths.push(k.to_path_buf());
+            });
+            let base_path = common_directory(temp_paths.clone()).unwrap();
+            for k in temp_paths.iter() {
+                let index = &stash.index().directories;
+                walk_dir_up(index, k.to_path_buf(), &base_path);
+            }
+        }
+
+        let base_path = common_directory(temp_paths).unwrap();
+
+        Ok(ZerostashFS {
+            base_path,
+            commit_timestamp,
+            destroy_tx,
+            stash,
+            chunks_cache: scc::HashMap::new(),
+        })
+    }
+}
+
+pub fn walk_dir_up(
+    index: &VersionedMap<PathBuf, Mutex<Vec<Dir>>>,
+    path: PathBuf,
+    base_path: &PathBuf,
+) {
+    if let Some(parent) = path.parent() {
+        if parent != base_path.parent().unwrap() {
+            let dir = Dir::new(path.clone(), zerostash_files::FileType::Directory);
+            match index.get(parent) {
+                Some(parent_map) => {
+                    if !parent_map.lock().unwrap().contains(&dir) {
+                        parent_map.lock().unwrap().push(dir);
+                    }
+                }
+                None => {
+                    index.insert(parent.to_path_buf(), Mutex::new(vec![dir]));
+                }
+            }
+            walk_dir_up(index, parent.to_path_buf(), base_path);
+        }
+    }
+}
+
+fn common_directory(paths: Vec<PathBuf>) -> Option<PathBuf> {
+    if paths.is_empty() {
+        return None;
+    }
+
+    let mut common_dir = paths[0].clone();
+
+    for path in paths.iter().skip(1) {
+        while !path.starts_with(&common_dir) {
+            common_dir.pop();
+            if common_dir.components().count() == 0 {
+                return None;
+            }
+        }
+    }
+
+    Some(common_dir)
+}
+
+impl FilesystemMT for ZerostashFS {
+    fn destroy(&self) {
+        debug!("destroy");
+        self.destroy_tx
+            .send(())
+            .expect("Could not send signal on channel.")
+    }
+
+    fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
+        debug!("gettattr = {:?}", path);
+
+        let path = self.base_path.join(strip_path(path));
+        if self.stash.index().directories.contains(&path) {
+            Ok((TTL, DIR_ATTR))
+        } else {
+            let real_path = strip_path(&path);
+            let path_string = real_path.to_str().unwrap();
+            match self.stash.index().files.get(path_string) {
+                Some(metadata) => {
+                    let fuse = file_to_fuse(&metadata, self.commit_timestamp);
+                    Ok((TTL, fuse))
+                }
+                None => Err(libc::ENOENT),
+            }
+        }
+    }
+
+    fn opendir(&self, _req: RequestInfo, _path: &Path, _flags: u32) -> ResultOpen {
+        debug!("opendir");
+        Ok((0, 0))
+    }
+
+    fn readdir(&self, _req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
+        debug!("readdir: {:?}", path);
+
+        let path = self.base_path.join(strip_path(path));
+        let entries = self
+            .stash
+            .index()
+            .directories
+            .get(&path)
+            .unwrap_or_default();
+        let entries = entries.lock().unwrap();
+        let transformed_entries = transform(entries.to_vec());
+
+        Ok(transformed_entries)
+    }
+
+    fn open(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
+        debug!("open: {:?}", path);
+        Ok((0, 0))
+    }
+
+    fn read(
+        &self,
+        _req: RequestInfo,
+        path: &Path,
+        _fh: u64,
+        offset: u64,
+        size: u32,
+        callback: impl FnOnce(ResultSlice<'_>) -> CallbackResult,
+    ) -> CallbackResult {
+        debug!("read: {:?} {:#x} @ {:#x}", path, size, offset);
+
+        let path = self.base_path.join(strip_path(path));
+
+        let real_path = strip_path(&path);
+        let path_string = real_path.to_str().unwrap();
+        let metadata = self.stash.index().files.get(path_string).unwrap();
+        let file_size = metadata.size as usize;
+        let offset = offset as usize;
+
+        if offset > file_size {
+            return callback(Err(libc::EINVAL));
+        }
+
+        let size = size as usize;
+        let sort_chunks = || {
+            let mut chunks = metadata.chunks.clone();
+            chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
+            chunks.into_iter()
+        };
+        let mut obj_reader = self.stash.storage_reader().unwrap();
+
+        {
+            let mut chunks = self
+                .chunks_cache
+                .entry(path)
+                .or_insert_with(|| ChunkStackCache::new(ChunksIter::new(sort_chunks())));
+            let chunks = chunks.get_mut();
+
+            if chunks.last_read_offset == offset {
+                let end = size.min(file_size - offset);
+                if chunks.buf.len() < end {
+                    loop {
+                        if chunks.read_next(file_size, &mut obj_reader).is_err() {
+                            return callback(Err(libc::EINVAL));
+                        }
+
+                        if chunks.buf.len() >= end {
+                            break;
+                        }
+                    }
+                }
+                let ret_buf = chunks.split_buf(end);
+                chunks.set_current_read(offset + end);
+                return callback(Ok(&ret_buf));
+            }
+        }
+
+        let mut chunks = ChunkStack::new(ChunksIter::new(sort_chunks()));
+
+        loop {
+            if chunks
+                .read_next(file_size, offset, &mut obj_reader)
+                .is_err()
+            {
+                return callback(Err(libc::EINVAL));
+            }
+
+            if chunks.is_full(size, file_size, offset) {
+                let from = chunks.start.unwrap();
+                let to = chunks.end.unwrap();
+                return callback(Ok(&chunks.buf[from..to]));
+            }
+        }
+    }
+
+    fn release(
+        &self,
+        _req: RequestInfo,
+        path: &Path,
+        _fh: u64,
+        _flags: u32,
+        _lock_owner: u64,
+        _flush: bool,
+    ) -> ResultEmpty {
+        debug!("release {:?}", path);
+        let path = self.base_path.join(strip_path(path));
+
+        self.chunks_cache.remove(&path);
+
+        Ok(())
+    }
+}
+
 type Chunks = IntoIter<(u64, Arc<ChunkPointer>)>;
 
 pub struct ChunksIter {
@@ -204,12 +435,8 @@ impl ChunkStack {
     }
 }
 
-pub struct ZerostashFS {
-    pub commit_timestamp: SystemTime,
-    pub destroy_tx: mpsc::SyncSender<()>,
-    pub stash: Infinitree<Files>,
-    pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
-}
+
+const TTL: Duration = Duration::from_secs(1);
 
 const DIR_ATTR: FileAttr = FileAttr {
     size: 0,
@@ -227,64 +454,22 @@ const DIR_ATTR: FileAttr = FileAttr {
     flags: 0,
 };
 
-pub fn match_filetype(file_type: &zerostash_files::FileType) -> FileType {
-    match file_type {
-        zerostash_files::FileType::File => FileType::RegularFile,
-        zerostash_files::FileType::Symlink(_) => FileType::Symlink,
-        zerostash_files::FileType::Directory => panic!("Didnt expect a directory!"),
+fn transform(entries: Vec<Dir>) -> Vec<DirectoryEntry> {
+    let mut vec = vec![];
+    for entry in entries.iter() {
+        let new_entry = DirectoryEntry {
+            name: entry.path.file_name().unwrap().into(),
+            kind: match entry.file_type {
+                zerostash_files::FileType::Directory => fuse_mt::FileType::Directory,
+                _ => fuse_mt::FileType::RegularFile,
+            },
+        };
+        vec.push(new_entry);
     }
+    vec
 }
 
-pub fn walk_dir_up(index: &VersionedMap<PathBuf, Mutex<Vec<Dir>>>, path: PathBuf) {
-    if let Some(parent) = path.parent() {
-        let dir = Dir::new(path.clone(), zerostash_files::FileType::Directory);
-        match index.get(parent) {
-            Some(parent_map) => {
-                if !parent_map.lock().unwrap().contains(&dir) {
-                    parent_map.lock().unwrap().push(dir);
-                }
-            }
-            None => {
-                index.insert(parent.to_path_buf(), Mutex::new(vec![dir]));
-            }
-        }
-        walk_dir_up(index, parent.to_path_buf());
-    }
-}
-
-impl ZerostashFS {
-    pub fn open(
-        stash: Infinitree<Files>,
-        _options: &restore::Options,
-        destroy_tx: mpsc::SyncSender<()>,
-    ) -> Result<Self> {
-        stash.load_all().unwrap();
-
-        let commit_timestamp = stash.commit_list().last().unwrap().metadata.time;
-        let mut temp_paths = vec![];
-
-        {
-            stash.index().directories.for_each(|k, _| {
-                temp_paths.push(k.to_path_buf());
-            });
-            for k in temp_paths.iter() {
-                let index = &stash.index().directories;
-                walk_dir_up(index, k.to_path_buf());
-            }
-        }
-
-        Ok(ZerostashFS {
-            commit_timestamp,
-            destroy_tx,
-            stash,
-            chunks_cache: scc::HashMap::new(),
-        })
-    }
-}
-
-const TTL: Duration = Duration::from_secs(1);
-
-pub fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
+fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
     let mtime = UNIX_EPOCH
         + Duration::from_secs(file.unix_secs as u64)
         + Duration::from_nanos(file.unix_nanos as u64);
@@ -311,157 +496,4 @@ pub fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
 
 fn strip_path(path: &Path) -> &Path {
     path.strip_prefix("/").unwrap()
-}
-
-impl FilesystemMT for ZerostashFS {
-    fn destroy(&self) {
-        debug!("destroy");
-        self.destroy_tx
-            .send(())
-            .expect("Could not send signal on channel.")
-    }
-
-    fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
-        debug!("gettattr = {:?}", path);
-
-        let real_path = strip_path(path);
-
-        if self.stash.index().directories.contains(&path.to_path_buf()) {
-            Ok((TTL, DIR_ATTR))
-        } else {
-            let path_string = real_path.to_str().unwrap();
-            match self.stash.index().files.get(path_string) {
-                Some(metadata) => {
-                    let fuse = file_to_fuse(&metadata, self.commit_timestamp);
-                    Ok((TTL, fuse))
-                }
-                None => Err(libc::ENOENT),
-            }
-        }
-    }
-
-    fn opendir(&self, _req: RequestInfo, _path: &Path, _flags: u32) -> ResultOpen {
-        debug!("opendir");
-        Ok((0, 0))
-    }
-
-    fn readdir(&self, _req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
-        debug!("readdir: {:?}", path);
-
-        let entries = self.stash.index().directories.get(path).unwrap_or_default();
-        let entries = entries.lock().unwrap();
-        let transformed_entries = transform(entries.to_vec());
-
-        Ok(transformed_entries)
-    }
-
-    fn open(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
-        debug!("open: {:?}", path);
-        Ok((0, 0))
-    }
-
-    fn read(
-        &self,
-        _req: RequestInfo,
-        path: &Path,
-        _fh: u64,
-        offset: u64,
-        size: u32,
-        callback: impl FnOnce(ResultSlice<'_>) -> CallbackResult,
-    ) -> CallbackResult {
-        debug!("read: {:?} {:#x} @ {:#x}", path, size, offset);
-
-        let real_path = strip_path(path);
-        let path_string = real_path.to_str().unwrap();
-        let metadata = self.stash.index().files.get(path_string).unwrap();
-        let file_size = metadata.size as usize;
-        let offset = offset as usize;
-
-        if offset > file_size {
-            return callback(Err(libc::EINVAL));
-        }
-
-        let size = size as usize;
-        let sort_chunks = || {
-            let mut chunks = metadata.chunks.clone();
-            chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
-            chunks.into_iter()
-        };
-        let mut obj_reader = self.stash.storage_reader().unwrap();
-
-        {
-            let mut chunks = self
-                .chunks_cache
-                .entry(real_path.to_path_buf())
-                .or_insert_with(|| ChunkStackCache::new(ChunksIter::new(sort_chunks())));
-            let chunks = chunks.get_mut();
-
-            if chunks.last_read_offset == offset {
-                let end = size.min(file_size - offset);
-                if chunks.buf.len() < end {
-                    loop {
-                        if chunks.read_next(file_size, &mut obj_reader).is_err() {
-                            return callback(Err(libc::EINVAL));
-                        }
-
-                        if chunks.buf.len() >= end {
-                            break;
-                        }
-                    }
-                }
-                let ret_buf = chunks.split_buf(end);
-                chunks.set_current_read(offset + end);
-                return callback(Ok(&ret_buf));
-            }
-        }
-
-        let mut chunks = ChunkStack::new(ChunksIter::new(sort_chunks()));
-
-        loop {
-            if chunks
-                .read_next(file_size, offset, &mut obj_reader)
-                .is_err()
-            {
-                return callback(Err(libc::EINVAL));
-            }
-
-            if chunks.is_full(size, file_size, offset) {
-                let from = chunks.start.unwrap();
-                let to = chunks.end.unwrap();
-                return callback(Ok(&chunks.buf[from..to]));
-            }
-        }
-    }
-
-    fn release(
-        &self,
-        _req: RequestInfo,
-        path: &Path,
-        _fh: u64,
-        _flags: u32,
-        _lock_owner: u64,
-        _flush: bool,
-    ) -> ResultEmpty {
-        debug!("release {:?}", path);
-        let real_path = strip_path(path);
-
-        self.chunks_cache.remove(real_path);
-
-        Ok(())
-    }
-}
-
-pub fn transform(entries: Vec<Dir>) -> Vec<DirectoryEntry> {
-    let mut vec = vec![];
-    for entry in entries.iter() {
-        let new_entry = DirectoryEntry {
-            name: entry.path.file_name().unwrap().into(),
-            kind: match entry.file_type {
-                zerostash_files::FileType::Directory => fuse_mt::FileType::Directory,
-                _ => fuse_mt::FileType::RegularFile,
-            },
-        };
-        vec.push(new_entry);
-    }
-    vec
 }
