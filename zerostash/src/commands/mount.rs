@@ -5,11 +5,10 @@ use std::ffi::OsStr;
 use std::mem;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::vec::IntoIter;
 
-use infinitree::fields::VersionedMap;
 use tracing::debug;
 use zerostash_files::directory::Dir;
 
@@ -83,7 +82,6 @@ pub struct ZerostashFS {
     pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
 }
 
-
 impl ZerostashFS {
     pub fn open(
         stash: Infinitree<Files>,
@@ -93,20 +91,8 @@ impl ZerostashFS {
         stash.load_all().unwrap();
 
         let commit_timestamp = stash.commit_list().last().unwrap().metadata.time;
-        let mut temp_paths = vec![];
 
-        {
-            stash.index().directories.for_each(|k, _| {
-                temp_paths.push(k.to_path_buf());
-            });
-            let base_path = common_directory(temp_paths.clone()).unwrap();
-            for k in temp_paths.iter() {
-                let index = &stash.index().directories;
-                walk_dir_up(index, k.to_path_buf(), &base_path);
-            }
-        }
-
-        let base_path = common_directory(temp_paths).unwrap();
+        let base_path = stash.index().base_path.get(&1).unwrap().to_path_buf();
 
         Ok(ZerostashFS {
             base_path,
@@ -116,48 +102,6 @@ impl ZerostashFS {
             chunks_cache: scc::HashMap::new(),
         })
     }
-}
-
-pub fn walk_dir_up(
-    index: &VersionedMap<PathBuf, Mutex<Vec<Dir>>>,
-    path: PathBuf,
-    base_path: &PathBuf,
-) {
-    if let Some(parent) = path.parent() {
-        if parent != base_path.parent().unwrap() {
-            let dir = Dir::new(path.clone(), zerostash_files::FileType::Directory);
-            match index.get(parent) {
-                Some(parent_map) => {
-                    if !parent_map.lock().unwrap().contains(&dir) {
-                        parent_map.lock().unwrap().push(dir);
-                    }
-                }
-                None => {
-                    index.insert(parent.to_path_buf(), Mutex::new(vec![dir]));
-                }
-            }
-            walk_dir_up(index, parent.to_path_buf(), base_path);
-        }
-    }
-}
-
-fn common_directory(paths: Vec<PathBuf>) -> Option<PathBuf> {
-    if paths.is_empty() {
-        return None;
-    }
-
-    let mut common_dir = paths[0].clone();
-
-    for path in paths.iter().skip(1) {
-        while !path.starts_with(&common_dir) {
-            common_dir.pop();
-            if common_dir.components().count() == 0 {
-                return None;
-            }
-        }
-    }
-
-    Some(common_dir)
 }
 
 impl FilesystemMT for ZerostashFS {
@@ -202,7 +146,6 @@ impl FilesystemMT for ZerostashFS {
             .directories
             .get(&path)
             .unwrap_or_default();
-        let entries = entries.lock().unwrap();
         let transformed_entries = transform(entries.to_vec());
 
         Ok(transformed_entries)
@@ -424,6 +367,7 @@ impl ChunkStack {
         Ok(())
     }
 
+    #[inline(always)]
     fn is_full(&mut self, size: usize, file_size: usize, offset: usize) -> bool {
         if let Some(from) = self.start {
             if self.buf[from..].len() >= size.min(file_size - offset) {
@@ -434,7 +378,6 @@ impl ChunkStack {
         false
     }
 }
-
 
 const TTL: Duration = Duration::from_secs(1);
 

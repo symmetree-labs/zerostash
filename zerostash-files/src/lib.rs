@@ -2,7 +2,6 @@
 extern crate serde_derive;
 
 use std::path::PathBuf;
-use std::sync::Mutex;
 
 use directory::Dir;
 use infinitree::*;
@@ -24,7 +23,9 @@ pub use stash::store;
 type ChunkIndex = fields::VersionedMap<Digest, ChunkPointer>;
 type FileIndex = fields::VersionedMap<String, Entry>;
 type ZfsIndex = fields::VersionedMap<String, ZfsSnapshot>;
-type DirectoryIndex = fields::VersionedMap<PathBuf, Mutex<Vec<Dir>>>;
+type DirectoryIndex = fields::VersionedMap<PathBuf, Vec<Dir>>;
+type ParentPaths = fields::VersionedMap<usize, Vec<PathBuf>>;
+type BasePath = fields::VersionedMap<usize, PathBuf>;
 
 #[derive(Clone, Default, Index)]
 pub struct Files {
@@ -32,4 +33,6 @@ pub struct Files {
     pub files: FileIndex,
     pub zfs_snapshots: ZfsIndex,
     pub directories: DirectoryIndex,
+    pub upmost_parents: ParentPaths,
+    pub base_path: BasePath,
 }
