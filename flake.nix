@@ -1,92 +1,110 @@
 {
-  inputs = {
-    nixpkgs.url = "nixpkgs";
-    utils.url = "github:numtide/flake-utils";
-    naersk.url = "github:nix-community/naersk";
-    mozillapkgs.url = "github:mozilla/nixpkgs-mozilla";
+  inputs = rec {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-22.11";
+    utils = { url = "github:numtide/flake-utils"; };
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.flake-utils = utils;
+      inputs.nixpkgs = nixpkgs;
+    };
     flake-compat = {
       url = "github:edolstra/flake-compat";
       flake = false;
     };
   };
 
-  outputs = { self, nixpkgs, utils, naersk, mozillapkgs, ... }:
-    utils.lib.eachDefaultSystem
-      (system:
-        let
-          pkgs = import nixpkgs { inherit system; };
+  outputs = { self, nixpkgs, utils, rust-overlay, ... }:
+    utils.lib.eachDefaultSystem (system:
+      let
+        overlays = [ (import rust-overlay) ];
+        pkgs = import nixpkgs { inherit system overlays; };
 
-          # Get a specific rust version
-          mozilla = pkgs.callPackage (mozillapkgs + "/package-set.nix") { };
-          rust = (mozilla.rustChannelOf {
-            date = "2022-09-22";
-            channel = "stable";
-            sha256 = "8len3i8oTwJSOJZMosGGXHBL5BVuGQnWOT2St5YAUFU=";
-          }).rust;
+        # Get a specific rust version
+        rust = pkgs.rust-bin.stable."1.67.0".default;
 
-          naersk-lib = naersk.lib."${system}".override {
-            cargo = rust;
-            rustc = rust;
-          };
+        rustPlatform = pkgs.makeRustPlatform {
+          cargo = rust;
+          rustc = rust;
+        };
 
-          ifTestable = block: if (pkgs.stdenv.isLinux && pkgs.stdenv.isx86_64) then block else rec {};
-        in
-        rec {
-          defaultPackage = packages.zerostash;
-          defaultApp = apps.zerostash;
-
-          packages = {
-	    zerostash = naersk-lib.buildPackage {
-              meta = with pkgs.lib; {
-                description = "Secure, speedy, distributed backups";
-                homepage = "https://symmetree.dev";
-                license = licenses.mit;
-                platforms = platforms.all;
-              };
-
-              pname = "0s";
-              name = "zerostash";
-              version = "0.5.0";
-
-              src = pkgs.lib.sourceFilesBySuffices ./. [ ".toml" ".rs" ];
-              root = ./.;
+        ifTestable = block:
+          if (pkgs.stdenv.isLinux && pkgs.stdenv.isx86_64) then
+            block
+          else
+            rec { };
+      in rec {
+        packages = rec {
+          zerostash = rustPlatform.buildRustPackage {
+            meta = with pkgs.lib; {
+              description = "Secure, speedy, distributed backups";
+              homepage = "https://symmetree.dev";
+              license = licenses.mit;
+              platforms = platforms.all;
             };
 
-            vm = self.nixosConfigurations.test.config.system.build.vm;
-	  } // (ifTestable rec {
-            nixosTest = import ./nix/nixos-test.nix { inherit (self) nixosModule; inherit pkgs; };
-	    });
+            name = "zerostash";
+            pname = "0s";
+            version = "0.5.0";
+            src = pkgs.lib.sourceFilesBySuffices ./. [ ".toml" ".rs" ".lock" ];
+            buildFeatures = pkgs.lib.optionals pkgs.stdenv.isLinux [ "fuse" ];
+            doCheck = false;
 
-          apps = rec {
-            zerostash = utils.lib.mkApp { drv = packages.zerostash; };
-	    default = zerostash;
-            vm = utils.lib.mkApp { drv = packages.vm; exePath = "/bin/run-nixos-vm"; };
-          } // (ifTestable rec {
-            nixosTest = utils.lib.mkApp { drv = packages.nixosTest.driver; exePath = "/bin/nixos-test-driver"; };
-	    });
+            cargoLock = { lockFile = ./Cargo.lock; };
 
-          devShell = pkgs.mkShell {
-            inputsFrom = [ self.defaultPackage.${system} ];
-            nativeBuildInputs = with pkgs; [
-              rust
-            ];
+            nativeBuildInputs = with pkgs;
+              [ pkg-config libusb ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin
+              [ pkgs.darwin.apple_sdk.frameworks.Security ];
+            buildInputs = [ ]
+              ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ "fuse3" ];
           };
 
-        }) //
-    {
-      nixosModule = { pkgs, ... }: {
-        imports = [
-          ./nix/zerostash-nixos-module.nix
-          { nixpkgs.overlays = [ (_: _: { zerostash = self.packages.${pkgs.system}.zerostash; }) ]; }
-        ];
-      };
+          vm = self.nixosConfigurations.test.config.system.build.vm;
 
-      nixosConfigurations.test = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          self.nixosModule
-          (import ./nix/test-nixos-configuration.nix)
-        ];
+          default = zerostash;
+        } // (ifTestable rec {
+          nixosTest = import ./nix/nixos-test.nix {
+            inherit (self) nixosModule;
+            inherit pkgs;
+          };
+        });
+
+        apps = rec {
+          zerostash = utils.lib.mkApp { drv = packages.zerostash; };
+
+          vm = utils.lib.mkApp {
+            drv = packages.vm;
+            exePath = "/bin/run-nixos-vm";
+          };
+
+          default = zerostash;
+        } // (ifTestable rec {
+          nixosTest = utils.lib.mkApp {
+            drv = packages.nixosTest.driver;
+            exePath = "/bin/nixos-test-driver";
+          };
+        });
+
+        devShell = pkgs.mkShell {
+          inputsFrom = [ self.packages.${system}.default ];
+          nativeBuildInputs = [ rust ];
+        };
+
+      }) // {
+        nixosModule = { pkgs, ... }: {
+          imports = [
+            ./nix/zerostash-nixos-module.nix
+            {
+              nixpkgs.overlays = [
+                (_: _: { zerostash = self.packages.${pkgs.system}.zerostash; })
+              ];
+            }
+          ];
+        };
+
+        nixosConfigurations.test = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules =
+            [ self.nixosModule (import ./nix/test-nixos-configuration.nix) ];
+        };
       };
-    };
 }
