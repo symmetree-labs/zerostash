@@ -88,10 +88,11 @@ impl Options {
         let mut current_file_list = vec![];
 
         {
-            let vec = update_upmost_parents(&stash.index().upmost_parents, self.paths.clone());
+            let commit_paths =
+                update_and_return_commit_paths(&stash.index().commit_paths, self.paths.clone());
 
             let directories = &stash.index().directories;
-            for k in vec.iter() {
+            for k in commit_paths.iter() {
                 walk_dir_up(directories, k.to_path_buf());
             }
         }
@@ -349,15 +350,15 @@ fn insert_directories(index: &VersionedMap<PathBuf, Vec<Dir>>, path: &Path, file
     }
 }
 
-fn update_upmost_parents(
+fn update_and_return_commit_paths(
     index: &VersionedMap<usize, Vec<PathBuf>>,
     mut paths: Vec<PathBuf>,
 ) -> Vec<PathBuf> {
     index.insert(0, Vec::default());
-    let mut upmost_parents = index.get(&0).unwrap().to_vec();
-    upmost_parents.append(&mut paths);
-    index.update_with(0, |_| upmost_parents.to_vec());
-    upmost_parents
+    let mut commit_paths = index.get(&0).unwrap().to_vec();
+    commit_paths.append(&mut paths);
+    index.update_with(0, |_| commit_paths.to_vec());
+    commit_paths
 }
 
 struct MmappedFile {

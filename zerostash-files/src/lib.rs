@@ -24,7 +24,7 @@ type ChunkIndex = fields::VersionedMap<Digest, ChunkPointer>;
 type FileIndex = fields::VersionedMap<String, Entry>;
 type ZfsIndex = fields::VersionedMap<String, ZfsSnapshot>;
 type DirectoryIndex = fields::VersionedMap<PathBuf, Vec<Dir>>;
-type ParentPaths = fields::VersionedMap<usize, Vec<PathBuf>>;
+type CommitPaths = fields::VersionedMap<usize, Vec<PathBuf>>;
 
 #[derive(Clone, Default, Index)]
 pub struct Files {
@@ -32,5 +32,5 @@ pub struct Files {
     pub files: FileIndex,
     pub zfs_snapshots: ZfsIndex,
     pub directories: DirectoryIndex,
-    pub upmost_parents: ParentPaths,
+    pub commit_paths: CommitPaths,
 }
