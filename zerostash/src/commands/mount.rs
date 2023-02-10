@@ -75,7 +75,6 @@ pub fn mount(
 }
 
 pub struct ZerostashFS {
-    pub base_path: PathBuf,
     pub commit_timestamp: SystemTime,
     pub destroy_tx: mpsc::SyncSender<()>,
     pub stash: Infinitree<Files>,
@@ -92,10 +91,7 @@ impl ZerostashFS {
 
         let commit_timestamp = stash.commit_list().last().unwrap().metadata.time;
 
-        let base_path = stash.index().base_path.get(&1).unwrap().to_path_buf();
-
         Ok(ZerostashFS {
-            base_path,
             commit_timestamp,
             destroy_tx,
             stash,
@@ -115,12 +111,10 @@ impl FilesystemMT for ZerostashFS {
     fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
         debug!("gettattr = {:?}", path);
 
-        let path = self.base_path.join(strip_path(path));
-        if self.stash.index().directories.contains(&path) {
+        if self.stash.index().directories.contains(&path.to_path_buf()) {
             Ok((TTL, DIR_ATTR))
         } else {
-            let real_path = strip_path(&path);
-            let path_string = real_path.to_str().unwrap();
+            let path_string = strip_path(path).to_str().unwrap();
             match self.stash.index().files.get(path_string) {
                 Some(metadata) => {
                     let fuse = file_to_fuse(&metadata, self.commit_timestamp);
@@ -139,13 +133,7 @@ impl FilesystemMT for ZerostashFS {
     fn readdir(&self, _req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
         debug!("readdir: {:?}", path);
 
-        let path = self.base_path.join(strip_path(path));
-        let entries = self
-            .stash
-            .index()
-            .directories
-            .get(&path)
-            .unwrap_or_default();
+        let entries = self.stash.index().directories.get(path).unwrap_or_default();
         let transformed_entries = transform(entries.to_vec());
 
         Ok(transformed_entries)
@@ -167,9 +155,7 @@ impl FilesystemMT for ZerostashFS {
     ) -> CallbackResult {
         debug!("read: {:?} {:#x} @ {:#x}", path, size, offset);
 
-        let path = self.base_path.join(strip_path(path));
-
-        let real_path = strip_path(&path);
+        let real_path = strip_path(path);
         let path_string = real_path.to_str().unwrap();
         let metadata = self.stash.index().files.get(path_string).unwrap();
         let file_size = metadata.size as usize;
@@ -190,7 +176,7 @@ impl FilesystemMT for ZerostashFS {
         {
             let mut chunks = self
                 .chunks_cache
-                .entry(path)
+                .entry(real_path.to_path_buf())
                 .or_insert_with(|| ChunkStackCache::new(ChunksIter::new(sort_chunks())));
             let chunks = chunks.get_mut();
 
@@ -241,9 +227,9 @@ impl FilesystemMT for ZerostashFS {
         _flush: bool,
     ) -> ResultEmpty {
         debug!("release {:?}", path);
-        let path = self.base_path.join(strip_path(path));
+        let real_path = strip_path(path);
 
-        self.chunks_cache.remove(&path);
+        self.chunks_cache.remove(real_path);
 
         Ok(())
     }

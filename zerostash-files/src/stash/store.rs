@@ -90,13 +90,9 @@ impl Options {
         {
             let vec = update_upmost_parents(&stash.index().upmost_parents, self.paths.clone());
 
-            let base_path = common_directory(vec.to_vec()).unwrap();
-
-            update_base_path(&stash.index().base_path, &base_path);
-
             let directories = &stash.index().directories;
             for k in vec.iter() {
-                walk_dir_up(directories, k.to_path_buf(), &base_path);
+                walk_dir_up(directories, k.to_path_buf());
             }
         }
 
@@ -318,53 +314,34 @@ async fn index_file(
     }
 }
 
-fn walk_dir_up(index: &VersionedMap<PathBuf, Vec<Dir>>, path: PathBuf, base_path: &PathBuf) {
+fn walk_dir_up(index: &VersionedMap<PathBuf, Vec<Dir>>, path: PathBuf) {
     if let Some(parent) = path.parent() {
-        if parent != base_path.parent().unwrap() {
-            let dir = Dir::new(path.clone(), FileType::Directory);
-            match index.get(parent) {
-                Some(parent_map) => {
-                    if !parent_map.contains(&dir) {
-                        let mut vec = parent_map.to_vec();
-                        vec.push(dir);
-                        index.update_with(parent.to_path_buf(), |_| vec.to_vec());
-                    }
-                }
-                None => {
-                    index.insert(parent.to_path_buf(), vec![dir]);
+        let dir = Dir::new(path.clone(), FileType::Directory);
+        match index.get(parent) {
+            Some(parent_map) => {
+                if !parent_map.contains(&dir) {
+                    let mut vec = parent_map.to_vec();
+                    vec.push(dir);
+                    index.update_with(parent.to_path_buf(), |_| vec.to_vec());
                 }
             }
-            walk_dir_up(index, parent.to_path_buf(), base_path);
-        }
-    }
-}
-
-fn common_directory(paths: Vec<PathBuf>) -> Option<PathBuf> {
-    if paths.is_empty() {
-        return None;
-    }
-
-    let mut common_dir = paths[0].clone();
-
-    for path in paths.iter().skip(1) {
-        while !path.starts_with(&common_dir) {
-            common_dir.pop();
-            if common_dir.components().count() == 0 {
-                return None;
+            None => {
+                index.insert(parent.to_path_buf(), vec![dir]);
             }
         }
+        walk_dir_up(index, parent.to_path_buf());
     }
-
-    Some(common_dir)
 }
 
 fn insert_directories(index: &VersionedMap<PathBuf, Vec<Dir>>, path: &Path, file: Dir) {
     let parent = path.parent().unwrap();
     match index.get(parent) {
         Some(parent_map) => {
-            let mut vec = parent_map.to_vec();
-            vec.push(file);
-            index.update_with(parent.to_path_buf(), |_| vec.to_vec());
+            if !parent_map.contains(&file) {
+                let mut vec = parent_map.to_vec();
+                vec.push(file);
+                index.update_with(parent.to_path_buf(), |_| vec.to_vec());
+            }
         }
         None => {
             index.insert(parent.to_path_buf(), vec![file]);
@@ -372,16 +349,11 @@ fn insert_directories(index: &VersionedMap<PathBuf, Vec<Dir>>, path: &Path, file
     }
 }
 
-fn update_base_path(index: &VersionedMap<usize, PathBuf>, base_path: &Path) {
-    index.insert(1, base_path.to_path_buf());
-    index.update_with(1, |_| base_path.to_path_buf());
-}
-
 fn update_upmost_parents(
     index: &VersionedMap<usize, Vec<PathBuf>>,
     mut paths: Vec<PathBuf>,
 ) -> Vec<PathBuf> {
-    index.insert(0, paths.clone());
+    index.insert(0, Vec::default());
     let mut upmost_parents = index.get(&0).unwrap().to_vec();
     upmost_parents.append(&mut paths);
     index.update_with(0, |_| upmost_parents.to_vec());

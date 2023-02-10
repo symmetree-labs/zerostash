@@ -25,7 +25,6 @@ type FileIndex = fields::VersionedMap<String, Entry>;
 type ZfsIndex = fields::VersionedMap<String, ZfsSnapshot>;
 type DirectoryIndex = fields::VersionedMap<PathBuf, Vec<Dir>>;
 type ParentPaths = fields::VersionedMap<usize, Vec<PathBuf>>;
-type BasePath = fields::VersionedMap<usize, PathBuf>;
 
 #[derive(Clone, Default, Index)]
 pub struct Files {
@@ -34,5 +33,4 @@ pub struct Files {
     pub zfs_snapshots: ZfsIndex,
     pub directories: DirectoryIndex,
     pub upmost_parents: ParentPaths,
-    pub base_path: BasePath,
 }
