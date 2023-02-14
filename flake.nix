@@ -49,7 +49,7 @@
             pname = "0s";
             version = "0.5.0";
             src = pkgs.lib.sources.cleanSource ./.;
-            buildFeatures = pkgs.lib.optionals pkgs.stdenv.isLinux [ "fuse" ];
+            # buildFeatures = pkgs.lib.optionals pkgs.stdenv.isLinux [ "fuse" ];
 
             cargoLock = { lockFile = ./Cargo.lock; };
 
