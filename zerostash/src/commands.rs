@@ -57,7 +57,7 @@ pub struct EntryPoint {
     cmd: Box<ZerostashCmd>,
 
     /// Enable verbose logging
-    #[clap(short, long)]
+    #[clap(short, long, default_value_t = 0)]
     pub verbose: usize,
 
     /// Use config file. Command line args will take precedence!
