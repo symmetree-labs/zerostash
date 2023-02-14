@@ -27,6 +27,9 @@
           rustc = rust;
         };
 
+        macDeps = with pkgs; [ darwin.apple_sdk.frameworks.Security ];
+        linuxDeps = with pkgs; [ fuse3 ];
+
         ifTestable = block:
           if (pkgs.stdenv.isLinux && pkgs.stdenv.isx86_64) then
             block
@@ -45,17 +48,15 @@
             name = "zerostash";
             pname = "0s";
             version = "0.5.0";
-            src = pkgs.lib.sourceFilesBySuffices ./. [ ".toml" ".rs" ".lock" ];
+            src = pkgs.lib.sources.cleanSource ./.;
             buildFeatures = pkgs.lib.optionals pkgs.stdenv.isLinux [ "fuse" ];
-            doCheck = false;
 
             cargoLock = { lockFile = ./Cargo.lock; };
 
             nativeBuildInputs = with pkgs;
-              [ pkg-config libusb ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin
-              [ pkgs.darwin.apple_sdk.frameworks.Security ];
-            buildInputs = [ ]
-              ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ "fuse3" ];
+              [ pkg-config ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin macDeps;
+            buildInputs = with pkgs;
+              [ libusb ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux linuxDeps;
           };
 
           vm = self.nixosConfigurations.test.config.system.build.vm;
