@@ -1,23 +1,19 @@
-use crate::{directory::Dir, files, rollsum::SeaSplit, splitter::FileSplitter, FileType, Files};
+use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Files};
 use anyhow::Context;
 use flume as mpsc;
 use futures::future::join_all;
 use ignore::{DirEntry, WalkBuilder};
 use infinitree::{
-    fields::VersionedMap,
     object::{Pool, Writer},
     Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
-use std::{
-    fs,
-    io::Read,
-    num::NonZeroUsize,
-    path::{Path, PathBuf},
-    vec,
-};
+use std::{fs, io::Read, num::NonZeroUsize, path::PathBuf, vec};
 use tokio::task;
 use tracing::{debug, debug_span, error, trace, warn, Instrument};
+use zerostash_fuse::directory::{insert_directories, walk_dir_up};
+use zerostash_fuse::dir::Dir;
+use zerostash_fuse::files::FileType;
 
 type Sender = mpsc::Sender<(PathBuf, files::Entry)>;
 type Receiver = mpsc::Receiver<(PathBuf, files::Entry)>;
@@ -87,12 +83,10 @@ impl Options {
         let dir_walk = self.dir_walk()?;
         let mut current_file_list = vec![];
 
+        //#[cfg(feature = "fuse")]
         {
-            let commit_paths =
-                update_and_return_commit_paths(&stash.index().commit_paths, self.paths.clone());
-
             let directories = &stash.index().directories;
-            for k in commit_paths.iter() {
+            for k in self.paths.iter() {
                 walk_dir_up(directories, k.to_path_buf());
             }
         }
@@ -107,16 +101,22 @@ impl Options {
             };
 
             let metadata = match metadata {
-                Ok(md) if cfg!(unix) && md.is_dir() => {
-                    let index = &stash.index().directories;
-                    let dir = Dir::new(path.clone(), FileType::Directory);
-                    insert_directories(index, &path, dir);
+                Ok(md) if md.is_dir() => {
+                    //#[cfg(feature = "fuse")]
+                    {
+                        let index = &stash.index().directories;
+                        let dir =
+                            Dir::new(path.clone(), FileType::Directory);
+                        insert_directories(index, &path, dir);
+                    }
                     continue;
                 }
                 Ok(md) if md.is_file() || md.is_symlink() => {
-                    if cfg!(unix) {
+                    //#[cfg(feature = "fuse")]
+                    {
                         let index = &stash.index().directories;
-                        let file = Dir::new(path.clone(), FileType::File);
+                        let file =
+                            Dir::new(path.clone(), FileType::File);
                         insert_directories(index, &path, file);
                     }
                     md
@@ -313,52 +313,6 @@ async fn index_file(
     {
         index.files.insert(entry.name.clone(), entry);
     }
-}
-
-fn walk_dir_up(index: &VersionedMap<PathBuf, Vec<Dir>>, path: PathBuf) {
-    if let Some(parent) = path.parent() {
-        let dir = Dir::new(path.clone(), FileType::Directory);
-        match index.get(parent) {
-            Some(parent_map) => {
-                if !parent_map.contains(&dir) {
-                    let mut vec = parent_map.to_vec();
-                    vec.push(dir);
-                    index.update_with(parent.to_path_buf(), |_| vec.to_vec());
-                }
-            }
-            None => {
-                index.insert(parent.to_path_buf(), vec![dir]);
-            }
-        }
-        walk_dir_up(index, parent.to_path_buf());
-    }
-}
-
-fn insert_directories(index: &VersionedMap<PathBuf, Vec<Dir>>, path: &Path, file: Dir) {
-    let parent = path.parent().unwrap();
-    match index.get(parent) {
-        Some(parent_map) => {
-            if !parent_map.contains(&file) {
-                let mut vec = parent_map.to_vec();
-                vec.push(file);
-                index.update_with(parent.to_path_buf(), |_| vec.to_vec());
-            }
-        }
-        None => {
-            index.insert(parent.to_path_buf(), vec![file]);
-        }
-    }
-}
-
-fn update_and_return_commit_paths(
-    index: &VersionedMap<usize, Vec<PathBuf>>,
-    mut paths: Vec<PathBuf>,
-) -> Vec<PathBuf> {
-    index.insert(0, Vec::default());
-    let mut commit_paths = index.get(&0).unwrap().to_vec();
-    commit_paths.append(&mut paths);
-    index.update_with(0, |_| commit_paths.to_vec());
-    commit_paths
 }
 
 struct MmappedFile {

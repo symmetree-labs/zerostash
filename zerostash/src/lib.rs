@@ -24,6 +24,8 @@ pub mod config;
 pub mod error;
 pub mod keygen;
 pub mod prelude;
+#[cfg(feature = "fuse")]
+pub use zerostash_fuse;
 
 // These dependencies are required for the e2e benchmark
 #[cfg(test)]

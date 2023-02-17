@@ -1,5 +1,7 @@
 //! `mount` subcommand
 
+use crate::prelude::*;
+
 use std::ffi::OsStr;
 
 use std::mem;
@@ -10,11 +12,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::vec::IntoIter;
 
 use tracing::debug;
-use zerostash_files::directory::Dir;
+use zerostash_fuse::dir::Dir;
 
 use std::io::Result;
 
-use crate::prelude::*;
 use fuse_mt::*;
 use infinitree::object::{AEADReader, PoolRef, Reader};
 use infinitree::{ChunkPointer, Infinitree};
@@ -27,7 +28,7 @@ pub struct Mount {
     stash: StashArgs,
 
     #[clap(flatten)]
-    options: restore::Options,
+    options: zerostash_files::restore::Options,
 
     /// The location the filesytem will be mounted on
     #[clap(short = 'T', long = "target")]
@@ -389,7 +390,7 @@ fn transform(entries: Vec<Dir>) -> Vec<DirectoryEntry> {
         let new_entry = DirectoryEntry {
             name: entry.path.file_name().unwrap().into(),
             kind: match entry.file_type {
-                zerostash_files::FileType::Directory => fuse_mt::FileType::Directory,
+                zerostash_fuse::files::FileType::Directory => fuse_mt::FileType::Directory,
                 _ => fuse_mt::FileType::RegularFile,
             },
         };

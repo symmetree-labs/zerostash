@@ -11,6 +11,7 @@ categories = ["cryptography", "filesystem"]
 
 [dependencies]
 infinitree = { version = "0.10.0", features = ["mmap"] }
+zerostash-fuse = { version = "0.1.0", path = "../zerostash-fuse"}
 serde = { version = "1.0.160", features = ["rc"] }
 serde_derive = "1.0.160"
 tracing = "0.1.37"
