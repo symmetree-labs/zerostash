@@ -1,19 +1,23 @@
-use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Files};
+use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Dir, FileType, Files};
 use anyhow::Context;
 use flume as mpsc;
 use futures::future::join_all;
 use ignore::{DirEntry, WalkBuilder};
 use infinitree::{
+    fields::VersionedMap,
     object::{Pool, Writer},
     Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
-use std::{fs, io::Read, num::NonZeroUsize, path::PathBuf, vec};
+use std::{
+    fs,
+    io::Read,
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+    vec,
+};
 use tokio::task;
 use tracing::{debug, debug_span, error, trace, warn, Instrument};
-use zerostash_fuse::directory::{insert_directories, walk_dir_up};
-use zerostash_fuse::dir::Dir;
-use zerostash_fuse::files::FileType;
 
 type Sender = mpsc::Sender<(PathBuf, files::Entry)>;
 type Receiver = mpsc::Receiver<(PathBuf, files::Entry)>;
@@ -83,7 +87,6 @@ impl Options {
         let dir_walk = self.dir_walk()?;
         let mut current_file_list = vec![];
 
-        //#[cfg(feature = "fuse")]
         {
             let directories = &stash.index().directories;
             for k in self.paths.iter() {
@@ -102,23 +105,15 @@ impl Options {
 
             let metadata = match metadata {
                 Ok(md) if md.is_dir() => {
-                    //#[cfg(feature = "fuse")]
-                    {
-                        let index = &stash.index().directories;
-                        let dir =
-                            Dir::new(path.clone(), FileType::Directory);
-                        insert_directories(index, &path, dir);
-                    }
+                    let index = &stash.index().directories;
+                    let dir = Dir::new(path.clone(), FileType::Directory);
+                    insert_directories(index, &path, dir);
                     continue;
                 }
                 Ok(md) if md.is_file() || md.is_symlink() => {
-                    //#[cfg(feature = "fuse")]
-                    {
-                        let index = &stash.index().directories;
-                        let file =
-                            Dir::new(path.clone(), FileType::File);
-                        insert_directories(index, &path, file);
-                    }
+                    let index = &stash.index().directories;
+                    let file = Dir::new(path.clone(), FileType::File);
+                    insert_directories(index, &path, file);
                     md
                 }
                 Err(error) => {
@@ -312,6 +307,41 @@ async fn index_file(
         .is_none()
     {
         index.files.insert(entry.name.clone(), entry);
+    }
+}
+
+pub fn walk_dir_up(index: &VersionedMap<PathBuf, Vec<Dir>>, path: PathBuf) {
+    if let Some(parent) = path.parent() {
+        let dir = Dir::new(path.clone(), FileType::Directory);
+        match index.get(parent) {
+            Some(parent_map) => {
+                if !parent_map.contains(&dir) {
+                    let mut vec = parent_map.to_vec();
+                    vec.push(dir);
+                    index.update_with(parent.to_path_buf(), |_| vec.to_vec());
+                }
+            }
+            None => {
+                index.insert(parent.to_path_buf(), vec![dir]);
+            }
+        }
+        walk_dir_up(index, parent.to_path_buf());
+    }
+}
+
+pub fn insert_directories(index: &VersionedMap<PathBuf, Vec<Dir>>, path: &Path, file: Dir) {
+    let parent = path.parent().unwrap();
+    match index.get(parent) {
+        Some(parent_map) => {
+            if !parent_map.contains(&file) {
+                let mut vec = parent_map.to_vec();
+                vec.push(file);
+                index.update_with(parent.to_path_buf(), |_| vec.to_vec());
+            }
+        }
+        None => {
+            index.insert(parent.to_path_buf(), vec![file]);
+        }
     }
 }
 

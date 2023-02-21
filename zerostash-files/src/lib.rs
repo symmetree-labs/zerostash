@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate serde_derive;
 
-use zerostash_fuse::dir::Dir;
 use infinitree::*;
 use std::path::PathBuf;
 
