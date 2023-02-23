@@ -2,6 +2,7 @@
 
 use std::ffi::OsStr;
 
+use std::iter::Skip;
 use std::mem;
 use std::path::Path;
 use std::path::PathBuf;
@@ -142,7 +143,7 @@ impl FilesystemMT for ZerostashFS {
         let sort_chunks = || {
             let mut chunks = metadata.chunks.clone();
             chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
-            chunks.into_iter()
+            chunks
         };
         let mut obj_reader = self.stash.storage_reader().unwrap();
 
@@ -150,7 +151,7 @@ impl FilesystemMT for ZerostashFS {
             let mut chunks = self
                 .chunks_cache
                 .entry(real_path.to_path_buf())
-                .or_insert_with(|| ChunkStackCache::new(ChunksIter::new(sort_chunks())));
+                .or_insert_with(|| ChunkStackCache::new(sort_chunks()));
             let chunks = chunks.get_mut();
 
             if chunks.last_read_offset == offset {
@@ -172,7 +173,7 @@ impl FilesystemMT for ZerostashFS {
             }
         }
 
-        let mut chunks = ChunkStack::new(ChunksIter::new(sort_chunks()));
+        let mut chunks = ChunkStack::new(sort_chunks(), offset);
 
         loop {
             if chunks
@@ -208,7 +209,7 @@ impl FilesystemMT for ZerostashFS {
     }
 }
 
-type Chunks = IntoIter<(u64, Arc<ChunkPointer>)>;
+type Chunks = Skip<IntoIter<(u64, Arc<ChunkPointer>)>>;
 
 pub struct ChunksIter {
     pub chunks: std::iter::Peekable<Chunks>,
@@ -247,7 +248,8 @@ pub struct ChunkStackCache {
 }
 
 impl ChunkStackCache {
-    fn new(chunks: ChunksIter) -> Self {
+    fn new(chunks: Vec<(u64, Arc<ChunkPointer>)>) -> Self {
+        let chunks = ChunksIter::new(chunks.into_iter().skip(0));
         Self {
             chunks,
             buf: Default::default(),
@@ -293,7 +295,12 @@ pub struct ChunkStack {
 }
 
 impl ChunkStack {
-    fn new(chunks: ChunksIter) -> Self {
+    fn new(chunks: Vec<(u64, Arc<ChunkPointer>)>, offset: usize) -> Self {
+        let index = match chunks.binary_search_by(|a| a.0.cmp(&(offset as u64))) {
+            Ok(v) => v,
+            Err(v) => v - 1,
+        };
+        let chunks = ChunksIter::new(chunks.into_iter().skip(index));
         Self {
             chunks,
             buf: Default::default(),
@@ -315,14 +322,13 @@ impl ChunkStack {
         };
         let next_c_offset = self.chunks.peek_next_offset(file_size);
 
-        if !self.buf.is_empty() || offset < next_c_offset {
-            if self.start.is_none() {
-                self.start = Some(offset - c_offset);
-            }
-            let mut temp_buf = vec![0; next_c_offset - c_offset];
-            objectreader.read_chunk(&pointer, &mut temp_buf).unwrap();
-            self.buf.append(&mut temp_buf);
+        if self.start.is_none() {
+            self.start = Some(offset - c_offset);
         }
+        let mut temp_buf = vec![0; next_c_offset - c_offset];
+        objectreader.read_chunk(&pointer, &mut temp_buf).unwrap();
+        self.buf.append(&mut temp_buf);
+
         Ok(())
     }
 
