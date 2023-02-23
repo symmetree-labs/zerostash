@@ -3,7 +3,7 @@ use std::{ffi::OsStr, path::PathBuf, sync::mpsc};
 use criterion::{criterion_group, criterion_main, Criterion};
 use fuse_mt::FuseMT;
 use infinitree::{backends, crypto::UsernamePassword, Infinitree};
-use zerostash::commands::ZerostashFS;
+use zerostash_fuse::mount::ZerostashFS;
 
 criterion_group!(benches, mount_starup);
 criterion_main! {benches}

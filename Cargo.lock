@@ -3402,7 +3402,6 @@ dependencies = [
  "bech32",
  "chrono",
  "clap 4.3.0",
- "criterion 0.3.6",
  "dirs",
  "humansize",
  "infinitree",
@@ -3458,6 +3457,7 @@ name = "zerostash-fuse"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "criterion 0.3.6",
  "ctrlc",
  "fuse_mt",
  "infinitree",

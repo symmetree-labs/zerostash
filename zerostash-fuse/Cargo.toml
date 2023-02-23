@@ -14,3 +14,11 @@ tracing = "0.1.37"
 ctrlc = "3.2.3"
 nix = { version = "0.24.2", default-features = false, features = ["user"] }
 anyhow = "1.0.65"
+
+[dev-dependencies]
+criterion = "0.3.6"
+
+[[bench]]
+name = "bench"
+harness = false
+path = "benches/bench.rs"
