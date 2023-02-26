@@ -2,16 +2,23 @@
 
 use std::ffi::OsStr;
 
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
 use std::iter::Skip;
 use std::mem;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::vec::IntoIter;
 
+use infinitree::object::Pool;
 use tracing::debug;
 use zerostash_files::directory::Dir;
+use zerostash_files::store::index_file_non_async;
 
 use std::io::Result;
 
@@ -25,13 +32,14 @@ pub fn mount(
     stash: Infinitree<Files>,
     options: &restore::Options,
     mountpoint: &str,
+    threads: usize,
 ) -> anyhow::Result<()> {
     let (tx, finished) = mpsc::sync_channel(2);
     let destroy_tx = tx.clone();
     ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
         .expect("Error setting Ctrl-C handler");
 
-    let filesystem = ZerostashFS::open(stash, options, destroy_tx).unwrap();
+    let filesystem = ZerostashFS::open(stash, options, destroy_tx, threads).unwrap();
     let fuse_args = [OsStr::new("-o"), OsStr::new("fsname=zerostash")];
 
     let fs = fuse_mt::FuseMT::new(filesystem, 1);
@@ -51,8 +59,9 @@ pub fn mount(
 pub struct ZerostashFS {
     pub commit_timestamp: SystemTime,
     pub destroy_tx: mpsc::SyncSender<()>,
-    pub stash: Infinitree<Files>,
+    pub stash: Arc<Mutex<Infinitree<Files>>>,
     pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
+    pub threads: usize,
 }
 
 impl ZerostashFS {
@@ -60,6 +69,7 @@ impl ZerostashFS {
         stash: Infinitree<Files>,
         _options: &restore::Options,
         destroy_tx: mpsc::SyncSender<()>,
+        threads: usize,
     ) -> Result<Self> {
         stash.load_all().unwrap();
 
@@ -68,8 +78,9 @@ impl ZerostashFS {
         Ok(ZerostashFS {
             commit_timestamp,
             destroy_tx,
-            stash,
+            stash: Arc::new(Mutex::new(stash)),
             chunks_cache: scc::HashMap::new(),
+            threads,
         })
     }
 }
@@ -77,6 +88,12 @@ impl ZerostashFS {
 impl FilesystemMT for ZerostashFS {
     fn destroy(&self) {
         debug!("destroy");
+
+        let mut stash = self.stash.lock().unwrap();
+        stash
+            .commit("Mount commit")
+            .expect("Failed to write metadata");
+        stash.backend().sync().expect("Failed to write to storage");
         self.destroy_tx
             .send(())
             .expect("Could not send signal on channel.")
@@ -85,11 +102,18 @@ impl FilesystemMT for ZerostashFS {
     fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
         debug!("gettattr = {:?}", path);
 
-        if self.stash.index().directories.contains(&path.to_path_buf()) {
+        if self
+            .stash
+            .lock()
+            .unwrap()
+            .index()
+            .directories
+            .contains(&path.to_path_buf())
+        {
             Ok((TTL, DIR_ATTR))
         } else {
             let path_string = strip_path(path).to_str().unwrap();
-            match self.stash.index().files.get(path_string) {
+            match self.stash.lock().unwrap().index().files.get(path_string) {
                 Some(metadata) => {
                     let fuse = file_to_fuse(&metadata, self.commit_timestamp);
                     Ok((TTL, fuse))
@@ -107,7 +131,14 @@ impl FilesystemMT for ZerostashFS {
     fn readdir(&self, _req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
         debug!("readdir: {:?}", path);
 
-        let entries = self.stash.index().directories.get(path).unwrap_or_default();
+        let entries = self
+            .stash
+            .lock()
+            .unwrap()
+            .index()
+            .directories
+            .get(path)
+            .unwrap_or_default();
         let transformed_entries = transform(entries.to_vec());
 
         Ok(transformed_entries)
@@ -131,7 +162,14 @@ impl FilesystemMT for ZerostashFS {
 
         let real_path = strip_path(path);
         let path_string = real_path.to_str().unwrap();
-        let metadata = self.stash.index().files.get(path_string).unwrap();
+        let metadata = self
+            .stash
+            .lock()
+            .unwrap()
+            .index()
+            .files
+            .get(path_string)
+            .unwrap();
         let file_size = metadata.size as usize;
         let offset = offset as usize;
 
@@ -145,7 +183,7 @@ impl FilesystemMT for ZerostashFS {
             chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
             chunks
         };
-        let mut obj_reader = self.stash.storage_reader().unwrap();
+        let mut obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
 
         {
             let mut chunks = self
@@ -189,6 +227,72 @@ impl FilesystemMT for ZerostashFS {
                 return callback(Ok(&chunks.buf[from..to]));
             }
         }
+    }
+
+    fn write(
+        &self,
+        _req: RequestInfo,
+        path: &Path,
+        _fh: u64,
+        offset: u64,
+        data: Vec<u8>,
+        _flags: u32,
+    ) -> ResultWrite {
+        debug!("write: {:?} {:#x} @ {:#x}", path, data.len(), offset);
+
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap();
+
+        if let Err(e) = file.seek(SeekFrom::Start(offset)) {
+            return Err(e.raw_os_error().unwrap());
+        }
+
+        let nwritten: u32 = match file.write(&data) {
+            Ok(n) => n as u32,
+            Err(e) => {
+                return Err(e.raw_os_error().unwrap());
+            }
+        };
+
+        if let Err(e) = file.seek(SeekFrom::Start(0)) {
+            return Err(e.raw_os_error().unwrap());
+        }
+
+        let metadata = file.metadata().unwrap();
+        let path = strip_path(path);
+        let preserve = zerostash_files::PreserveMetadata::default();
+        let entry = match zerostash_files::Entry::from_metadata(metadata, &path, &preserve) {
+            Ok(e) => e,
+            Err(_) => {
+                return Err(libc::EINVAL);
+            }
+        };
+
+        {
+            let stash = self.stash.lock().unwrap();
+            let hasher = stash.hasher().unwrap();
+            let index = stash.index();
+            let path_str = path.to_str().unwrap().to_owned();
+            let balancer = Pool::new(
+                NonZeroUsize::new(self.threads).unwrap(),
+                stash.storage_writer().unwrap(),
+            )
+            .unwrap();
+            index_file_non_async(file, entry, hasher, &balancer, &index, path_str);
+        }
+
+        Ok(nwritten)
+    }
+
+    fn truncate(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>, size: u64) -> ResultEmpty {
+        debug!("truncate: {:?} {:#x}", path, size);
+
+        nix::unistd::truncate(path, size as i64).unwrap();
+
+        Ok(())
     }
 
     fn release(

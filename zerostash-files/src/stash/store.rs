@@ -310,6 +310,52 @@ async fn index_file(
     }
 }
 
+pub fn index_file_non_async(
+    mut file: fs::File,
+    mut entry: files::Entry,
+    hasher: infinitree::Hasher,
+    writer: &Pool<impl Writer + Clone + 'static>,
+    index: &crate::Files,
+    path: String,
+) {
+    let size = entry.size as usize;
+    let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
+
+    if size < MAX_FILE_SIZE {
+        file.read_to_end(&mut buf).unwrap();
+    }
+
+    let mut mmap = MmappedFile::new(size, file);
+    let mut chunks: Vec<Result<(u64, std::sync::Arc<infinitree::ChunkPointer>), anyhow::Error>> =
+        Vec::default();
+    let splitter = if size < MAX_FILE_SIZE {
+        FileSplitter::<SeaSplit>::new(&buf[0..size], hasher)
+    } else {
+        FileSplitter::<SeaSplit>::new(mmap.open(), hasher)
+    };
+
+    for (start, hash, data) in splitter {
+        let mut writer = writer.clone();
+
+        let store = || writer.write_chunk(&hash, data).unwrap();
+        let ptr = index.chunks.insert_with(hash, store);
+        chunks.push(Ok((start, ptr)))
+    }
+
+    _ = std::mem::replace(
+        &mut entry.chunks,
+        chunks.into_iter().collect::<Result<Vec<_>, _>>().unwrap(),
+    );
+
+    if index
+        .files
+        .update_with(path.clone(), |_v| entry.clone())
+        .is_none()
+    {
+        index.files.insert(path, entry);
+    }
+}
+
 pub fn walk_dir_up(index: &VersionedMap<PathBuf, Vec<Dir>>, path: PathBuf) {
     if let Some(parent) = path.parent() {
         let dir = Dir::new(path.clone(), FileType::Directory);
