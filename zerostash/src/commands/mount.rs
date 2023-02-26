@@ -24,7 +24,7 @@ impl AsyncRunnable for Mount {
         let threads = APP.get_worker_threads();
 
         if let Err(e) =
-            zerostash_fuse::mount::mount(stash, &self.options, &self.mount_point, threads)
+            zerostash_fuse::mount::mount(stash, &self.options, &self.mount_point, threads).await
         {
             panic!("Error = {}", e)
         }

@@ -3463,6 +3463,7 @@ dependencies = [
  "infinitree",
  "nix 0.24.3",
  "scc",
+ "tokio",
  "tracing",
  "zerostash-files",
 ]

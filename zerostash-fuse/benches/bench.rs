@@ -1,4 +1,8 @@
-use std::{ffi::OsStr, path::PathBuf, sync::mpsc};
+use std::{
+    ffi::OsStr,
+    path::PathBuf,
+    sync::{mpsc, Arc, Mutex},
+};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use fuse_mt::FuseMT;
@@ -22,7 +26,7 @@ fn mount() -> anyhow::Result<()> {
     let stash = Infinitree::open(backend, key).unwrap();
     let fuse_args = [OsStr::new("-o"), OsStr::new("fsname=zerostash")];
     let options = zerostash_files::restore::Options::default();
-    let filesystem = ZerostashFS::open(stash, &options, tx, 0).unwrap();
+    let filesystem = ZerostashFS::open(Arc::new(Mutex::new(stash)), &options, tx, 0).unwrap();
     let fs = FuseMT::new(filesystem, 1);
     fuse_mt::spawn_mount(fs, "../tests/data/Mounting/Target/", &fuse_args[..])
         .unwrap()

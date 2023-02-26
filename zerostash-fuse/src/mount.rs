@@ -28,16 +28,22 @@ use infinitree::{ChunkPointer, Infinitree};
 use nix::libc;
 use zerostash_files::{restore, Entry, Files};
 
-pub fn mount(
+pub async fn mount(
     stash: Infinitree<Files>,
     options: &restore::Options,
     mountpoint: &str,
     threads: usize,
 ) -> anyhow::Result<()> {
+    let stash = Arc::new(Mutex::new(stash));
     let (tx, finished) = mpsc::sync_channel(2);
     let destroy_tx = tx.clone();
     ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
         .expect("Error setting Ctrl-C handler");
+
+    let stash_clone = Arc::clone(&stash);
+    tokio::spawn(async move {
+        auto_commit(stash_clone).await;
+    });
 
     let filesystem = ZerostashFS::open(stash, options, destroy_tx, threads).unwrap();
     let fuse_args = [OsStr::new("-o"), OsStr::new("fsname=zerostash")];
@@ -56,6 +62,20 @@ pub fn mount(
     Ok(())
 }
 
+async fn auto_commit(stash: Arc<Mutex<Infinitree<Files>>>) {
+    let mut interval = tokio::time::interval(Duration::from_secs(180));
+
+    interval.tick().await;
+    loop {
+        interval.tick().await;
+
+        let mut stash_guard = stash.lock().unwrap();
+        let _ = stash_guard.commit("Fuse commit");
+        let _ = stash_guard.backend().sync();
+        debug!("Commited Changes!");
+    }
+}
+
 pub struct ZerostashFS {
     pub commit_timestamp: SystemTime,
     pub destroy_tx: mpsc::SyncSender<()>,
@@ -66,19 +86,26 @@ pub struct ZerostashFS {
 
 impl ZerostashFS {
     pub fn open(
-        stash: Infinitree<Files>,
+        stash: Arc<Mutex<Infinitree<Files>>>,
         _options: &restore::Options,
         destroy_tx: mpsc::SyncSender<()>,
         threads: usize,
     ) -> Result<Self> {
-        stash.load_all().unwrap();
+        stash.lock().unwrap().load_all().unwrap();
 
-        let commit_timestamp = stash.commit_list().last().unwrap().metadata.time;
+        let commit_timestamp = stash
+            .lock()
+            .unwrap()
+            .commit_list()
+            .last()
+            .unwrap()
+            .metadata
+            .time;
 
         Ok(ZerostashFS {
             commit_timestamp,
             destroy_tx,
-            stash: Arc::new(Mutex::new(stash)),
+            stash,
             chunks_cache: scc::HashMap::new(),
             threads,
         })
@@ -87,16 +114,14 @@ impl ZerostashFS {
 
 impl FilesystemMT for ZerostashFS {
     fn destroy(&self) {
-        debug!("destroy");
+        debug!("destroy and commit");
 
         let mut stash = self.stash.lock().unwrap();
-        stash
-            .commit("Mount commit")
-            .expect("Failed to write metadata");
-        stash.backend().sync().expect("Failed to write to storage");
+        let _ = stash.commit("Fuse commit");
+        let _ = stash.backend().sync();
         self.destroy_tx
             .send(())
-            .expect("Could not send signal on channel.")
+            .expect("Could not send signal on channel.");
     }
 
     fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
@@ -289,9 +314,6 @@ impl FilesystemMT for ZerostashFS {
 
     fn truncate(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>, size: u64) -> ResultEmpty {
         debug!("truncate: {:?} {:#x}", path, size);
-
-        nix::unistd::truncate(path, size as i64).unwrap();
-
         Ok(())
     }
 
