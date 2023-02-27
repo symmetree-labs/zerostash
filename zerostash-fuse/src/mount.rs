@@ -297,15 +297,21 @@ impl FilesystemMT for ZerostashFS {
 
         {
             let stash = self.stash.lock().unwrap();
-            let hasher = stash.hasher().unwrap();
             let index = stash.index();
-            let path_str = path.to_str().unwrap().to_owned();
-            let balancer = Pool::new(
-                NonZeroUsize::new(self.threads).unwrap(),
-                stash.storage_writer().unwrap(),
-            )
-            .unwrap();
-            index_file_non_async(file, entry, hasher, &balancer, &index, path_str);
+            if let Some(in_store) = index.files.get(&entry.name) {
+                if in_store.as_ref() != &entry {
+                    let hasher = stash.hasher().unwrap();
+                    let path_str = path.to_str().unwrap().to_owned();
+                    let balancer = Pool::new(
+                        NonZeroUsize::new(self.threads).unwrap(),
+                        stash.storage_writer().unwrap(),
+                    )
+                    .unwrap();
+                    index_file_non_async(file, entry, hasher, &balancer, &index, path_str);
+                } else {
+                    debug!("Data has not been changed!")
+                }
+            }
         }
 
         Ok(nwritten)
