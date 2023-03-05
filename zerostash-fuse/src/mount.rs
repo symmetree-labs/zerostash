@@ -3,9 +3,6 @@
 use std::ffi::OsStr;
 
 use std::io::Cursor;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -13,7 +10,9 @@ use std::sync::Mutex;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use infinitree::object::AEADReader;
 use infinitree::object::Pool;
+use infinitree::object::PoolRef;
 use infinitree::object::Reader;
 use tracing::debug;
 use zerostash_files::directory::Dir;
@@ -28,6 +27,7 @@ use zerostash_files::{restore, Entry, Files};
 
 use crate::chunks::ChunkStack;
 use crate::chunks::ChunkStackCache;
+use crate::openfile::OpenFile;
 
 pub async fn mount(
     stash: Infinitree<Files>,
@@ -73,7 +73,7 @@ async fn auto_commit(stash: Arc<Mutex<Infinitree<Files>>>) {
         let mut stash_guard = stash.lock().unwrap();
         let _ = stash_guard.commit("Fuse commit");
         let _ = stash_guard.backend().sync();
-        debug!("Commited Changes!");
+        debug!("Committed Changes!");
     }
 }
 
@@ -268,69 +268,51 @@ impl FilesystemMT for ZerostashFS {
 
         let real_path = strip_path(path);
         let path_string = real_path.to_str().unwrap();
-        let metadata = self
-            .stash
-            .lock()
-            .unwrap()
-            .index()
-            .files
-            .get(path_string)
-            .unwrap();
-        let mut obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
-        let mut buf: Vec<u8> = vec![0; metadata.size as usize];
-        for (start, cp) in metadata.chunks.iter() {
-            let start = *start as usize;
-            obj_reader.read_chunk(cp, &mut buf[start..]).unwrap();
-        }
 
-        let mut open_file = Cursor::new(buf);
-
-        if let Err(e) = open_file.seek(SeekFrom::Start(offset)) {
-            return Err(e.raw_os_error().unwrap());
-        }
-
-        let nwritten: u32 = match open_file.write(&data) {
-            Ok(n) => n as u32, //if this is bigger then 0 then we changed the file
-            Err(e) => {
-                return Err(e.raw_os_error().unwrap());
-            }
-        };
-
-        if nwritten != 0 {
-            if let Err(e) = open_file.seek(SeekFrom::Start(0)) {
-                return Err(e.raw_os_error().unwrap());
-            }
-            let entry_len = open_file.get_ref().len() as u64;
-
-            let metadata = Arc::clone(&metadata);
-            let entry = Entry {
-                size: entry_len,
-                chunks: Vec::new(),
-                file_type: metadata.file_type.clone(),
-                name: metadata.name.clone(),
-                ..*metadata
-            };
-
+        let entry = {
             let stash = self.stash.lock().unwrap();
             let index = stash.index();
-            let hasher = stash.hasher().unwrap();
-            let balancer = Pool::new(
-                NonZeroUsize::new(self.threads).unwrap(),
-                stash.storage_writer().unwrap(),
-            )
-            .unwrap();
+            let files = &index.files;
+            files.get(path_string).unwrap()
+        };
 
-            index_buf(
-                open_file,
-                entry,
-                hasher,
-                &index,
-                &balancer,
-                path_string.to_string(),
-            );
-        } else {
-            println!("Data has not been changed!")
-        }
+        let obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
+        let mut buf: Vec<u8> = vec![0; entry.size as usize];
+        read_chunks_into_buf(&mut buf, obj_reader, &entry);
+
+        let mut open_file = OpenFile::from_vec(buf);
+        let nwritten = match open_file.write_at(offset, data) {
+            Ok(nwritten) => nwritten,
+            Err(e) => return Err(e),
+        };
+        let entry_len = open_file.get_len();
+
+        let entry = Arc::clone(&entry);
+        let new_entry = Entry {
+            size: entry_len,
+            chunks: Vec::new(),
+            file_type: entry.file_type.clone(),
+            name: entry.name.clone(),
+            ..*entry
+        };
+
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+        let hasher = stash.hasher().unwrap();
+        let balancer = Pool::new(
+            NonZeroUsize::new(self.threads).unwrap(),
+            stash.storage_writer().unwrap(),
+        )
+        .unwrap();
+
+        index_buf(
+            open_file.open_file,
+            new_entry,
+            hasher,
+            &index,
+            &balancer,
+            path_string.to_string(),
+        );
 
         Ok(nwritten)
     }
@@ -340,22 +322,20 @@ impl FilesystemMT for ZerostashFS {
 
         let real_path = strip_path(path);
         let path_string = real_path.to_str().unwrap();
-        let metadata = self
-            .stash
-            .lock()
-            .unwrap()
-            .index()
-            .files
-            .get(path_string)
-            .unwrap();
-        let mut obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
-        let mut buf: Vec<u8> = vec![0; metadata.size as usize];
-        for (start, cp) in metadata.chunks.iter() {
-            let start = *start as usize;
-            obj_reader.read_chunk(cp, &mut buf[start..]).unwrap();
-        }
+
+        let entry = {
+            let stash = self.stash.lock().unwrap();
+            let index = stash.index();
+            let files = &index.files;
+            files.get(path_string).unwrap()
+        };
+
+        let obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
+        let mut buf: Vec<u8> = vec![0; entry.size as usize];
+        read_chunks_into_buf(&mut buf, obj_reader, &entry);
+
         buf.truncate(size as usize);
-        let len = buf.len();
+        let len = buf.len() as u64;
         let open_file = Cursor::new(buf);
 
         let stash = self.stash.lock().unwrap();
@@ -367,17 +347,17 @@ impl FilesystemMT for ZerostashFS {
         )
         .unwrap();
 
-        let entry = Entry {
-            size: len as u64,
+        let new_entry = Entry {
+            size: len,
             chunks: Vec::new(),
-            file_type: metadata.file_type.clone(),
-            name: metadata.name.clone(),
-            ..*metadata
+            file_type: entry.file_type.clone(),
+            name: entry.name.clone(),
+            ..*entry
         };
 
         index_buf(
             open_file,
-            entry,
+            new_entry,
             hasher,
             &index,
             &balancer,
@@ -436,6 +416,13 @@ fn transform(entries: Vec<Dir>) -> Vec<DirectoryEntry> {
         vec.push(new_entry);
     }
     vec
+}
+
+fn read_chunks_into_buf(buf: &mut [u8], mut reader: PoolRef<AEADReader>, entry: &Arc<Entry>) {
+    for (start, cp) in entry.chunks.iter() {
+        let start = *start as usize;
+        reader.read_chunk(cp, &mut buf[start..]).unwrap();
+    }
 }
 
 fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
