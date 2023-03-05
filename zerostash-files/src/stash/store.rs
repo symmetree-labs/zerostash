@@ -11,7 +11,7 @@ use infinitree::{
 use memmap2::{Mmap, MmapOptions};
 use std::{
     fs,
-    io::Read,
+    io::{Cursor, Read},
     num::NonZeroUsize,
     path::{Path, PathBuf},
     vec,
@@ -310,29 +310,19 @@ async fn index_file(
     }
 }
 
-pub fn index_file_non_async(
-    mut file: fs::File,
+pub fn index_buf(
+    mut file: Cursor<Vec<u8>>,
     mut entry: files::Entry,
     hasher: infinitree::Hasher,
-    writer: &Pool<impl Writer + Clone + 'static>,
     index: &crate::Files,
+    writer: &Pool<impl Writer + Clone + 'static>,
     path: String,
 ) {
-    let size = entry.size as usize;
-    let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
-
-    if size < MAX_FILE_SIZE {
-        file.read_to_end(&mut buf).unwrap();
-    }
-
-    let mut mmap = MmappedFile::new(size, file);
+    let mut buf = Vec::with_capacity(entry.size as usize);
+    file.read_to_end(&mut buf).unwrap();
+    let splitter = FileSplitter::<SeaSplit>::new(&buf, hasher);
     let mut chunks: Vec<Result<(u64, std::sync::Arc<infinitree::ChunkPointer>), anyhow::Error>> =
         Vec::default();
-    let splitter = if size < MAX_FILE_SIZE {
-        FileSplitter::<SeaSplit>::new(&buf[0..size], hasher)
-    } else {
-        FileSplitter::<SeaSplit>::new(mmap.open(), hasher)
-    };
 
     for (start, hash, data) in splitter {
         let mut writer = writer.clone();
@@ -347,13 +337,7 @@ pub fn index_file_non_async(
         chunks.into_iter().collect::<Result<Vec<_>, _>>().unwrap(),
     );
 
-    if index
-        .files
-        .update_with(path.clone(), |_v| entry.clone())
-        .is_none()
-    {
-        index.files.insert(path, entry);
-    }
+    index.files.update_with(path, |_v| entry.clone()).unwrap();
 }
 
 pub fn walk_dir_up(index: &VersionedMap<PathBuf, Vec<Dir>>, path: PathBuf) {

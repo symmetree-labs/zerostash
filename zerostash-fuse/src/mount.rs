@@ -2,6 +2,7 @@
 
 use std::ffi::OsStr;
 
+use std::io::Cursor;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
@@ -13,9 +14,10 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use infinitree::object::Pool;
+use infinitree::object::Reader;
 use tracing::debug;
 use zerostash_files::directory::Dir;
-use zerostash_files::store::index_file_non_async;
+use zerostash_files::store::index_buf;
 
 use std::io::Result;
 
@@ -264,61 +266,124 @@ impl FilesystemMT for ZerostashFS {
     ) -> ResultWrite {
         debug!("write: {:?} {:#x} @ {:#x}", path, data.len(), offset);
 
-        let mut file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(path)
+        let real_path = strip_path(path);
+        let path_string = real_path.to_str().unwrap();
+        let metadata = self
+            .stash
+            .lock()
+            .unwrap()
+            .index()
+            .files
+            .get(path_string)
             .unwrap();
+        let mut obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
+        let mut buf: Vec<u8> = vec![0; metadata.size as usize];
+        for (start, cp) in metadata.chunks.iter() {
+            let start = *start as usize;
+            obj_reader.read_chunk(cp, &mut buf[start..]).unwrap();
+        }
 
-        if let Err(e) = file.seek(SeekFrom::Start(offset)) {
+        let mut open_file = Cursor::new(buf);
+
+        if let Err(e) = open_file.seek(SeekFrom::Start(offset)) {
             return Err(e.raw_os_error().unwrap());
         }
 
-        let nwritten: u32 = match file.write(&data) {
-            Ok(n) => n as u32,
+        let nwritten: u32 = match open_file.write(&data) {
+            Ok(n) => n as u32, //if this is bigger then 0 then we changed the file
             Err(e) => {
                 return Err(e.raw_os_error().unwrap());
             }
         };
 
-        if let Err(e) = file.seek(SeekFrom::Start(0)) {
-            return Err(e.raw_os_error().unwrap());
-        }
-
-        let metadata = file.metadata().unwrap();
-        let path = strip_path(path);
-        let preserve = zerostash_files::PreserveMetadata::default();
-        let entry = match zerostash_files::Entry::from_metadata(metadata, &path, &preserve) {
-            Ok(e) => e,
-            Err(_) => {
-                return Err(libc::EINVAL);
+        if nwritten != 0 {
+            if let Err(e) = open_file.seek(SeekFrom::Start(0)) {
+                return Err(e.raw_os_error().unwrap());
             }
-        };
+            let entry_len = open_file.get_ref().len() as u64;
 
-        {
+            let metadata = Arc::clone(&metadata);
+            let entry = Entry {
+                size: entry_len,
+                chunks: Vec::new(),
+                file_type: metadata.file_type.clone(),
+                name: metadata.name.clone(),
+                ..*metadata
+            };
+
             let stash = self.stash.lock().unwrap();
             let index = stash.index();
-            if let Some(in_store) = index.files.get(&entry.name) {
-                if in_store.as_ref() != &entry {
-                    let hasher = stash.hasher().unwrap();
-                    let path_str = path.to_str().unwrap().to_owned();
-                    let balancer = Pool::new(
-                        NonZeroUsize::new(self.threads).unwrap(),
-                        stash.storage_writer().unwrap(),
-                    )
-                    .unwrap();
-                    index_file_non_async(file, entry, hasher, &balancer, &index, path_str);
-                } else {
-                    debug!("Data has not been changed!")
-                }
-            }
+            let hasher = stash.hasher().unwrap();
+            let balancer = Pool::new(
+                NonZeroUsize::new(self.threads).unwrap(),
+                stash.storage_writer().unwrap(),
+            )
+            .unwrap();
+
+            index_buf(
+                open_file,
+                entry,
+                hasher,
+                &index,
+                &balancer,
+                path_string.to_string(),
+            );
+        } else {
+            println!("Data has not been changed!")
         }
 
         Ok(nwritten)
     }
 
     fn truncate(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>, size: u64) -> ResultEmpty {
-        debug!("truncate: {:?} {:#x}", path, size);
+        debug!("truncate {:?}: size {}", path, size);
+
+        let real_path = strip_path(path);
+        let path_string = real_path.to_str().unwrap();
+        let metadata = self
+            .stash
+            .lock()
+            .unwrap()
+            .index()
+            .files
+            .get(path_string)
+            .unwrap();
+        let mut obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
+        let mut buf: Vec<u8> = vec![0; metadata.size as usize];
+        for (start, cp) in metadata.chunks.iter() {
+            let start = *start as usize;
+            obj_reader.read_chunk(cp, &mut buf[start..]).unwrap();
+        }
+        buf.truncate(size as usize);
+        let len = buf.len();
+        let open_file = Cursor::new(buf);
+
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+        let hasher = stash.hasher().unwrap();
+        let balancer = Pool::new(
+            NonZeroUsize::new(self.threads).unwrap(),
+            stash.storage_writer().unwrap(),
+        )
+        .unwrap();
+
+        let entry = Entry {
+            size: len as u64,
+            chunks: Vec::new(),
+            file_type: metadata.file_type.clone(),
+            name: metadata.name.clone(),
+            ..*metadata
+        };
+
+        index_buf(
+            open_file,
+            entry,
+            hasher,
+            &index,
+            &balancer,
+            path_string.to_string(),
+        );
+
         Ok(())
     }
 
@@ -332,8 +397,8 @@ impl FilesystemMT for ZerostashFS {
         _flush: bool,
     ) -> ResultEmpty {
         debug!("release {:?}", path);
-        let real_path = strip_path(path);
 
+        let real_path = strip_path(path);
         self.chunks_cache.remove(real_path);
 
         Ok(())
