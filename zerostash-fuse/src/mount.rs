@@ -15,7 +15,6 @@ use infinitree::object::Pool;
 use infinitree::object::PoolRef;
 use infinitree::object::Reader;
 use tracing::debug;
-use zerostash_files::directory::Dir;
 use zerostash_files::store::index_buf;
 
 use std::io::Result;
@@ -128,25 +127,31 @@ impl FilesystemMT for ZerostashFS {
     fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
         debug!("gettattr = {:?}", path);
 
-        if self
-            .stash
-            .lock()
-            .unwrap()
-            .index()
-            .directories
-            .contains(&path.to_path_buf())
-        {
-            Ok((TTL, DIR_ATTR))
-        } else {
-            let path_string = strip_path(path).to_str().unwrap();
-            match self.stash.lock().unwrap().index().files.get(path_string) {
-                Some(metadata) => {
-                    let fuse = file_to_fuse(&metadata, self.commit_timestamp);
-                    Ok((TTL, fuse))
+        let path_str = path.to_str().unwrap();
+
+        let node = {
+            let stash = self.stash.lock().unwrap();
+            let index = stash.index();
+            let tree = index.directory_tree.read();
+            tree.get(path_str)
+        };
+
+        if let Some(node) = node {
+            if let zerostash_files::Node::Directory(_) = node {
+                return Ok((TTL, DIR_ATTR));
+            } else {
+                let path_string = strip_path(path).to_str().unwrap();
+                match self.stash.lock().unwrap().index().files.get(path_string) {
+                    Some(metadata) => {
+                        let fuse = file_to_fuse(&metadata, self.commit_timestamp);
+                        return Ok((TTL, fuse));
+                    }
+                    None => return Err(libc::ENOENT),
                 }
-                None => Err(libc::ENOENT),
             }
         }
+
+        Err(libc::ENOENT)
     }
 
     fn opendir(&self, _req: RequestInfo, _path: &Path, _flags: u32) -> ResultOpen {
@@ -157,17 +162,43 @@ impl FilesystemMT for ZerostashFS {
     fn readdir(&self, _req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
         debug!("readdir: {:?}", path);
 
-        let entries = self
-            .stash
-            .lock()
-            .unwrap()
-            .index()
-            .directories
-            .get(path)
-            .unwrap_or_default();
-        let transformed_entries = transform(entries.to_vec());
+        let path_str = path.to_str().unwrap();
+        let node = {
+            let stash = self.stash.lock().unwrap();
+            let index = stash.index();
+            let tree = index.directory_tree.read();
+            tree.get(path_str).unwrap_or_default()
+        };
 
-        Ok(transformed_entries)
+        let mut vec = vec![];
+
+        match node {
+            zerostash_files::Node::Directory(ref dir) => {
+                let dir = dir.lock().unwrap();
+
+                for (k, v) in dir.iter() {
+                    match v {
+                        zerostash_files::Node::File(file) => {
+                            let new_entry = DirectoryEntry {
+                                name: file.name.clone().into(),
+                                kind: fuse_mt::FileType::RegularFile,
+                            };
+                            vec.push(new_entry);
+                        }
+                        zerostash_files::Node::Directory(_) => {
+                            let new_entry = DirectoryEntry {
+                                name: k.clone().into(),
+                                kind: fuse_mt::FileType::Directory,
+                            };
+                            vec.push(new_entry);
+                        }
+                    }
+                }
+            }
+            zerostash_files::Node::File(_) => return Err(libc::ENOENT),
+        }
+
+        Ok(vec)
     }
 
     fn open(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
@@ -188,15 +219,12 @@ impl FilesystemMT for ZerostashFS {
 
         let real_path = strip_path(path);
         let path_string = real_path.to_str().unwrap();
-        let metadata = self
-            .stash
-            .lock()
-            .unwrap()
-            .index()
-            .files
-            .get(path_string)
-            .unwrap();
-        let file_size = metadata.size as usize;
+        let entry = {
+            let stash = self.stash.lock().unwrap();
+            let files = &stash.index().files;
+            files.get(path_string).unwrap()
+        };
+        let file_size = entry.size as usize;
         let offset = offset as usize;
 
         if offset > file_size {
@@ -205,7 +233,7 @@ impl FilesystemMT for ZerostashFS {
 
         let size = size as usize;
         let sort_chunks = || {
-            let mut chunks = metadata.chunks.clone();
+            let mut chunks = entry.chunks.clone();
             chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
             chunks
         };
@@ -287,7 +315,6 @@ impl FilesystemMT for ZerostashFS {
         };
         let entry_len = open_file.get_len();
 
-        let entry = Arc::clone(&entry);
         let new_entry = Entry {
             size: entry_len,
             chunks: Vec::new(),
@@ -402,21 +429,6 @@ const DIR_ATTR: FileAttr = FileAttr {
     rdev: 0,
     flags: 0,
 };
-
-fn transform(entries: Vec<Dir>) -> Vec<DirectoryEntry> {
-    let mut vec = vec![];
-    for entry in entries.iter() {
-        let new_entry = DirectoryEntry {
-            name: entry.path.file_name().unwrap().into(),
-            kind: match entry.file_type {
-                zerostash_files::FileType::Directory => fuse_mt::FileType::Directory,
-                _ => fuse_mt::FileType::RegularFile,
-            },
-        };
-        vec.push(new_entry);
-    }
-    vec
-}
 
 fn read_chunks_into_buf(buf: &mut [u8], mut reader: PoolRef<AEADReader>, entry: &Arc<Entry>) {
     for (start, cp) in entry.chunks.iter() {

@@ -2,10 +2,8 @@
 extern crate serde_derive;
 
 use infinitree::*;
-use std::path::PathBuf;
-
-pub mod directory;
-pub use directory::*;
+pub mod tree;
+pub use tree::*;
 mod files;
 pub use files::*;
 mod zfs_snapshots;
@@ -21,12 +19,11 @@ pub use stash::store;
 type ChunkIndex = fields::VersionedMap<Digest, ChunkPointer>;
 type FileIndex = fields::VersionedMap<String, Entry>;
 type ZfsIndex = fields::VersionedMap<String, ZfsSnapshot>;
-type DirectoryIndex = fields::VersionedMap<PathBuf, Vec<Dir>>;
 
 #[derive(Clone, Default, Index)]
 pub struct Files {
     pub chunks: ChunkIndex,
     pub files: FileIndex,
     pub zfs_snapshots: ZfsIndex,
-    pub directories: DirectoryIndex,
+    pub directory_tree: infinitree::fields::Serialized<Tree>,
 }

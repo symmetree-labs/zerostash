@@ -1,10 +1,9 @@
-use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Dir, FileType, Files};
+use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, tree, FileType, Files};
 use anyhow::Context;
 use flume as mpsc;
 use futures::future::join_all;
 use ignore::{DirEntry, WalkBuilder};
 use infinitree::{
-    fields::VersionedMap,
     object::{Pool, Writer},
     Infinitree,
 };
@@ -13,7 +12,7 @@ use std::{
     fs,
     io::{Cursor, Read},
     num::NonZeroUsize,
-    path::{Path, PathBuf},
+    path::PathBuf,
     vec,
 };
 use tokio::task;
@@ -87,13 +86,6 @@ impl Options {
         let dir_walk = self.dir_walk()?;
         let mut current_file_list = vec![];
 
-        {
-            let directories = &stash.index().directories;
-            for k in self.paths.iter() {
-                walk_dir_up(directories, k.to_path_buf());
-            }
-        }
-
         for dir_entry in dir_walk {
             let (metadata, path) = match dir_entry {
                 Ok(de) => (de.metadata(), de.path().to_owned()),
@@ -105,15 +97,17 @@ impl Options {
 
             let metadata = match metadata {
                 Ok(md) if md.is_dir() => {
-                    let index = &stash.index().directories;
-                    let dir = Dir::new(path.clone(), FileType::Directory);
-                    insert_directories(index, &path, dir);
+                    let index_tree = &stash.index().directory_tree;
+                    let path_str = path.to_str().unwrap();
+                    index_tree.write().insert_directory(path_str, None);
                     continue;
                 }
                 Ok(md) if md.is_file() || md.is_symlink() => {
-                    let index = &stash.index().directories;
-                    let file = Dir::new(path.clone(), FileType::File);
-                    insert_directories(index, &path, file);
+                    let index_tree = &stash.index().directory_tree;
+                    let path_str = path.to_str().unwrap();
+                    let name = path.file_name().unwrap().to_str().unwrap().to_string();
+                    let file = tree::File::new(name, FileType::File);
+                    index_tree.write().insert_file(path_str, file);
                     md
                 }
                 Err(error) => {
@@ -338,41 +332,6 @@ pub fn index_buf(
     );
 
     index.files.update_with(path, |_v| entry.clone()).unwrap();
-}
-
-pub fn walk_dir_up(index: &VersionedMap<PathBuf, Vec<Dir>>, path: PathBuf) {
-    if let Some(parent) = path.parent() {
-        let dir = Dir::new(path.clone(), FileType::Directory);
-        match index.get(parent) {
-            Some(parent_map) => {
-                if !parent_map.contains(&dir) {
-                    let mut vec = parent_map.to_vec();
-                    vec.push(dir);
-                    index.update_with(parent.to_path_buf(), |_| vec.to_vec());
-                }
-            }
-            None => {
-                index.insert(parent.to_path_buf(), vec![dir]);
-            }
-        }
-        walk_dir_up(index, parent.to_path_buf());
-    }
-}
-
-pub fn insert_directories(index: &VersionedMap<PathBuf, Vec<Dir>>, path: &Path, file: Dir) {
-    let parent = path.parent().unwrap();
-    match index.get(parent) {
-        Some(parent_map) => {
-            if !parent_map.contains(&file) {
-                let mut vec = parent_map.to_vec();
-                vec.push(file);
-                index.update_with(parent.to_path_buf(), |_| vec.to_vec());
-            }
-        }
-        None => {
-            index.insert(parent.to_path_buf(), vec![file]);
-        }
-    }
 }
 
 struct MmappedFile {
