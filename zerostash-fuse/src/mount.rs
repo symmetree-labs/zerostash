@@ -446,6 +446,19 @@ impl FilesystemMT for ZerostashFS {
         Ok(())
     }
 
+    fn mkdir(&self, _req: RequestInfo, parent: &Path, name: &OsStr, _mode: u32) -> ResultEntry {
+        debug!("mkdir: {:?}/{:?}", parent, name);
+
+        let path = parent.join(name);
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+        let tree = &index.directory_tree;
+        let mut tree = tree.write();
+        tree.insert_directory(path.to_str().unwrap(), None);
+
+        Ok((TTL, DIR_ATTR))
+    }
+
     fn release(
         &self,
         _req: RequestInfo,
