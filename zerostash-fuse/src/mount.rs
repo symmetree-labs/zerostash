@@ -459,6 +459,54 @@ impl FilesystemMT for ZerostashFS {
         Ok((TTL, DIR_ATTR))
     }
 
+    fn rmdir(&self, _req: RequestInfo, parent: &Path, name: &OsStr) -> ResultEmpty {
+        debug!("rmdir: {:?}/{:?}", parent, name);
+
+        let path = parent.join(name);
+        let path_str = strip_path(&path).to_str().unwrap().to_string();
+
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+
+        let tree = &index.directory_tree;
+        let mut tree = tree.write();
+        tree.remove(&path_str);
+
+        let files = &index.files;
+        let mut files_to_delete = vec![];
+
+        files.for_each(|k, _| {
+            if k.contains(&path_str) {
+                files_to_delete.push(k.clone());
+            }
+        });
+
+        for path in files_to_delete.iter() {
+            files.remove(path.to_string());
+        }
+
+        Ok(())
+    }
+
+    fn unlink(&self, _req: RequestInfo, parent: &Path, name: &OsStr) -> ResultEmpty {
+        debug!("unlink: {:?}/{:?}", parent, name);
+
+        let path = parent.join(name);
+        let path_str = strip_path(&path).to_str().unwrap().to_string();
+
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+
+        let tree = &index.directory_tree;
+        let mut tree = tree.write();
+        tree.remove(&path_str);
+
+        let files = &index.files;
+        files.remove(path_str);
+
+        Ok(())
+    }
+
     fn release(
         &self,
         _req: RequestInfo,

@@ -152,9 +152,9 @@ impl Tree {
             };
         }
 
-        let directory_name = parts.last().expect("Path is not valid");
+        let node_name = parts.last().expect("Path is not valid");
         let mut current = current.lock().unwrap();
-        current.remove(&directory_name.to_string())
+        current.remove(&node_name.to_string())
     }
 
     pub fn get(&self, path: &str) -> Option<Node> {
