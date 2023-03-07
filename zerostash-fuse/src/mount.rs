@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use infinitree::fields::VersionedMap;
 use infinitree::object::AEADReader;
 use infinitree::object::Pool;
 use infinitree::object::PoolRef;
@@ -394,6 +395,57 @@ impl FilesystemMT for ZerostashFS {
         Ok(())
     }
 
+    fn rename(
+        &self,
+        _req: RequestInfo,
+        parent: &Path,
+        name: &OsStr,
+        newparent: &Path,
+        newname: &OsStr,
+    ) -> ResultEmpty {
+        debug!(
+            "rename: {:?}/{:?} -> {:?}/{:?}",
+            parent, name, newparent, newname
+        );
+
+        let path = parent.join(name);
+        let path_str = strip_path(&path).to_str().unwrap().to_string();
+        let new_path = newparent.join(newname);
+        let new_path_str = strip_path(&new_path).to_str().unwrap().to_string();
+
+        let is_file = {
+            let stash = self.stash.lock().unwrap();
+            let index = stash.index();
+            let tree = &index.directory_tree;
+            let read = tree.read();
+            read.is_file(&path_str)
+        };
+
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+
+        if is_file {
+            let files = &index.files;
+            rename_file(files, path_str.to_string(), new_path_str.to_string());
+
+            let tree = &index.directory_tree;
+            let mut tree = tree.write();
+
+            tree.rename_file(&path_str, newname.to_str().unwrap());
+            tree.move_node(&path_str, &new_path_str);
+        } else {
+            let files = &index.files;
+            replace_file_paths(files, &path_str, &new_path_str);
+
+            let tree = &index.directory_tree;
+            let mut tree = tree.write();
+
+            tree.move_node(&path_str, &new_path_str);
+        }
+
+        Ok(())
+    }
+
     fn release(
         &self,
         _req: RequestInfo,
@@ -464,4 +516,43 @@ fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
 
 fn strip_path(path: &Path) -> &Path {
     path.strip_prefix("/").unwrap()
+}
+
+fn replace_file_paths(files: &VersionedMap<String, Entry>, path_str: &str, new_path_str: &str) {
+    let mut new_files = vec![];
+    let mut old_paths = vec![];
+
+    files.for_each(|k, v| {
+        if k.contains(path_str) {
+            let postfix = k.strip_prefix(path_str).unwrap();
+            let mut new_file_path = new_path_str.to_string();
+            new_file_path.push_str(postfix);
+            let new_entry = Entry {
+                name: new_file_path.clone(),
+                file_type: v.file_type.clone(),
+                chunks: v.chunks.clone(),
+                ..*v
+            };
+            new_files.push((new_file_path, new_entry));
+            old_paths.push(k.clone());
+        }
+    });
+
+    for (i, (k, v)) in new_files.iter().enumerate() {
+        files.insert(k.to_string(), v.clone());
+        files.remove(old_paths[i].clone());
+    }
+}
+
+fn rename_file(files: &VersionedMap<String, Entry>, path_str: String, new_path_str: String) {
+    let entry = files.get(&path_str).unwrap();
+    let new_entry = Entry {
+        name: new_path_str.clone(),
+        file_type: entry.file_type.clone(),
+        chunks: entry.chunks.clone(),
+        ..*entry
+    };
+
+    files.insert(new_path_str, new_entry);
+    files.remove(path_str);
 }

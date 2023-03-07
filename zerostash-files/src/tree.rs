@@ -184,6 +184,47 @@ impl Tree {
         Some(Node::Directory(current))
     }
 
+    pub fn rename_file(&mut self, path: &str, name: &str) {
+        let parts = path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+        let parts_len = parts.len() - 1;
+        let mut current = self.0.clone();
+
+        let child = current.lock().unwrap().get("").unwrap().clone();
+
+        current = match child {
+            Node::Directory(dir) => dir,
+            _ => panic!("Path is not valid"),
+        };
+
+        for part in parts.iter().take(parts_len) {
+            let child = current
+                .lock()
+                .unwrap()
+                .get(&part.to_string())
+                .unwrap()
+                .clone();
+
+            current = match child {
+                Node::Directory(dir) => dir,
+                _ => panic!("Path is not valid"),
+            };
+        }
+
+        let filename = parts.last().expect("Path is not valid");
+        let file_node = Node::File(File {
+            name: name.to_string(),
+            file_type: FileType::File,
+        });
+
+        current
+            .lock()
+            .unwrap()
+            .insert(filename.to_string(), file_node);
+    }
+
     pub fn move_node(&mut self, old_path: &str, new_path: &str) {
         let node = self.get(old_path).unwrap();
         self.remove(old_path);
@@ -194,6 +235,49 @@ impl Tree {
             Node::Directory(dir) => {
                 self.insert_directory(new_path, Some(Node::Directory(dir)));
             }
+        }
+    }
+
+    pub fn is_file(&self, path: &str) -> bool {
+        let parts = path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>();
+        let parts_len = parts.len() - 1;
+        let mut current = self.0.clone();
+
+        let child = current.lock().unwrap().get("").unwrap().clone();
+
+        current = match child {
+            Node::Directory(dir) => dir,
+            _ => panic!("Path is not valid"),
+        };
+
+        for part in parts.iter().take(parts_len) {
+            let child = current
+                .lock()
+                .unwrap()
+                .get(&part.to_string())
+                .unwrap()
+                .clone();
+
+            current = match child {
+                Node::Directory(dir) => dir,
+                _ => panic!("Path is not valid"),
+            };
+        }
+
+        let filename = parts.last().expect("Path is not valid");
+        let child = current
+            .lock()
+            .unwrap()
+            .get(&filename.to_string())
+            .unwrap()
+            .clone();
+
+        match child {
+            Node::Directory(_) => false,
+            Node::File(_) => true,
         }
     }
 
@@ -209,8 +293,14 @@ pub fn pretty_print_helper(node: &HashMap<String, Node>, indent: usize) {
                 println!("{:indent$}|- {name}/", "", indent = indent * 2, name = name);
                 pretty_print_helper(&dir.lock().unwrap(), indent + 1);
             }
-            Node::File(_) => {
-                println!("{:indent$}|- {name}", "", indent = indent * 2, name = name,);
+            Node::File(file) => {
+                println!(
+                    "{:indent$}|- {name} : {f}",
+                    "",
+                    indent = indent * 2,
+                    name = name,
+                    f = file.name
+                );
             }
         }
     }
