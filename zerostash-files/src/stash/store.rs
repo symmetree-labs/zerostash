@@ -1,4 +1,4 @@
-use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, tree, FileType, Files};
+use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, tree, Files};
 use anyhow::Context;
 use flume as mpsc;
 use futures::future::join_all;
@@ -106,7 +106,7 @@ impl Options {
                     let index_tree = &stash.index().directory_tree;
                     let path_str = path.to_str().unwrap();
                     let name = path.file_name().unwrap().to_str().unwrap().to_string();
-                    let file = tree::File::new(name, FileType::File);
+                    let file = tree::File::new(name);
                     index_tree.write().insert_file(path_str, file);
                     md
                 }

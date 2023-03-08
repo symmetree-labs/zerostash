@@ -128,31 +128,21 @@ impl FilesystemMT for ZerostashFS {
     fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
         debug!("gettattr = {:?}", path);
 
-        let path_str = path.to_str().unwrap();
+        let path_str = strip_path(path).to_str().unwrap();
 
-        let node = {
-            let stash = self.stash.lock().unwrap();
-            let index = stash.index();
-            let tree = index.directory_tree.read();
-            tree.get(path_str)
-        };
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+        let node = index.directory_tree.read().get(path_str);
 
-        if let Some(node) = node {
-            if let zerostash_files::Node::Directory(_) = node {
-                return Ok((TTL, DIR_ATTR));
-            } else {
-                let path_string = strip_path(path).to_str().unwrap();
-                match self.stash.lock().unwrap().index().files.get(path_string) {
-                    Some(metadata) => {
-                        let fuse = file_to_fuse(&metadata, self.commit_timestamp);
-                        return Ok((TTL, fuse));
-                    }
-                    None => return Err(libc::ENOENT),
-                }
-            }
+        match node {
+            Some(zerostash_files::Node::Directory(_)) => Ok((TTL, DIR_ATTR)),
+            Some(zerostash_files::Node::File(_)) => index
+                .files
+                .get(path_str)
+                .map(|entry| Ok((TTL, file_to_fuse(&entry, self.commit_timestamp))))
+                .unwrap_or(Err(libc::ENOENT)),
+            None => Err(libc::ENOENT),
         }
-
-        Err(libc::ENOENT)
     }
 
     fn opendir(&self, _req: RequestInfo, _path: &Path, _flags: u32) -> ResultOpen {
@@ -171,35 +161,25 @@ impl FilesystemMT for ZerostashFS {
             tree.get(path_str).unwrap_or_default()
         };
 
-        let mut vec = vec![];
-
-        match node {
-            zerostash_files::Node::Directory(ref dir) => {
-                let dir = dir.lock().unwrap();
-
-                for (k, v) in dir.iter() {
-                    match v {
-                        zerostash_files::Node::File(file) => {
-                            let new_entry = DirectoryEntry {
-                                name: file.name.clone().into(),
-                                kind: fuse_mt::FileType::RegularFile,
-                            };
-                            vec.push(new_entry);
-                        }
-                        zerostash_files::Node::Directory(_) => {
-                            let new_entry = DirectoryEntry {
-                                name: k.clone().into(),
-                                kind: fuse_mt::FileType::Directory,
-                            };
-                            vec.push(new_entry);
-                        }
+        if let zerostash_files::Node::Directory(ref dir) = node {
+            let dir = dir.lock().unwrap();
+            let vec = dir
+                .iter()
+                .map(|(k, v)| {
+                    let kind = match v {
+                        zerostash_files::Node::File(_) => fuse_mt::FileType::RegularFile,
+                        zerostash_files::Node::Directory(_) => fuse_mt::FileType::Directory,
+                    };
+                    DirectoryEntry {
+                        name: k.clone().into(),
+                        kind,
                     }
-                }
-            }
-            zerostash_files::Node::File(_) => return Err(libc::ENOENT),
+                })
+                .collect();
+            Ok(vec)
+        } else {
+            Err(libc::ENOENT)
         }
-
-        Ok(vec)
     }
 
     fn open(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
@@ -468,22 +448,14 @@ impl FilesystemMT for ZerostashFS {
         let stash = self.stash.lock().unwrap();
         let index = stash.index();
 
-        let tree = &index.directory_tree;
-        let mut tree = tree.write();
-        tree.remove(&path_str);
+        {
+            let tree = &index.directory_tree;
+            let mut tree = tree.write();
+            tree.remove(&path_str);
+        }
 
         let files = &index.files;
-        let mut files_to_delete = vec![];
-
-        files.for_each(|k, _| {
-            if k.contains(&path_str) {
-                files_to_delete.push(k.clone());
-            }
-        });
-
-        for path in files_to_delete.iter() {
-            files.remove(path.to_string());
-        }
+        files.retain(|k, _| !k.contains(&path_str));
 
         Ok(())
     }
@@ -497,12 +469,14 @@ impl FilesystemMT for ZerostashFS {
         let stash = self.stash.lock().unwrap();
         let index = stash.index();
 
-        let tree = &index.directory_tree;
-        let mut tree = tree.write();
-        tree.remove(&path_str);
+        {
+            let tree = &index.directory_tree;
+            let mut tree = tree.write();
+            tree.remove(&path_str);
+        }
 
         let files = &index.files;
-        files.remove(path_str);
+        files.retain(|k, _| k != &path_str);
 
         Ok(())
     }
