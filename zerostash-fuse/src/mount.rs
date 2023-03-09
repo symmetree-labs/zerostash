@@ -17,6 +17,7 @@ use infinitree::object::PoolRef;
 use infinitree::object::Reader;
 use tracing::debug;
 use zerostash_files::store::index_buf;
+use zerostash_files::File;
 
 use std::io::Result;
 
@@ -481,6 +482,53 @@ impl FilesystemMT for ZerostashFS {
         Ok(())
     }
 
+    fn create(
+        &self,
+        _req: RequestInfo,
+        parent: &Path,
+        name: &OsStr,
+        _mode: u32,
+        flags: u32,
+    ) -> ResultCreate {
+        debug!("create {:?}/{:?}", parent, name);
+        let real_path = parent.join(name);
+        let path_string = strip_path(&real_path).to_str().unwrap();
+
+        let entry = Entry {
+            unix_secs: 0,
+            unix_nanos: 0,
+            unix_perm: Some(0o777),
+            unix_uid: Some(1000),
+            unix_gid: Some(1000),
+            readonly: Some(false),
+            file_type: zerostash_files::FileType::File,
+            size: 0,
+            name: path_string.to_string(),
+            chunks: Vec::new(),
+        };
+
+        let attr = file_to_fuse(&Arc::new(entry.clone()), SystemTime::now());
+
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+
+        {
+            let tree = &index.directory_tree;
+            let mut tree = tree.write();
+            tree.insert_file(path_string, File(name.to_str().unwrap().to_string()));
+        }
+
+        let files = &index.files;
+        files.insert(path_string.to_string(), entry);
+
+        Ok(CreatedEntry {
+            ttl: TTL,
+            attr,
+            fh: 0,
+            flags,
+        })
+    }
+
     fn release(
         &self,
         _req: RequestInfo,
@@ -509,7 +557,7 @@ const DIR_ATTR: FileAttr = FileAttr {
     ctime: SystemTime::UNIX_EPOCH,
     crtime: SystemTime::UNIX_EPOCH,
     kind: FileType::Directory,
-    perm: 0o444,
+    perm: 0o777,
     nlink: 1,
     uid: 1000,
     gid: 1000,
@@ -536,7 +584,7 @@ fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
         ctime: mtime,
         crtime: SystemTime::UNIX_EPOCH,
         kind: FileType::RegularFile,
-        perm: 0o444,
+        perm: 0o777,
         nlink: 1,
         gid: file
             .unix_gid
@@ -588,6 +636,11 @@ fn rename_file(files: &VersionedMap<String, Entry>, path_str: String, new_path_s
         ..*entry
     };
 
-    files.insert(new_path_str, new_entry);
+    if files
+        .update_with(new_path_str.clone(), |_v| new_entry.clone())
+        .is_none()
+    {
+        files.insert(new_path_str, new_entry);
+    }
     files.remove(path_str);
 }
