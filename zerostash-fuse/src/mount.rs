@@ -487,20 +487,23 @@ impl FilesystemMT for ZerostashFS {
         _req: RequestInfo,
         parent: &Path,
         name: &OsStr,
-        _mode: u32,
+        mode: u32,
         flags: u32,
     ) -> ResultCreate {
         debug!("create {:?}/{:?}", parent, name);
         let real_path = parent.join(name);
         let path_string = strip_path(&real_path).to_str().unwrap();
 
+        let now = SystemTime::now();
+        let unix = now.duration_since(UNIX_EPOCH).unwrap();
+
         let entry = Entry {
-            unix_secs: 0,
-            unix_nanos: 0,
-            unix_perm: Some(0o777),
-            unix_uid: Some(1000),
-            unix_gid: Some(1000),
-            readonly: Some(false),
+            unix_secs: unix.as_secs() as i64,
+            unix_nanos: unix.as_nanos() as u32,
+            unix_perm: Some(mode),
+            unix_uid: Some(nix::unistd::getuid().into()),
+            unix_gid: Some(nix::unistd::getgid().into()),
+            readonly: None,
             file_type: zerostash_files::FileType::File,
             size: 0,
             name: path_string.to_string(),
@@ -527,6 +530,65 @@ impl FilesystemMT for ZerostashFS {
             fh: 0,
             flags,
         })
+    }
+
+    fn chmod(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>, mode: u32) -> ResultEmpty {
+        debug!("chmod: {:?} {:#o}", path, mode);
+        let path_string = strip_path(path).to_str().unwrap().to_string();
+
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+
+        let files = &index.files;
+        let entry = files.get(&path_string).unwrap();
+        let new_entry = Entry {
+            unix_perm: Some(mode),
+            chunks: entry.chunks.clone(),
+            file_type: entry.file_type.clone(),
+            name: entry.name.clone(),
+            ..*entry
+        };
+
+        files.update_with(path_string, |_v| new_entry.clone());
+        Ok(())
+    }
+
+    fn chown(
+        &self,
+        _req: RequestInfo,
+        path: &Path,
+        _fh: Option<u64>,
+        uid: Option<u32>,
+        gid: Option<u32>,
+    ) -> ResultEmpty {
+        debug!("chown {:?} to {:?}:{:?}", path, uid, gid);
+        let path_string = strip_path(path).to_str().unwrap().to_string();
+
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+
+        let files = &index.files;
+        let entry = files.get(&path_string).unwrap();
+        let new_entry = Entry {
+            unix_uid: Some(uid.unwrap_or_else(|| {
+                entry
+                    .unix_uid
+                    .unwrap_or_else(|| nix::unistd::getuid().into())
+            })),
+            unix_gid: Some(gid.unwrap_or_else(|| {
+                entry
+                    .unix_gid
+                    .unwrap_or_else(|| nix::unistd::getgid().into())
+            })),
+            chunks: entry.chunks.clone(),
+            file_type: entry.file_type.clone(),
+            name: entry.name.clone(),
+            ..*entry
+        };
+
+        files.update_with(path_string, |_v| new_entry.clone());
+
+        Ok(())
     }
 
     fn release(
@@ -584,7 +646,7 @@ fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
         ctime: mtime,
         crtime: SystemTime::UNIX_EPOCH,
         kind: FileType::RegularFile,
-        perm: 0o777,
+        perm: (file.unix_perm.unwrap() & 0o777) as u16,
         nlink: 1,
         gid: file
             .unix_gid
