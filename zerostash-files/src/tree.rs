@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     sync::{Arc, Mutex},
 };
 
@@ -15,17 +15,17 @@ impl File {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Node {
     File(File),
-    Directory(Arc<Mutex<HashMap<String, Node>>>),
+    Directory(Arc<Mutex<BTreeMap<String, Node>>>),
 }
 
 impl Default for Node {
     fn default() -> Self {
-        Self::Directory(Arc::new(Mutex::new(HashMap::default())))
+        Self::Directory(Arc::new(Mutex::new(BTreeMap::default())))
     }
 }
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
-pub struct Tree(Arc<Mutex<HashMap<String, Node>>>);
+pub struct Tree(Arc<Mutex<BTreeMap<String, Node>>>);
 
 impl Tree {
     pub fn insert_directory(&mut self, path: &str, dir: Option<Node>) {
@@ -40,7 +40,7 @@ impl Tree {
         } else {
             current.lock().unwrap().insert(
                 filename.to_string(),
-                Node::Directory(Arc::new(Mutex::new(HashMap::new()))),
+                Node::Directory(Arc::new(Mutex::new(BTreeMap::new()))),
             );
         }
     }
@@ -165,7 +165,7 @@ impl Tree {
         pretty_print_helper(&self.0.lock().unwrap().clone(), 0);
     }
 
-    fn get_root(current: Arc<Mutex<HashMap<String, Node>>>) -> Arc<Mutex<HashMap<String, Node>>> {
+    fn get_root(current: Arc<Mutex<BTreeMap<String, Node>>>) -> Arc<Mutex<BTreeMap<String, Node>>> {
         let child = current.lock().unwrap().get("").unwrap().clone();
 
         match child {
@@ -175,13 +175,13 @@ impl Tree {
     }
 
     fn get_or_insert_root(
-        current: Arc<Mutex<HashMap<String, Node>>>,
-    ) -> Arc<Mutex<HashMap<String, Node>>> {
+        current: Arc<Mutex<BTreeMap<String, Node>>>,
+    ) -> Arc<Mutex<BTreeMap<String, Node>>> {
         let child = current
             .lock()
             .unwrap()
             .entry("".to_string())
-            .or_insert_with(|| Node::Directory(Arc::new(Mutex::new(HashMap::new()))))
+            .or_insert_with(|| Node::Directory(Arc::new(Mutex::new(BTreeMap::default()))))
             .clone();
 
         match child {
@@ -191,9 +191,9 @@ impl Tree {
     }
 
     fn get_last_two_nodes(
-        mut current: Arc<Mutex<HashMap<String, Node>>>,
+        mut current: Arc<Mutex<BTreeMap<String, Node>>>,
         path: &str,
-    ) -> (Arc<Mutex<HashMap<String, Node>>>, &str) {
+    ) -> (Arc<Mutex<BTreeMap<String, Node>>>, &str) {
         let parts = path
             .split('/')
             .filter(|s| !s.is_empty())
@@ -213,9 +213,9 @@ impl Tree {
     }
 
     fn get_or_insert_last_two_nodes(
-        mut current: Arc<Mutex<HashMap<String, Node>>>,
+        mut current: Arc<Mutex<BTreeMap<String, Node>>>,
         path: &str,
-    ) -> (Arc<Mutex<HashMap<String, Node>>>, &str) {
+    ) -> (Arc<Mutex<BTreeMap<String, Node>>>, &str) {
         let parts = path
             .split('/')
             .filter(|s| !s.is_empty())
@@ -227,7 +227,7 @@ impl Tree {
                 .lock()
                 .unwrap()
                 .entry(part.to_string())
-                .or_insert_with(|| Node::Directory(Arc::new(Mutex::new(HashMap::new()))))
+                .or_insert_with(|| Node::Directory(Arc::new(Mutex::new(BTreeMap::default()))))
                 .clone();
 
             current = match child {
@@ -239,7 +239,7 @@ impl Tree {
     }
 }
 
-pub fn pretty_print_helper(node: &HashMap<String, Node>, indent: usize) {
+pub fn pretty_print_helper(node: &BTreeMap<String, Node>, indent: usize) {
     for (name, child) in node {
         match child {
             Node::Directory(dir) => {
