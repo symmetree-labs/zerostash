@@ -18,6 +18,7 @@ use infinitree::object::Reader;
 use tracing::debug;
 use zerostash_files::store::index_buf;
 use zerostash_files::File;
+use zerostash_files::FileType;
 
 use std::io::Result;
 
@@ -504,7 +505,7 @@ impl FilesystemMT for ZerostashFS {
             unix_uid: Some(nix::unistd::getuid().into()),
             unix_gid: Some(nix::unistd::getgid().into()),
             readonly: None,
-            file_type: zerostash_files::FileType::File,
+            file_type: FileType::File,
             size: 0,
             name: path_string.to_string(),
             chunks: Vec::new(),
@@ -518,7 +519,8 @@ impl FilesystemMT for ZerostashFS {
         {
             let tree = &index.directory_tree;
             let mut tree = tree.write();
-            tree.insert_file(path_string, File(name.to_str().unwrap().to_string()));
+            let name = name.to_str().unwrap().to_string();
+            tree.insert_file(path_string, File::new(name));
         }
 
         let files = &index.files;
@@ -618,7 +620,7 @@ const DIR_ATTR: FileAttr = FileAttr {
     mtime: SystemTime::UNIX_EPOCH,
     ctime: SystemTime::UNIX_EPOCH,
     crtime: SystemTime::UNIX_EPOCH,
-    kind: FileType::Directory,
+    kind: fuse_mt::FileType::Directory,
     perm: 0o777,
     nlink: 1,
     uid: 1000,
@@ -645,7 +647,7 @@ fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
         mtime,
         ctime: mtime,
         crtime: SystemTime::UNIX_EPOCH,
-        kind: FileType::RegularFile,
+        kind: match_filetype(file.file_type.clone()),
         perm: (file.unix_perm.unwrap() & 0o777) as u16,
         nlink: 1,
         gid: file
@@ -665,12 +667,12 @@ fn strip_path(path: &Path) -> &Path {
 
 fn replace_file_paths(files: &VersionedMap<String, Entry>, path_str: &str, new_path_str: &str) {
     let mut new_files = vec![];
-    let mut old_paths = vec![];
 
-    files.for_each(|k, v| {
+    files.retain(|k, v| {
         if k.contains(path_str) {
             let postfix = k.strip_prefix(path_str).unwrap();
             let mut new_file_path = new_path_str.to_string();
+
             new_file_path.push_str(postfix);
             let new_entry = Entry {
                 name: new_file_path.clone(),
@@ -679,13 +681,21 @@ fn replace_file_paths(files: &VersionedMap<String, Entry>, path_str: &str, new_p
                 ..*v
             };
             new_files.push((new_file_path, new_entry));
-            old_paths.push(k.clone());
+            return false;
         }
+        true
     });
 
-    for (i, (k, v)) in new_files.iter().enumerate() {
+    for (k, v) in new_files.iter() {
         files.insert(k.to_string(), v.clone());
-        files.remove(old_paths[i].clone());
+    }
+}
+
+fn match_filetype(file_type: FileType) -> fuse_mt::FileType {
+    match file_type {
+        FileType::File => fuse_mt::FileType::RegularFile,
+        FileType::Symlink(_) => fuse_mt::FileType::Symlink,
+        FileType::Directory => panic!("Must be a file!"),
     }
 }
 
