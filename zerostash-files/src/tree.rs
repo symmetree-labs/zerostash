@@ -20,7 +20,7 @@ pub enum Node {
 
 impl Default for Node {
     fn default() -> Self {
-        Self::Directory(Arc::new(Mutex::new(BTreeMap::default())))
+        Self::Directory(Arc::default())
     }
 }
 

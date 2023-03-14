@@ -6,8 +6,8 @@ use std::io::Cursor;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::{mpsc, Arc};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use infinitree::fields::VersionedMap;
@@ -15,6 +15,7 @@ use infinitree::object::AEADReader;
 use infinitree::object::Pool;
 use infinitree::object::PoolRef;
 use infinitree::object::Reader;
+use tokio::runtime::Runtime;
 use tracing::debug;
 use zerostash_files::store::index_buf;
 use zerostash_files::File;
@@ -38,17 +39,13 @@ pub async fn mount(
     threads: usize,
 ) -> anyhow::Result<()> {
     let stash = Arc::new(Mutex::new(stash));
-    let (tx, finished) = mpsc::sync_channel(2);
-    let destroy_tx = tx.clone();
-    ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
-        .expect("Error setting Ctrl-C handler");
 
     let stash_clone = Arc::clone(&stash);
     tokio::spawn(async move {
         auto_commit(stash_clone).await;
     });
 
-    let filesystem = ZerostashFS::open(stash, options, destroy_tx, threads).unwrap();
+    let filesystem = ZerostashFS::open(stash, options, threads).unwrap();
     let fuse_args = [OsStr::new("-o"), OsStr::new("fsname=zerostash")];
 
     let fs = fuse_mt::FuseMT::new(filesystem, 1);
@@ -57,7 +54,7 @@ pub async fn mount(
     let handle = spawn_mount(fs, mountpoint, &fuse_args[..])?;
 
     // Wait until we are done.
-    finished.recv().expect("Could not receive from channel.");
+    tokio::signal::ctrl_c().await?;
 
     // Ensure the filesystem is unmounted.
     handle.join();
@@ -81,20 +78,20 @@ async fn auto_commit(stash: Arc<Mutex<Infinitree<Files>>>) {
 
 pub struct ZerostashFS {
     pub commit_timestamp: SystemTime,
-    pub destroy_tx: mpsc::SyncSender<()>,
     pub stash: Arc<Mutex<Infinitree<Files>>>,
     pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
     pub threads: usize,
+    pub runtime: Runtime,
 }
 
 impl ZerostashFS {
     pub fn open(
         stash: Arc<Mutex<Infinitree<Files>>>,
         _options: &restore::Options,
-        destroy_tx: mpsc::SyncSender<()>,
         threads: usize,
     ) -> Result<Self> {
         stash.lock().unwrap().load_all().unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
 
         let commit_timestamp = stash
             .lock()
@@ -107,10 +104,10 @@ impl ZerostashFS {
 
         Ok(ZerostashFS {
             commit_timestamp,
-            destroy_tx,
             stash,
             chunks_cache: scc::HashMap::new(),
             threads,
+            runtime,
         })
     }
 }
@@ -119,12 +116,11 @@ impl FilesystemMT for ZerostashFS {
     fn destroy(&self) {
         debug!("destroy and commit");
 
-        let mut stash = self.stash.lock().unwrap();
-        let _ = stash.commit("Fuse commit");
-        let _ = stash.backend().sync();
-        self.destroy_tx
-            .send(())
-            .expect("Could not send signal on channel.");
+        self.runtime.block_on(async {
+            let mut stash = self.stash.lock().unwrap();
+            let _ = stash.commit("Fuse commit");
+            let _ = stash.backend().sync();
+        });
     }
 
     fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
@@ -222,48 +218,50 @@ impl FilesystemMT for ZerostashFS {
         };
         let mut obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
 
-        {
-            let mut chunks = self
-                .chunks_cache
-                .entry(real_path.to_path_buf())
-                .or_insert_with(|| ChunkStackCache::new(sort_chunks()));
-            let chunks = chunks.get_mut();
+        self.runtime.block_on(async {
+            {
+                let mut chunks = self
+                    .chunks_cache
+                    .entry(real_path.to_path_buf())
+                    .or_insert_with(|| ChunkStackCache::new(sort_chunks()));
+                let chunks = chunks.get_mut();
 
-            if chunks.last_read_offset == offset {
-                let end = size.min(file_size - offset);
-                if chunks.buf.len() < end {
-                    loop {
-                        if chunks.read_next(file_size, &mut obj_reader).is_err() {
-                            return callback(Err(libc::EINVAL));
-                        }
+                if chunks.last_read_offset == offset {
+                    let end = size.min(file_size - offset);
+                    if chunks.buf.len() < end {
+                        loop {
+                            if chunks.read_next(file_size, &mut obj_reader).is_err() {
+                                return callback(Err(libc::EINVAL));
+                            }
 
-                        if chunks.buf.len() >= end {
-                            break;
+                            if chunks.buf.len() >= end {
+                                break;
+                            }
                         }
                     }
+                    let ret_buf = chunks.split_buf(end);
+                    chunks.set_current_read(offset + end);
+                    return callback(Ok(&ret_buf));
                 }
-                let ret_buf = chunks.split_buf(end);
-                chunks.set_current_read(offset + end);
-                return callback(Ok(&ret_buf));
-            }
-        }
-
-        let mut chunks = ChunkStack::new(sort_chunks(), offset);
-
-        loop {
-            if chunks
-                .read_next(file_size, offset, &mut obj_reader)
-                .is_err()
-            {
-                return callback(Err(libc::EINVAL));
             }
 
-            if chunks.is_full(size, file_size, offset) {
-                let from = chunks.start.unwrap();
-                let to = chunks.end.unwrap();
-                return callback(Ok(&chunks.buf[from..to]));
+            let mut chunks = ChunkStack::new(sort_chunks(), offset);
+
+            loop {
+                if chunks
+                    .read_next(file_size, offset, &mut obj_reader)
+                    .is_err()
+                {
+                    return callback(Err(libc::EINVAL));
+                }
+
+                if chunks.is_full(size, file_size, offset) {
+                    let from = chunks.start.unwrap();
+                    let to = chunks.end.unwrap();
+                    return callback(Ok(&chunks.buf[from..to]));
+                }
             }
-        }
+        })
     }
 
     fn write(

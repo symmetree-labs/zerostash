@@ -23,11 +23,9 @@ impl ChunksIter {
     }
 
     fn get_next(&mut self) -> Option<(usize, Arc<ChunkPointer>)> {
-        let (c_offset, pointer) = match self.chunks.next() {
-            Some((o, p)) => (o as usize, p),
-            None => return None,
-        };
-        Some((c_offset, pointer))
+        self.chunks
+            .next()
+            .map(|(offset, pointer)| (offset as usize, pointer))
     }
 }
 
@@ -68,17 +66,20 @@ impl ChunkStackCache {
         file_size: usize,
         objectreader: &mut PoolRef<AEADReader>,
     ) -> anyhow::Result<(), ChunkDataError> {
-        let (c_offset, pointer) = match self.chunks.get_next() {
-            Some(chunk) => chunk,
-            None => return Err(ChunkDataError::NullChunkPointer),
-        };
-        let next_c_offset = self.chunks.peek_next_offset(file_size);
+        if let Some((c_offset, pointer)) = self.chunks.get_next() {
+            let next_c_offset = self.chunks.peek_next_offset(file_size);
 
-        let mut temp_buf = vec![0; next_c_offset - c_offset];
-        objectreader.read_chunk(&pointer, &mut temp_buf).unwrap();
-        self.buf.append(&mut temp_buf);
+            let len = next_c_offset - c_offset;
+            self.buf.extend(std::iter::repeat(0).take(len));
+            let start = self.buf.len() - len;
+            objectreader
+                .read_chunk(&pointer, &mut self.buf[start..])
+                .unwrap();
 
-        Ok(())
+            Ok(())
+        } else {
+            Err(ChunkDataError::NullChunkPointer)
+        }
     }
 }
 
@@ -111,20 +112,24 @@ impl ChunkStack {
         offset: usize,
         objectreader: &mut PoolRef<AEADReader>,
     ) -> anyhow::Result<(), ChunkDataError> {
-        let (c_offset, pointer) = match self.chunks.get_next() {
-            Some(chunk) => chunk,
-            None => return Err(ChunkDataError::NullChunkPointer),
-        };
-        let next_c_offset = self.chunks.peek_next_offset(file_size);
+        if let Some((c_offset, pointer)) = self.chunks.get_next() {
+            let next_c_offset = self.chunks.peek_next_offset(file_size);
 
-        if self.start.is_none() {
-            self.start = Some(offset - c_offset);
+            if self.start.is_none() {
+                self.start = Some(offset - c_offset);
+            }
+
+            let len = next_c_offset - c_offset;
+            self.buf.extend(std::iter::repeat(0).take(len));
+            let start = self.buf.len() - len;
+            objectreader
+                .read_chunk(&pointer, &mut self.buf[start..])
+                .unwrap();
+
+            Ok(())
+        } else {
+            Err(ChunkDataError::NullChunkPointer)
         }
-        let mut temp_buf = vec![0; next_c_offset - c_offset];
-        objectreader.read_chunk(&pointer, &mut temp_buf).unwrap();
-        self.buf.append(&mut temp_buf);
-
-        Ok(())
     }
 
     #[inline(always)]

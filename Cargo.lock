@@ -736,16 +736,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ctrlc"
-version = "3.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7394a21d012ce5c850497fb774b167d81b99f060025fbf06ee92b9848bd97eb2"
-dependencies = [
- "nix 0.26.2",
- "windows-sys 0.48.0",
-]
-
-[[package]]
 name = "darling"
 version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2488,6 +2478,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "signal-hook-registry"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8229b473baa5980ac72ef434c4415e70c4b5e71b423043adb4ba059f89c99a1"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2738,6 +2737,7 @@ dependencies = [
  "mio",
  "num_cpus",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.48.0",
@@ -3458,7 +3458,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "criterion 0.3.6",
- "ctrlc",
  "fuse_mt",
  "infinitree",
  "nix 0.24.3",
