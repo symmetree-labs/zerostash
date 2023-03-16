@@ -15,7 +15,7 @@ use infinitree::object::AEADReader;
 use infinitree::object::Pool;
 use infinitree::object::PoolRef;
 use infinitree::object::Reader;
-use tokio::runtime::Runtime;
+use tokio::runtime::Handle;
 use tracing::debug;
 use zerostash_files::store::index_buf;
 use zerostash_files::File;
@@ -81,7 +81,7 @@ pub struct ZerostashFS {
     pub stash: Arc<Mutex<Infinitree<Files>>>,
     pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
     pub threads: usize,
-    pub runtime: Runtime,
+    pub runtime: Handle,
 }
 
 impl ZerostashFS {
@@ -91,7 +91,6 @@ impl ZerostashFS {
         threads: usize,
     ) -> Result<Self> {
         stash.lock().unwrap().load_all().unwrap();
-        let runtime = tokio::runtime::Runtime::new().unwrap();
 
         let commit_timestamp = stash
             .lock()
@@ -107,7 +106,7 @@ impl ZerostashFS {
             stash,
             chunks_cache: scc::HashMap::new(),
             threads,
-            runtime,
+            runtime: Handle::current(),
         })
     }
 }
