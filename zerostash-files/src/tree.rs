@@ -133,15 +133,15 @@ impl Tree {
     }
 
     pub fn move_node(&mut self, old_path: &str, new_path: &str) {
-        let node = self.get(old_path).unwrap();
-        self.remove(old_path);
+        let node = self.remove(old_path);
         match node {
-            Node::File(file) => {
+            Some(Node::File(file)) => {
                 self.insert_file(new_path, file);
             }
-            Node::Directory(dir) => {
+            Some(Node::Directory(dir)) => {
                 self.insert_directory(new_path, Some(Node::Directory(dir)));
             }
+            _ => panic!("Not valid"),
         }
     }
 

@@ -19,6 +19,7 @@ criterion_group!(
     tree_insert_new,
     tree_rename,
     tree_remove,
+    tree_rename_node,
 );
 criterion_main! {chunking}
 
@@ -65,6 +66,18 @@ fn tree_insert_new(c: &mut Criterion) {
         b.iter(|| {
             tree.insert_file(&path, entry.clone());
             tree = Tree::default();
+        });
+    });
+}
+
+fn tree_rename_node(c: &mut Criterion) {
+    let mut tree = Tree::default();
+    fill_tree(&mut tree, 1, 1_000, 5);
+
+    c.bench_function("tree rename node", |b| {
+        b.iter(|| {
+            tree.move_node("1/1/2", "1/1/renamed");
+            tree.move_node("1/1/renamed", "1/1/2");
         });
     });
 }
@@ -130,37 +143,49 @@ fn tree_remove(c: &mut Criterion) {
     let path = get_path("root", 10);
     tree.insert_directory(&path, None);
 
-    group.bench_function("tree remove 10", |b| b.iter(|| tree.clone().remove("/root")));
+    group.bench_function("tree remove 10", |b| {
+        b.iter(|| tree.clone().remove("/root"))
+    });
 
     tree = Tree::default();
     let path = get_path("root", 100);
     tree.insert_directory(&path, None);
 
-    group.bench_function("tree remove 100", |b| b.iter(|| tree.clone().remove("/root")));
+    group.bench_function("tree remove 100", |b| {
+        b.iter(|| tree.clone().remove("/root"))
+    });
 
     tree = Tree::default();
     let path = get_path("root", 1_000);
     tree.insert_directory(&path, None);
 
-    group.bench_function("tree remove 1000", |b| b.iter(|| tree.clone().remove("/root")));
+    group.bench_function("tree remove 1000", |b| {
+        b.iter(|| tree.clone().remove("/root"))
+    });
 
     tree = Tree::default();
     let path = get_path("root", 5_000);
     tree.insert_directory(&path, None);
 
-    group.bench_function("tree remove 5000", |b| b.iter(|| tree.clone().remove("/root")));
+    group.bench_function("tree remove 5000", |b| {
+        b.iter(|| tree.clone().remove("/root"))
+    });
 
     tree = Tree::default();
     let path = get_path("root", 10_000);
     tree.insert_directory(&path, None);
 
-    group.bench_function("tree remove 10_000", |b| b.iter(|| tree.clone().remove("/root")));
+    group.bench_function("tree remove 10_000", |b| {
+        b.iter(|| tree.clone().remove("/root"))
+    });
 
     tree = Tree::default();
     let path = get_path("root", 50_000);
     tree.insert_directory(&path, None);
 
-    group.bench_function("tree remove 50_000", |b| b.iter(|| tree.clone().remove("/root")));
+    group.bench_function("tree remove 50_000", |b| {
+        b.iter(|| tree.clone().remove("/root"))
+    });
 }
 
 fn set_test_cwd() {
