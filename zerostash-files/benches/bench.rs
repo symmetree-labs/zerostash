@@ -120,42 +120,43 @@ fn tree_remove(c: &mut Criterion) {
     group.significance_level(0.05).sample_size(10);
 
     let mut tree = Tree::default();
+
     let path = get_path("root", 0);
     tree.insert_directory(&path, None);
 
     group.bench_function("tree remove 1", |b| b.iter(|| tree.clone().remove("/root")));
 
-    let mut tree = Tree::default();
+    tree = Tree::default();
     let path = get_path("root", 10);
     tree.insert_directory(&path, None);
 
     group.bench_function("tree remove 10", |b| b.iter(|| tree.clone().remove("/root")));
 
-    let mut tree = Tree::default();
+    tree = Tree::default();
     let path = get_path("root", 100);
     tree.insert_directory(&path, None);
 
     group.bench_function("tree remove 100", |b| b.iter(|| tree.clone().remove("/root")));
 
-    let mut tree = Tree::default();
+    tree = Tree::default();
     let path = get_path("root", 1_000);
     tree.insert_directory(&path, None);
 
     group.bench_function("tree remove 1000", |b| b.iter(|| tree.clone().remove("/root")));
 
-    let mut tree = Tree::default();
+    tree = Tree::default();
     let path = get_path("root", 5_000);
     tree.insert_directory(&path, None);
 
     group.bench_function("tree remove 5000", |b| b.iter(|| tree.clone().remove("/root")));
 
-    let mut tree = Tree::default();
+    tree = Tree::default();
     let path = get_path("root", 10_000);
     tree.insert_directory(&path, None);
 
     group.bench_function("tree remove 10_000", |b| b.iter(|| tree.clone().remove("/root")));
 
-    let mut tree = Tree::default();
+    tree = Tree::default();
     let path = get_path("root", 50_000);
     tree.insert_directory(&path, None);
 
