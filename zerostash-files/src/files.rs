@@ -99,7 +99,7 @@ pub(crate) fn normalize_filename(path: &impl AsRef<Path>) -> Result<String, Entr
         .join("/"))
 }
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Entry {
     pub unix_secs: i64,
     pub unix_nanos: u32,

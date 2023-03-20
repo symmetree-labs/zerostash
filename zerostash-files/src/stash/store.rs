@@ -1,4 +1,4 @@
-use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, tree, Files};
+use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Files};
 use anyhow::Context;
 use flume as mpsc;
 use futures::future::join_all;
@@ -96,20 +96,7 @@ impl Options {
             };
 
             let metadata = match metadata {
-                Ok(md) if md.is_dir() => {
-                    let index_tree = &stash.index().directory_tree;
-                    let path_str = path.to_str().unwrap();
-                    index_tree.write().insert_directory(path_str, None);
-                    continue;
-                }
-                Ok(md) if md.is_file() || md.is_symlink() => {
-                    let index_tree = &stash.index().directory_tree;
-                    let path_str = path.to_str().unwrap();
-                    let name = path.file_name().unwrap().to_str().unwrap().to_string();
-                    let file = tree::File::new(name);
-                    index_tree.write().insert_file(path_str, file);
-                    md
-                }
+                Ok(md) if md.is_file() || md.is_symlink() => md,
                 Err(error) => {
                     warn!(%error, ?path, "failed to get file metadata; skipping");
                     continue;
@@ -124,6 +111,15 @@ impl Options {
                     break;
                 }
             };
+
+            {
+                let index_tree = &stash.index().directory_tree;
+                let path_str = path.to_str().unwrap();
+                let name = path.file_name().unwrap().to_str().unwrap().to_string();
+                let mut entry_new = entry.clone();
+                entry_new.name = name;
+                index_tree.write().insert_file(path_str, entry_new);
+            }
 
             trace!(?path, "queued");
             current_file_list.push(entry.name.clone());

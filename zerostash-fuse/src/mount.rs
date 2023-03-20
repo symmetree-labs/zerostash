@@ -18,7 +18,6 @@ use infinitree::object::Reader;
 use tokio::runtime::Handle;
 use tracing::debug;
 use zerostash_files::store::index_buf;
-use zerostash_files::File;
 use zerostash_files::FileType;
 
 use std::io::Result;
@@ -517,7 +516,11 @@ impl FilesystemMT for ZerostashFS {
             let tree = &index.directory_tree;
             let mut tree = tree.write();
             let name = name.to_str().unwrap().to_string();
-            tree.insert_file(path_string, File::new(name));
+            let entry = Entry {
+                name,
+                ..Entry::default()
+            };
+            tree.insert_file(path_string, entry);
         }
 
         let files = &index.files;

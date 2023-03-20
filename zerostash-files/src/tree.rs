@@ -1,20 +1,12 @@
+use crate::Entry;
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
 };
 
-#[derive(Clone, Serialize, Deserialize, Default, PartialEq, Debug)]
-pub struct File(pub String);
-
-impl File {
-    pub fn new(name: String) -> Self {
-        Self(name)
-    }
-}
-
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Node {
-    File(File),
+    File(Entry),
     Directory(Arc<Mutex<BTreeMap<String, Node>>>),
 }
 
@@ -28,24 +20,24 @@ impl Default for Node {
 pub struct Tree(Arc<Mutex<BTreeMap<String, Node>>>);
 
 impl Tree {
-    pub fn insert_directory(&mut self, path: &str, dir: Option<Node>) {
+    pub fn insert_directory(&mut self, path: &str, node: Option<Node>) {
         let mut current = self.0.clone();
 
         current = Self::get_or_insert_root(current);
-        let (curr, filename) = Self::get_or_insert_last_two_nodes(current, path);
+        let (curr, dir_name) = Self::get_or_insert_last_two_nodes(current, path);
         current = curr;
 
-        if let Some(dir) = dir {
-            current.lock().unwrap().insert(filename.to_string(), dir);
+        if let Some(dir) = node {
+            current.lock().unwrap().insert(dir_name.to_string(), dir);
         } else {
-            current.lock().unwrap().insert(
-                filename.to_string(),
-                Node::Directory(Arc::new(Mutex::new(BTreeMap::new()))),
-            );
+            current
+                .lock()
+                .unwrap()
+                .insert(dir_name.to_string(), Node::default());
         }
     }
 
-    pub fn insert_file(&mut self, path: &str, file: File) {
+    pub fn insert_file(&mut self, path: &str, file: Entry) {
         let mut current = self.0.clone();
 
         current = Self::get_or_insert_root(current);
@@ -53,11 +45,10 @@ impl Tree {
         let (curr, filename) = Self::get_or_insert_last_two_nodes(current, path);
         current = curr;
 
-        let file_node = Node::File(file);
         current
             .lock()
             .unwrap()
-            .insert(filename.to_string(), file_node);
+            .insert(filename.to_string(), Node::File(file));
     }
 
     pub fn remove(&mut self, path: &str) -> Option<Node> {
@@ -67,6 +58,10 @@ impl Tree {
             .collect::<Vec<_>>();
         let parts_len = parts.len() - 1;
         let mut current = self.0.clone();
+
+        if parts.is_empty() {
+            current.lock().unwrap().remove("");
+        }
 
         let child = current.lock().unwrap().get("").cloned();
 
@@ -123,13 +118,18 @@ impl Tree {
 
         let (curr, filename) = Self::get_last_two_nodes(current, path);
         current = curr;
-
-        let file_node = Node::File(File(name.to_string()));
-
-        current
-            .lock()
-            .unwrap()
-            .insert(filename.to_string(), file_node);
+        let mut lock = current.lock().unwrap();
+        let node = lock.get_mut(filename).unwrap();
+        match node {
+            Node::File(entry) => {
+                entry.name = name.to_string();
+            }
+            _ => panic!("Cant rename!"),
+        }
+        //current
+        //    .lock()
+        //    .unwrap()
+        //    .insert(filename.to_string(), Node::File());
     }
 
     pub fn move_node(&mut self, old_path: &str, new_path: &str) {
@@ -181,7 +181,7 @@ impl Tree {
             .lock()
             .unwrap()
             .entry("".to_string())
-            .or_insert_with(|| Node::Directory(Arc::new(Mutex::new(BTreeMap::default()))))
+            .or_default()
             .clone();
 
         match child {
@@ -227,7 +227,7 @@ impl Tree {
                 .lock()
                 .unwrap()
                 .entry(part.to_string())
-                .or_insert_with(|| Node::Directory(Arc::new(Mutex::new(BTreeMap::default()))))
+                .or_default()
                 .clone();
 
             current = match child {
@@ -252,7 +252,7 @@ pub fn pretty_print_helper(node: &BTreeMap<String, Node>, indent: usize) {
                     "",
                     indent = indent * 2,
                     name = name,
-                    f = file.0
+                    f = file.size
                 );
             }
         }
