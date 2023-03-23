@@ -12,6 +12,8 @@ mod ls;
 use ls::*;
 mod wipe;
 use wipe::*;
+mod zfs;
+use zfs::*;
 
 use crate::{
     config::{Key, SymmetricKey, YubikeyCRConfig, YubikeyCRKey},
@@ -45,6 +47,24 @@ pub enum ZerostashCmd {
 
     /// Delete all data of a stash
     Wipe(Wipe),
+
+    /// Provides access to ZFS Subcommands
+    #[clap(subcommand)]
+    Zfs(ZerostashZfs),
+}
+
+/// Zerostash Subcommands
+/// Subcommands need to be listed in an enum.
+#[derive(Debug, Parser)]
+pub enum ZerostashZfs {
+    /// Add a ZFS snapshot to the stash
+    Commit(ZfsCommit),
+
+    /// Extracts a snapshot to stdout
+    Extract(ZfsExtract),
+
+    /// Remove a snapshot from the stash
+    Destroy(ZfsDestroy),
 }
 
 /// Secure and speedy backups.
@@ -142,6 +162,11 @@ impl Runnable for EntryPoint {
                 Ls(cmd) => cmd.run().await,
                 Keys(cmd) => cmd.run().await,
                 Wipe(cmd) => cmd.run().await,
+                Zfs(zfs) => match zfs {
+                    ZerostashZfs::Commit(cmd) => cmd.run().await,
+                    ZerostashZfs::Extract(cmd) => cmd.run().await,
+                    ZerostashZfs::Destroy(cmd) => cmd.run().await,
+                },
             }
         })
         .unwrap()

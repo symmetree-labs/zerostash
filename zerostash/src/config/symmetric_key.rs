@@ -77,7 +77,7 @@ impl SymmetricKey {
     pub fn interactive_credentials(self, stash: &str) -> Result<(SecretString, SecretString)> {
         let user = match self.user {
             Some(ref u) => u.clone(),
-            None => rprompt::prompt_reply_stderr("Username: ")?.into(),
+            None => rprompt::prompt_reply("Username: ")?.into(),
         };
 
         #[cfg(target_os = "macos")]
