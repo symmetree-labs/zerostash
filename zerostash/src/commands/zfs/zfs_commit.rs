@@ -26,7 +26,9 @@ impl AsyncRunnable for ZfsCommit {
     /// Start the application.
     async fn run(&self) {
         let mut stream = Vec::new();
-        std::io::stdin().read_to_end(&mut stream).unwrap();
+        std::io::stdin()
+            .read_to_end(&mut stream)
+            .expect("Failed to read the stream");
 
         let mut stash = self.stash.open();
         stash.load_all().unwrap();

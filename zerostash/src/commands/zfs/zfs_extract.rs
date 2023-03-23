@@ -28,7 +28,7 @@ impl AsyncRunnable for ZfsExtract {
             if let Some(stream) = snapshots.get(&self.snapshot) {
                 let stdout = std::io::stdout();
                 let mut lock = stdout.lock();
-                lock.write_all(&stream).unwrap();
+                lock.write_all(&stream).expect("Failed to write the stream")
             } else {
                 panic!("Snapshot not stashed!");
             }
