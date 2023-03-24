@@ -1,6 +1,8 @@
 //! `zfs commit` subcommand
 
-use std::io::Read;
+use std::io::{Read, Write};
+
+use infinitree::object::BufferedSink;
 
 use crate::prelude::*;
 
@@ -8,9 +10,6 @@ use crate::prelude::*;
 pub struct ZfsCommit {
     #[clap(flatten)]
     stash: StashArgs,
-
-    #[clap(flatten)]
-    options: zerostash_files::store::Options,
 
     /// Commit message to include in the changeset
     #[clap(short = 'm', long)]
@@ -25,14 +24,16 @@ pub struct ZfsCommit {
 impl AsyncRunnable for ZfsCommit {
     /// Start the application.
     async fn run(&self) {
-        let mut stream = Vec::new();
+        let mut buf = Vec::default();
         std::io::stdin()
-            .read_to_end(&mut stream)
+            .read_to_end(&mut buf)
             .expect("Failed to read the stream");
 
         let mut stash = self.stash.open();
-        stash.load_all().unwrap();
 
+        let mut sink = BufferedSink::new(stash.storage_writer().unwrap());
+        sink.write_all(&buf).unwrap();
+        let stream = sink.finish().unwrap();
         {
             let snapshots = &stash.index().snapshots;
             if snapshots

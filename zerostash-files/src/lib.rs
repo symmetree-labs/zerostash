@@ -14,7 +14,7 @@ pub use stash::store;
 
 type ChunkIndex = fields::VersionedMap<Digest, ChunkPointer>;
 type FileIndex = fields::VersionedMap<String, Entry>;
-type SnapshotIndex = fields::VersionedMap<String, Vec<u8>>;
+type SnapshotIndex = fields::VersionedMap<String, infinitree::object::Stream>;
 
 #[derive(Clone, Default, Index)]
 pub struct Files {

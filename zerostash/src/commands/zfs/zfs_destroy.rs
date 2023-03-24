@@ -7,9 +7,6 @@ pub struct ZfsDestroy {
     #[clap(flatten)]
     stash: StashArgs,
 
-    #[clap(flatten)]
-    options: zerostash_files::store::Options,
-
     /// The snapshot stored inside the stash
     #[clap(long)]
     snapshot: String,

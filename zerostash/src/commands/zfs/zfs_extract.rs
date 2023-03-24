@@ -1,6 +1,6 @@
 //! `zfs extract` subcommand
 
-use std::io::Write;
+use std::io::{Read, Write};
 
 use crate::prelude::*;
 
@@ -8,9 +8,6 @@ use crate::prelude::*;
 pub struct ZfsExtract {
     #[clap(flatten)]
     stash: StashArgs,
-
-    #[clap(flatten)]
-    options: zerostash_files::store::Options,
 
     /// The snapshot stored inside the stash
     #[clap(long)]
@@ -28,7 +25,13 @@ impl AsyncRunnable for ZfsExtract {
             if let Some(stream) = snapshots.get(&self.snapshot) {
                 let stdout = std::io::stdout();
                 let mut lock = stdout.lock();
-                lock.write_all(&stream).expect("Failed to write the stream")
+                let reader = stash.storage_reader().unwrap();
+
+                let mut stream = stream.open_reader(reader);
+                let mut buf = Vec::default();
+                stream.read_to_end(&mut buf).unwrap();
+
+                lock.write_all(&buf).expect("Failed to write the stream")
             } else {
                 panic!("Snapshot not stashed!");
             }
