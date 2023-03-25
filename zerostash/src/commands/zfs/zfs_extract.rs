@@ -1,6 +1,7 @@
 //! `zfs extract` subcommand
 
-use std::io::{Read, Write};
+use infinitree::Infinitree;
+use zerostash_files::Files;
 
 use crate::prelude::*;
 
@@ -20,21 +21,16 @@ impl AsyncRunnable for ZfsExtract {
     async fn run(&self) {
         let stash = self.stash.open();
         stash.load_all().unwrap();
-        {
-            let snapshots = &stash.index().snapshots;
-            if let Some(stream) = snapshots.get(&self.snapshot) {
-                let stdout = std::io::stdout();
-                let mut lock = stdout.lock();
-                let reader = stash.storage_reader().unwrap();
 
-                let mut stream = stream.open_reader(reader);
-                let mut buf = Vec::default();
-                stream.read_to_end(&mut buf).unwrap();
+        extract_snapshot(&stash, &self.snapshot);
+    }
+}
 
-                lock.write_all(&buf).expect("Failed to write the stream")
-            } else {
-                panic!("Snapshot not stashed!");
-            }
-        }
+fn extract_snapshot(stash: &Infinitree<Files>, snapshot: &str) {
+    if let Some(stream) = stash.index().snapshots.get(snapshot) {
+        let reader = stash.storage_reader().unwrap();
+        stream.to_stdout(reader).expect("Failed to write to stdout");
+    } else {
+        panic!("Snapshot not stashed!");
     }
 }

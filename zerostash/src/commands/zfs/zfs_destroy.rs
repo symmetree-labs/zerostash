@@ -19,10 +19,7 @@ impl AsyncRunnable for ZfsDestroy {
         let mut stash = self.stash.open();
         stash.load_all().unwrap();
 
-        {
-            let snapshots = &stash.index().snapshots;
-            snapshots.remove(self.snapshot.clone());
-        }
+        stash.index().snapshots.remove(self.snapshot.clone());
 
         stash
             .commit(format!("Destroyed snapshot '{}'", self.snapshot))

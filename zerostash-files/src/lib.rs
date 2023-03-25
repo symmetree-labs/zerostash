@@ -5,6 +5,8 @@ use infinitree::*;
 
 mod files;
 pub use files::*;
+mod snapshots;
+pub use snapshots::*;
 pub mod rollsum;
 pub mod splitter;
 mod stash;
@@ -14,7 +16,7 @@ pub use stash::store;
 
 type ChunkIndex = fields::VersionedMap<Digest, ChunkPointer>;
 type FileIndex = fields::VersionedMap<String, Entry>;
-type SnapshotIndex = fields::VersionedMap<String, infinitree::object::Stream>;
+type SnapshotIndex = fields::VersionedMap<String, Snapshot>;
 
 #[derive(Clone, Default, Index)]
 pub struct Files {
