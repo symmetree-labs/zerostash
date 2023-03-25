@@ -20,7 +20,7 @@ impl AsyncRunnable for ZfsExtract {
     /// Start the application.
     async fn run(&self) {
         let stash = self.stash.open();
-        stash.load_all().unwrap();
+        stash.load(stash.index().snapshots()).unwrap();
 
         extract_snapshot(&stash, &self.snapshot);
     }

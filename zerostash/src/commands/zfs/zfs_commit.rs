@@ -24,7 +24,7 @@ impl AsyncRunnable for ZfsCommit {
     /// Start the application.
     async fn run(&self) {
         let mut stash = self.stash.open();
-        stash.load_all().unwrap();
+        stash.load(stash.index().snapshots()).unwrap();
 
         add_snapshot(&stash, self.snapshot.clone());
 
