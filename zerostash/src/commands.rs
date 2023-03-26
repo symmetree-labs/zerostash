@@ -65,6 +65,9 @@ pub enum ZerostashZfs {
 
     /// Remove a snapshot from the stash
     Destroy(ZfsDestroy),
+
+    /// List Snapshots in a stash
+    Ls(ZfsLs),
 }
 
 /// Secure and speedy backups.
@@ -166,6 +169,7 @@ impl Runnable for EntryPoint {
                     ZerostashZfs::Commit(cmd) => cmd.run().await,
                     ZerostashZfs::Extract(cmd) => cmd.run().await,
                     ZerostashZfs::Destroy(cmd) => cmd.run().await,
+                    ZerostashZfs::Ls(cmd) => cmd.run().await,
                 },
             }
         })

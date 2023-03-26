@@ -13,6 +13,7 @@ mod stash;
 
 pub use stash::restore;
 pub use stash::store;
+pub use stash::list;
 
 type ChunkIndex = fields::VersionedMap<Digest, ChunkPointer>;
 type FileIndex = fields::VersionedMap<String, Entry>;
