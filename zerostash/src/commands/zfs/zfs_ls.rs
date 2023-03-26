@@ -38,15 +38,15 @@ impl AsyncRunnable for ZfsLs {
 impl ZfsLs {
     fn print_simple(&self) -> Box<dyn Fn((String, DateTime<Utc>))> {
         writeln!(stderr().lock(), "NAME").unwrap();
-        Box::new(|snapshot: (String, DateTime<Utc>)| println!("{}", snapshot.0))
+        Box::new(|(name, _)| println!("{}", name))
     }
 
     fn print_list(&self) -> Box<dyn Fn((String, DateTime<Utc>))> {
         writeln!(stderr().lock(), "{:<25} TIME", "NAME").unwrap();
-        Box::new(|snapshot: (String, DateTime<Utc>)| {
-            let local_time = snapshot.1.with_timezone(&chrono::Local);
+        Box::new(|(name, time)| {
+            let local_time = time.with_timezone(&chrono::Local);
             let formatted_time = local_time.format("%Y %b %e %H:%M:%S").to_string();
-            println!("{:<25} {}", snapshot.0, formatted_time);
+            println!("{:<25} {}", name, formatted_time);
         })
     }
 }

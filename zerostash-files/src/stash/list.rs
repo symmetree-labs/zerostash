@@ -50,6 +50,6 @@ fn iter<V: AsRef<[T]>, T: AsRef<str>>(stash: &Infinitree<Files>, glob: V) -> Sna
                 let datetime: DateTime<Utc> = snap.unwrap().as_ref().into();
                 (name, datetime)
             })
-            .sorted_by(|a, b| a.1.cmp(&b.1)),
+            .sorted_by(|(_, a_time), (_, b_time)| a_time.cmp(b_time)),
     )
 }
