@@ -18,6 +18,12 @@ pub enum SnapshotError {
         #[from]
         source: infinitree::object::ObjectError,
     },
+
+    #[error("System time error: {source}")]
+    Time {
+        #[from]
+        source: std::time::SystemTimeError,
+    },
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -40,17 +46,22 @@ impl From<&Snapshot> for DateTime<Utc> {
 
 impl Snapshot {
     pub fn from_stdin(writer: AEADWriter) -> Result<Snapshot, SnapshotError> {
-        let mut buf = Vec::default();
-        std::io::stdin().read_to_end(&mut buf)?;
-
+        let mut stdin = std::io::stdin();
         let mut sink = BufferedSink::new(writer);
-        sink.write_all(&buf)?;
+        loop {
+            let mut buf = vec![0; 1_000_000];
+            let read_amount = stdin.read(&mut buf)?;
+            if read_amount == 0 {
+                break;
+            }
+            sink.write_all(&buf[..read_amount])?;
+        }
+
         let stream = sink.finish()?;
 
-        let now = SystemTime::now();
-        let since_epoche = now.duration_since(SystemTime::UNIX_EPOCH).unwrap();
-        let creation_time_secs = since_epoche.as_secs();
-        let creation_time_nanos = since_epoche.as_nanos();
+        let since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        let creation_time_secs = since_epoch.as_secs();
+        let creation_time_nanos = since_epoch.as_nanos();
 
         Ok(Self {
             stream,
@@ -61,11 +72,16 @@ impl Snapshot {
 
     pub fn to_stdout(&self, reader: PoolRef<AEADReader>) -> Result<(), SnapshotError> {
         let mut lock = std::io::stdout().lock();
-        let mut buf = Vec::default();
-
         let mut stream = self.stream.open_reader(reader);
-        stream.read_to_end(&mut buf)?;
-        lock.write_all(&buf)?;
+
+        loop {
+            let mut buf = vec![0; 1_000_000];
+            let read_amount = stream.read(&mut buf)?;
+            if read_amount == 0 {
+                break;
+            }
+            lock.write_all(&buf)?;
+        }
 
         Ok(())
     }

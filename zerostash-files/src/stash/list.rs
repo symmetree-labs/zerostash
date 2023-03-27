@@ -21,17 +21,18 @@ impl List {
             vec!["*".into()]
         };
 
-        iter(stash, globs)
+        iter(stash, globs.into_iter())
     }
 }
 
-pub type SnapshotIterator<'a> = Box<(dyn Iterator<Item = (String, DateTime<Utc>)> + Send + 'a)>;
+type SnapshotIterator<'a> = Box<(dyn Iterator<Item = (String, DateTime<Utc>)> + Send + 'a)>;
 
-fn iter<V: AsRef<[T]>, T: AsRef<str>>(stash: &Infinitree<Files>, glob: V) -> SnapshotIterator {
-    let matchers = glob
-        .as_ref()
-        .iter()
-        .map(|g| glob::Pattern::new(g.as_ref()).unwrap())
+fn iter<V: Iterator<Item = T>, T: AsRef<str>>(
+    stash: &Infinitree<Files>,
+    globs: V,
+) -> SnapshotIterator {
+    let matchers = globs
+        .map(|glob| glob::Pattern::new(glob.as_ref()).unwrap())
         .collect::<Vec<glob::Pattern>>();
 
     use QueryAction::{Skip, Take};
@@ -45,11 +46,7 @@ fn iter<V: AsRef<[T]>, T: AsRef<str>>(stash: &Infinitree<Files>, glob: V) -> Sna
                 }
             })
             .unwrap()
-            .filter(|(_, snap)| snap.is_some())
-            .map(|(name, snap)| {
-                let datetime: DateTime<Utc> = snap.unwrap().as_ref().into();
-                (name, datetime)
-            })
-            .sorted_by(|(_, a_time), (_, b_time)| a_time.cmp(b_time)),
+            .filter_map(|(name, snap)| snap.map(|s| (name, DateTime::<Utc>::from(s.as_ref()))))
+            .sorted_by_key(|(_, time)| *time),
     )
 }

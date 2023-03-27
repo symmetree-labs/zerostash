@@ -21,7 +21,10 @@ use crate::{
 };
 use abscissa_core::{Command, Configurable, Runnable};
 use clap::{ArgGroup, Parser};
-use std::{path::PathBuf, str::FromStr};
+use std::path::PathBuf;
+use std::str::FromStr;
+
+use self::zfs::ZerostashZfs;
 
 /// Zerostash Configuration Filename
 pub const CONFIG_FILE: &str = "zerostash.toml";
@@ -51,23 +54,6 @@ pub enum ZerostashCmd {
     /// Provides access to ZFS Subcommands
     #[clap(subcommand)]
     Zfs(ZerostashZfs),
-}
-
-/// Zerostash Subcommands
-/// Subcommands need to be listed in an enum.
-#[derive(Debug, Parser)]
-pub enum ZerostashZfs {
-    /// Add a ZFS snapshot to the stash
-    Commit(ZfsCommit),
-
-    /// Extracts a snapshot to stdout
-    Extract(ZfsExtract),
-
-    /// Remove a snapshot from the stash
-    Destroy(ZfsDestroy),
-
-    /// List Snapshots in a stash
-    Ls(ZfsLs),
 }
 
 /// Secure and speedy backups.
@@ -165,12 +151,7 @@ impl Runnable for EntryPoint {
                 Ls(cmd) => cmd.run().await,
                 Keys(cmd) => cmd.run().await,
                 Wipe(cmd) => cmd.run().await,
-                Zfs(zfs) => match zfs {
-                    ZerostashZfs::Commit(cmd) => cmd.run().await,
-                    ZerostashZfs::Extract(cmd) => cmd.run().await,
-                    ZerostashZfs::Destroy(cmd) => cmd.run().await,
-                    ZerostashZfs::Ls(cmd) => cmd.run().await,
-                },
+                Zfs(cmd) => match_zfs_cmd(cmd).await,
             }
         })
         .unwrap()

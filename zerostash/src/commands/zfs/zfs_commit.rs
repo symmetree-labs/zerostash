@@ -36,14 +36,14 @@ impl AsyncRunnable for ZfsCommit {
 }
 
 fn add_snapshot(stash: &Infinitree<Files>, snapshot: String) {
+    let snapshots = &stash.index().snapshots;
+
+    if snapshots.get(&snapshot).is_some() {
+        panic!("Can't override existing Snapshot!");
+    }
+
     let writer = stash.storage_writer().unwrap();
     let stream = Snapshot::from_stdin(writer).expect("Failed to capture Snapshot");
 
-    let snapshots = &stash.index().snapshots;
-    if snapshots
-        .update_with(snapshot.clone(), |_v| stream.clone())
-        .is_none()
-    {
-        snapshots.insert(snapshot, stream);
-    }
+    snapshots.insert(snapshot, stream);
 }

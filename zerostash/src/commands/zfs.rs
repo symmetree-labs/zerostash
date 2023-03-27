@@ -6,3 +6,5 @@ mod zfs_destroy;
 pub use zfs_destroy::*;
 mod zfs_ls;
 pub use zfs_ls::*;
+mod zfs_commands;
+pub use zfs_commands::*;
