@@ -18,6 +18,7 @@
     unused_qualifications
 )]
 
+pub mod migration;
 pub mod application;
 pub mod commands;
 pub mod config;

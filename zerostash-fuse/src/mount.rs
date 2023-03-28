@@ -10,7 +10,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use infinitree::fields::VersionedMap;
 use infinitree::object::AEADReader;
 use infinitree::object::Pool;
 use infinitree::object::PoolRef;
@@ -126,17 +125,18 @@ impl FilesystemMT for ZerostashFS {
 
         let path_str = strip_path(path).to_str().unwrap();
 
-        let stash = self.stash.lock().unwrap();
-        let index = stash.index();
-        let node = index.directory_tree.read().get(path_str);
+        let node = {
+            let stash = self.stash.lock().unwrap();
+            let index = &stash.index();
+            let tree = index.directory_tree.read();
+            tree.get(path_str)
+        };
 
         match node {
             Some(zerostash_files::Node::Directory(_)) => Ok((TTL, DIR_ATTR)),
-            Some(zerostash_files::Node::File(_)) => index
-                .files
-                .get(path_str)
-                .map(|entry| Ok((TTL, file_to_fuse(&entry, self.commit_timestamp))))
-                .unwrap_or(Err(libc::ENOENT)),
+            Some(zerostash_files::Node::File(file)) => {
+                Ok((TTL, file_to_fuse(&file, self.commit_timestamp)))
+            }
             None => Err(libc::ENOENT),
         }
     }
@@ -196,11 +196,17 @@ impl FilesystemMT for ZerostashFS {
 
         let real_path = strip_path(path);
         let path_string = real_path.to_str().unwrap();
+
         let entry = {
             let stash = self.stash.lock().unwrap();
-            let files = &stash.index().files;
-            files.get(path_string).unwrap()
+            let index = &stash.index();
+            let tree = index.directory_tree.read();
+            match tree.get(path_string) {
+                Some(zerostash_files::Node::File(entry)) => entry,
+                _ => return callback(Err(libc::EINVAL)),
+            }
         };
+
         let file_size = entry.size as usize;
         let offset = offset as usize;
 
@@ -278,9 +284,12 @@ impl FilesystemMT for ZerostashFS {
 
         let entry = {
             let stash = self.stash.lock().unwrap();
-            let index = stash.index();
-            let files = &index.files;
-            files.get(path_string).unwrap()
+            let index = &stash.index();
+            let tree = index.directory_tree.read();
+            match tree.get(path_string) {
+                Some(zerostash_files::Node::File(entry)) => entry,
+                _ => return Err(libc::EINVAL),
+            }
         };
 
         let obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
@@ -299,7 +308,7 @@ impl FilesystemMT for ZerostashFS {
             chunks: Vec::new(),
             file_type: entry.file_type.clone(),
             name: entry.name.clone(),
-            ..*entry
+            ..entry
         };
 
         let stash = self.stash.lock().unwrap();
@@ -331,9 +340,12 @@ impl FilesystemMT for ZerostashFS {
 
         let entry = {
             let stash = self.stash.lock().unwrap();
-            let index = stash.index();
-            let files = &index.files;
-            files.get(path_string).unwrap()
+            let index = &stash.index();
+            let tree = index.directory_tree.read();
+            match tree.get(path_string) {
+                Some(zerostash_files::Node::File(entry)) => entry,
+                _ => return Err(libc::EINVAL),
+            }
         };
 
         let obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
@@ -358,7 +370,7 @@ impl FilesystemMT for ZerostashFS {
             chunks: Vec::new(),
             file_type: entry.file_type.clone(),
             name: entry.name.clone(),
-            ..*entry
+            ..entry
         };
 
         index_buf(
@@ -394,27 +406,20 @@ impl FilesystemMT for ZerostashFS {
         let is_file = {
             let stash = self.stash.lock().unwrap();
             let index = stash.index();
-            let tree = &index.directory_tree;
-            let read = tree.read();
-            read.is_file(&path_str)
+            let tree = &index.directory_tree.read();
+            tree.is_file(&path_str)
         };
 
         let stash = self.stash.lock().unwrap();
         let index = stash.index();
 
         if is_file {
-            let files = &index.files;
-            rename_file(files, path_str.to_string(), new_path_str.to_string());
-
             let tree = &index.directory_tree;
             let mut tree = tree.write();
 
             tree.rename_file(&path_str, newname.to_str().unwrap());
             tree.move_node(&path_str, &new_path_str);
         } else {
-            let files = &index.files;
-            replace_file_paths(files, &path_str, &new_path_str);
-
             let tree = &index.directory_tree;
             let mut tree = tree.write();
 
@@ -446,14 +451,9 @@ impl FilesystemMT for ZerostashFS {
         let stash = self.stash.lock().unwrap();
         let index = stash.index();
 
-        {
-            let tree = &index.directory_tree;
-            let mut tree = tree.write();
-            tree.remove(&path_str);
-        }
-
-        let files = &index.files;
-        files.retain(|k, _| !k.contains(&path_str));
+        let tree = &index.directory_tree;
+        let mut tree = tree.write();
+        tree.remove(&path_str);
 
         Ok(())
     }
@@ -467,14 +467,9 @@ impl FilesystemMT for ZerostashFS {
         let stash = self.stash.lock().unwrap();
         let index = stash.index();
 
-        {
-            let tree = &index.directory_tree;
-            let mut tree = tree.write();
-            tree.remove(&path_str);
-        }
-
-        let files = &index.files;
-        files.retain(|k, _| k != &path_str);
+        let tree = &index.directory_tree;
+        let mut tree = tree.write();
+        tree.remove(&path_str);
 
         Ok(())
     }
@@ -493,6 +488,7 @@ impl FilesystemMT for ZerostashFS {
 
         let now = SystemTime::now();
         let unix = now.duration_since(UNIX_EPOCH).unwrap();
+        let name = name.to_str().unwrap().to_string();
 
         let entry = Entry {
             unix_secs: unix.as_secs() as i64,
@@ -503,28 +499,18 @@ impl FilesystemMT for ZerostashFS {
             readonly: None,
             file_type: FileType::File,
             size: 0,
-            name: path_string.to_string(),
+            name,
             chunks: Vec::new(),
         };
 
-        let attr = file_to_fuse(&Arc::new(entry.clone()), SystemTime::now());
+        let attr = file_to_fuse(&entry, SystemTime::now());
 
         let stash = self.stash.lock().unwrap();
         let index = stash.index();
 
-        {
-            let tree = &index.directory_tree;
-            let mut tree = tree.write();
-            let name = name.to_str().unwrap().to_string();
-            let entry = Entry {
-                name,
-                ..Entry::default()
-            };
-            tree.insert_file(path_string, entry);
-        }
-
-        let files = &index.files;
-        files.insert(path_string.to_string(), entry);
+        let tree = &index.directory_tree;
+        let mut tree = tree.write();
+        tree.insert_file(path_string, entry);
 
         Ok(CreatedEntry {
             ttl: TTL,
@@ -541,17 +527,21 @@ impl FilesystemMT for ZerostashFS {
         let stash = self.stash.lock().unwrap();
         let index = stash.index();
 
-        let files = &index.files;
-        let entry = files.get(&path_string).unwrap();
+        let tree = &mut index.directory_tree.write();
+        let entry = match tree.get(&path_string) {
+            Some(zerostash_files::Node::File(entry)) => entry,
+            _ => return Err(libc::EINVAL),
+        };
+
         let new_entry = Entry {
             unix_perm: Some(mode),
             chunks: entry.chunks.clone(),
             file_type: entry.file_type.clone(),
             name: entry.name.clone(),
-            ..*entry
+            ..entry
         };
 
-        files.update_with(path_string, |_v| new_entry.clone());
+        tree.insert_file(&path_string, new_entry);
         Ok(())
     }
 
@@ -569,8 +559,12 @@ impl FilesystemMT for ZerostashFS {
         let stash = self.stash.lock().unwrap();
         let index = stash.index();
 
-        let files = &index.files;
-        let entry = files.get(&path_string).unwrap();
+        let tree = &mut index.directory_tree.write();
+        let entry = match tree.get(&path_string) {
+            Some(zerostash_files::Node::File(entry)) => entry,
+            _ => return Err(libc::EINVAL),
+        };
+
         let new_entry = Entry {
             unix_uid: Some(uid.unwrap_or_else(|| {
                 entry
@@ -585,10 +579,10 @@ impl FilesystemMT for ZerostashFS {
             chunks: entry.chunks.clone(),
             file_type: entry.file_type.clone(),
             name: entry.name.clone(),
-            ..*entry
+            ..entry
         };
 
-        files.update_with(path_string, |_v| new_entry.clone());
+        tree.insert_file(&path_string, new_entry);
 
         Ok(())
     }
@@ -629,14 +623,14 @@ const DIR_ATTR: FileAttr = FileAttr {
     flags: 0,
 };
 
-fn read_chunks_into_buf(buf: &mut [u8], mut reader: PoolRef<AEADReader>, entry: &Arc<Entry>) {
+fn read_chunks_into_buf(buf: &mut [u8], mut reader: PoolRef<AEADReader>, entry: &Entry) {
     for (start, cp) in entry.chunks.iter() {
         let start = *start as usize;
         reader.read_chunk(cp, &mut buf[start..]).unwrap();
     }
 }
 
-fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
+fn file_to_fuse(file: &Entry, atime: SystemTime) -> FileAttr {
     let mtime = UNIX_EPOCH
         + Duration::from_secs(file.unix_secs as u64)
         + Duration::from_nanos(file.unix_nanos as u64);
@@ -665,54 +659,10 @@ fn strip_path(path: &Path) -> &Path {
     path.strip_prefix("/").unwrap()
 }
 
-fn replace_file_paths(files: &VersionedMap<String, Entry>, path_str: &str, new_path_str: &str) {
-    let mut new_files = vec![];
-
-    files.retain(|k, v| {
-        if k.contains(path_str) {
-            let postfix = k.strip_prefix(path_str).unwrap();
-            let mut new_file_path = new_path_str.to_string();
-
-            new_file_path.push_str(postfix);
-            let new_entry = Entry {
-                name: new_file_path.clone(),
-                file_type: v.file_type.clone(),
-                chunks: v.chunks.clone(),
-                ..*v
-            };
-            new_files.push((new_file_path, new_entry));
-            return false;
-        }
-        true
-    });
-
-    for (k, v) in new_files.iter() {
-        files.insert(k.to_string(), v.clone());
-    }
-}
-
 fn match_filetype(file_type: FileType) -> fuse_mt::FileType {
     match file_type {
         FileType::File => fuse_mt::FileType::RegularFile,
         FileType::Symlink(_) => fuse_mt::FileType::Symlink,
         FileType::Directory => panic!("Must be a file!"),
     }
-}
-
-fn rename_file(files: &VersionedMap<String, Entry>, path_str: String, new_path_str: String) {
-    let entry = files.get(&path_str).unwrap();
-    let new_entry = Entry {
-        name: new_path_str.clone(),
-        file_type: entry.file_type.clone(),
-        chunks: entry.chunks.clone(),
-        ..*entry
-    };
-
-    if files
-        .update_with(new_path_str.clone(), |_v| new_entry.clone())
-        .is_none()
-    {
-        files.insert(new_path_str, new_entry);
-    }
-    files.remove(path_str);
 }

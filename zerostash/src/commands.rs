@@ -21,6 +21,7 @@ pub use mount::*;
 
 use crate::{
     config::{Key, SymmetricKey, YubikeyCRConfig, YubikeyCRKey},
+    migration::*,
     prelude::*,
 };
 use abscissa_core::{Command, Configurable, Runnable};
@@ -152,7 +153,9 @@ impl StashArgs {
     }
 
     pub(crate) fn open(&self) -> Stash {
-        self.open_with(self.key())
+        let mut stash = self.open_with(self.key());
+        migration(&mut stash);
+        stash
     }
 }
 

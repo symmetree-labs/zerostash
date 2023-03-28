@@ -112,15 +112,6 @@ impl Options {
                 }
             };
 
-            {
-                let index_tree = &stash.index().directory_tree;
-                let path_str = path.to_str().unwrap();
-                let name = path.file_name().unwrap().to_str().unwrap().to_string();
-                let mut entry_new = entry.clone();
-                entry_new.name = name;
-                index_tree.write().insert_file(path_str, entry_new);
-            }
-
             trace!(?path, "queued");
             current_file_list.push(entry.name.clone());
             sender.send((path, entry)).unwrap();
@@ -129,23 +120,23 @@ impl Options {
         drop(sender);
         join_all(workers).await;
 
-        let source_paths = self
-            .paths
-            .iter()
-            .map(files::normalize_filename)
-            .collect::<Result<Vec<_>, _>>()?;
+        //let source_paths = self
+        //    .paths
+        //    .iter()
+        //    .map(files::normalize_filename)
+        //    .collect::<Result<Vec<_>, _>>()?;
 
-        stash.index().files.retain(|k, _| {
-            for path in source_paths.iter() {
-                if k.starts_with(path) {
-                    // if the current directory is part of the new commit, diff
-                    return current_file_list.contains(k);
-                }
-            }
+        //stash.index().files.retain(|k, _| {
+        //    for path in source_paths.iter() {
+        //        if k.starts_with(path) {
+        //            // if the current directory is part of the new commit, diff
+        //            return current_file_list.contains(k);
+        //        }
+        //    }
 
-            // if it's unrelated, keep it in the index
-            true
-        });
+        //    // if it's unrelated, keep it in the index
+        //    true
+        //});
 
         Ok(())
     }
@@ -210,21 +201,33 @@ async fn process_file_loop(
 
     while let Ok((path, entry)) = r.recv_async().await {
         buf.clear();
+        let path_str = path.to_str().unwrap();
 
         if !force {
-            if let Some(in_store) = index.files.get(&entry.name) {
-                if in_store.as_ref() == &entry {
+            let tree = &index.directory_tree.read();
+            if let Some(crate::Node::File(in_store)) = tree.get(path_str) {
+                if in_store == entry {
                     debug!(?path, "already indexed, skipping");
                     continue;
                 } else {
                     debug!(?path, "adding new file");
                 }
             }
+            //if let Some(in_store) = tree.get(&entry.name) {
+            //    if in_store.as_ref() == &entry {
+            //        debug!(?path, "already indexed, skipping");
+            //        continue;
+            //    } else {
+            //        debug!(?path, "adding new file");
+            //    }
+            //}
         }
 
         let size = entry.size;
         if size == 0 || entry.file_type.is_symlink() {
-            index.files.insert(entry.name.clone(), entry);
+            //index.files.insert(entry.name.clone(), entry);
+            let tree = &mut index.directory_tree.write();
+            tree.insert_file(path_str, entry);
             continue;
         }
 
@@ -291,13 +294,12 @@ async fn index_file(
 
     debug!(?path, chunks = entry.chunks.len(), "indexed");
 
-    if index
-        .files
-        .update_with(entry.name.clone(), |_v| entry.clone())
-        .is_none()
-    {
-        index.files.insert(entry.name.clone(), entry);
-    }
+    let index_tree = &mut index.directory_tree.write();
+    let path_str = path.to_str().unwrap();
+    let name = path.file_name().unwrap().to_str().unwrap().to_string();
+    let mut entry_new = entry.clone();
+    entry_new.name = name;
+    index_tree.insert_file(path_str, entry_new);
 }
 
 pub fn index_buf(
@@ -327,7 +329,8 @@ pub fn index_buf(
         chunks.into_iter().collect::<Result<Vec<_>, _>>().unwrap(),
     );
 
-    index.files.update_with(path, |_v| entry.clone()).unwrap();
+    let index_tree = &mut index.directory_tree.write();
+    index_tree.insert_file(&path, entry.clone());
 }
 
 struct MmappedFile {

@@ -126,10 +126,6 @@ impl Tree {
             }
             _ => panic!("Cant rename!"),
         }
-        //current
-        //    .lock()
-        //    .unwrap()
-        //    .insert(filename.to_string(), Node::File());
     }
 
     pub fn move_node(&mut self, old_path: &str, new_path: &str) {
