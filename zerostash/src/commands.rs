@@ -13,8 +13,8 @@ use ls::*;
 mod wipe;
 use wipe::*;
 mod zfs;
-use zfs::*;
 
+use self::zfs::ZfsCommand;
 use crate::{
     config::{Key, SymmetricKey, YubikeyCRConfig, YubikeyCRKey},
     prelude::*,
@@ -23,8 +23,6 @@ use abscissa_core::{Command, Configurable, Runnable};
 use clap::{ArgGroup, Parser};
 use std::path::PathBuf;
 use std::str::FromStr;
-
-use self::zfs::ZerostashZfs;
 
 /// Zerostash Configuration Filename
 pub const CONFIG_FILE: &str = "zerostash.toml";
@@ -53,7 +51,7 @@ pub enum ZerostashCmd {
 
     /// Provides access to ZFS Subcommands
     #[clap(subcommand)]
-    Zfs(ZerostashZfs),
+    Zfs(ZfsCommand),
 }
 
 /// Secure and speedy backups.
@@ -151,7 +149,7 @@ impl Runnable for EntryPoint {
                 Ls(cmd) => cmd.run().await,
                 Keys(cmd) => cmd.run().await,
                 Wipe(cmd) => cmd.run().await,
-                Zfs(cmd) => match_zfs_cmd(cmd).await,
+                Zfs(cmd) => cmd.run().await,
             }
         })
         .unwrap()

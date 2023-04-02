@@ -20,8 +20,8 @@ pub struct WriteToFile<T> {
 
 impl<T: Serialize> WriteToFile<T> {
     pub fn write(&self) {
-        let bytes = toml::ser::to_vec(&self.obj).expect("Can't serialize native object");
-        std::fs::write(&self.file, &bytes).expect("Can't write to output file");
+        let bytes = toml::ser::to_string(&self.obj).expect("Can't serialize native object");
+        std::fs::write(&self.file, bytes).expect("Can't write to output file");
     }
 }
 

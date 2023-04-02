@@ -1,15 +1,12 @@
-use std::{boxed::Box, future::Future, marker::Send, pin::Pin};
-
-use clap::Parser;
-
 use crate::prelude::AsyncRunnable;
+use async_trait::async_trait;
+use clap::Parser;
+use std::boxed::Box;
 
 use super::{ZfsCommit, ZfsDestroy, ZfsExtract, ZfsLs};
 
-/// Zerostash Subcommands
-/// Subcommands need to be listed in an enum.
 #[derive(Debug, Parser)]
-pub enum ZerostashZfs {
+pub enum ZfsCommand {
     /// Add a ZFS snapshot to the stash
     Commit(ZfsCommit),
 
@@ -23,11 +20,15 @@ pub enum ZerostashZfs {
     Ls(ZfsLs),
 }
 
-pub fn match_zfs_cmd<'a>(cmd: &'a ZerostashZfs) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
-    match cmd {
-        ZerostashZfs::Commit(cmd) => cmd.run(),
-        ZerostashZfs::Extract(cmd) => cmd.run(),
-        ZerostashZfs::Destroy(cmd) => cmd.run(),
-        ZerostashZfs::Ls(cmd) => cmd.run(),
+#[async_trait]
+impl AsyncRunnable for ZfsCommand {
+    async fn run(&self) {
+        use ZfsCommand::*;
+        match self {
+            Commit(c) => c.run().await,
+            Extract(e) => e.run().await,
+            Destroy(d) => d.run().await,
+            Ls(l) => l.run().await,
+        }
     }
 }
