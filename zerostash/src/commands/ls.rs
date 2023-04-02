@@ -4,14 +4,11 @@ use crate::prelude::*;
 use abscissa_core::terminal::{stderr, stdout};
 use chrono::{DateTime, Utc};
 use humansize::{format_size, BINARY};
-use std::{
-    io::{Write},
-    sync::Arc,
-};
+use std::{io::Write, sync::Arc, writeln};
 use termcolor::{Color, ColorSpec, StandardStreamLock, WriteColor};
 use zerostash_files::*;
 
-type Printer = Box<dyn Fn(&mut StandardStreamLock<'_>, Arc<Entry>) -> std::io::Result<()>>;
+type Printer = Box<dyn Fn(&mut StandardStreamLock<'_>, String, Arc<Entry>) -> std::io::Result<()>>;
 
 #[derive(Command, Debug)]
 pub struct Ls {
@@ -41,9 +38,10 @@ impl AsyncRunnable for Ls {
         let mut stdout = stdout().lock();
         let mut count = 0;
         for item in self.options.list(&stash) {
+            let (path, entry) = (item.0, item.1);
             count += 1;
 
-            if printer(&mut stdout, item).is_err() {
+            if printer(&mut stdout, path, entry).is_err() {
                 return;
             }
         }
@@ -54,12 +52,12 @@ impl AsyncRunnable for Ls {
 
 impl Ls {
     fn print_simple(&self) -> Printer {
-        Box::new(|stdout, entry| writeln!(stdout, "{}", entry.name))
+        Box::new(|stdout, path, _| writeln!(stdout, "{}", path))
     }
 
     fn print_list(&self) -> Printer {
         let human_readable = self.human_readable;
-        Box::new(move |stdout, entry| {
+        Box::new(move |stdout, path, entry| {
             let time: DateTime<Utc> = entry.as_ref().into();
             let local_time = time.with_timezone(&chrono::Local);
             let formatted_time = local_time.format("%Y %b %e %H:%M:%S").to_string();
@@ -102,9 +100,9 @@ impl Ls {
                 stdout,
                 file_color,
                 if let FileType::Symlink(ref target) = entry.file_type {
-                    format!("{} -> {:?}", entry.name, target)
+                    format!("{} -> {:?}", path, target)
                 } else {
-                    entry.name.clone()
+                    path
                 },
             )?;
 

@@ -13,7 +13,6 @@ use std::{
     io::{Cursor, Read},
     num::NonZeroUsize,
     path::PathBuf,
-    vec,
 };
 use tokio::task;
 use tracing::{debug, debug_span, error, trace, warn, Instrument};
@@ -84,7 +83,7 @@ impl Options {
     ) -> anyhow::Result<()> {
         let (sender, workers) = start_workers(stash, threads, self.force)?;
         let dir_walk = self.dir_walk()?;
-        let mut current_file_list = vec![];
+        //let mut current_file_list = vec![];
 
         for dir_entry in dir_walk {
             let (metadata, path) = match dir_entry {
@@ -113,7 +112,7 @@ impl Options {
             };
 
             trace!(?path, "queued");
-            current_file_list.push(entry.name.clone());
+            //current_file_list.push(entry.name.clone());
             sender.send((path, entry)).unwrap();
         }
 
@@ -213,19 +212,10 @@ async fn process_file_loop(
                     debug!(?path, "adding new file");
                 }
             }
-            //if let Some(in_store) = tree.get(&entry.name) {
-            //    if in_store.as_ref() == &entry {
-            //        debug!(?path, "already indexed, skipping");
-            //        continue;
-            //    } else {
-            //        debug!(?path, "adding new file");
-            //    }
-            //}
         }
 
         let size = entry.size;
         if size == 0 || entry.file_type.is_symlink() {
-            //index.files.insert(entry.name.clone(), entry);
             let tree = &mut index.directory_tree.write();
             tree.insert_file(path_str, entry);
             continue;
@@ -296,9 +286,7 @@ async fn index_file(
 
     let index_tree = &mut index.directory_tree.write();
     let path_str = path.to_str().unwrap();
-    let name = path.file_name().unwrap().to_str().unwrap().to_string();
-    let mut entry_new = entry.clone();
-    entry_new.name = name;
+    let entry_new = entry.clone();
     index_tree.insert_file(path_str, entry_new);
 }
 

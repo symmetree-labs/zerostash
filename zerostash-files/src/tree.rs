@@ -43,8 +43,11 @@ impl Iterator for TreeIterator {
                 Node::File(entry) => return Some((prefix, entry)),
                 Node::Directory(children) => {
                     for (name, child) in children.lock().unwrap().iter().rev() {
-                        let prefix = if prefix.is_empty() { "" } else { &prefix };
-                        let path = format!("{prefix}/{name}");
+                        let path = if prefix.is_empty() {
+                            name.to_string()
+                        } else {
+                            format!("{prefix}/{name}")
+                        };
                         self.stack.push((path, child.clone()));
                     }
                 }
