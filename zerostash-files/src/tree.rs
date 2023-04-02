@@ -19,6 +19,41 @@ impl Default for Node {
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct Tree(Arc<Mutex<BTreeMap<String, Node>>>);
 
+pub struct TreeIterator {
+    stack: Vec<(String, Node)>,
+}
+
+impl Tree {
+    pub fn iter(&self) -> TreeIterator {
+        let node = match self.get("") {
+            Some(node) => node,
+            None => Node::default(),
+        };
+        let stack = vec![(String::new(), node)];
+        TreeIterator { stack }
+    }
+}
+
+impl Iterator for TreeIterator {
+    type Item = (String, Entry);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some((prefix, node)) = self.stack.pop() {
+            match node {
+                Node::File(entry) => return Some((prefix, entry)),
+                Node::Directory(children) => {
+                    for (name, child) in children.lock().unwrap().iter().rev() {
+                        let prefix = if prefix.is_empty() { "" } else { &prefix };
+                        let path = format!("{prefix}/{name}");
+                        self.stack.push((path, child.clone()));
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
 impl Tree {
     pub fn insert_directory(&mut self, path: &str, node: Option<Node>) {
         let mut current = self.0.clone();
@@ -124,7 +159,7 @@ impl Tree {
             Node::File(entry) => {
                 entry.name = name.to_string();
             }
-            _ => panic!("Cant rename!"),
+            Node::Directory(_) => panic!("Cant rename!"),
         }
     }
 
@@ -176,13 +211,13 @@ impl Tree {
         let child = current
             .lock()
             .unwrap()
-            .entry("".to_string())
+            .entry(String::new())
             .or_default()
             .clone();
 
         match child {
             Node::Directory(dir) => dir,
-            _ => panic!("Path is not valid"),
+            Node::File(_) => panic!("Path is not valid"),
         }
     }
 
@@ -228,7 +263,7 @@ impl Tree {
 
             current = match child {
                 Node::Directory(dir) => dir,
-                _ => panic!("Path is not valid"),
+                Node::File(_) => panic!("Path is not valid"),
             };
         }
         (current, parts.last().unwrap())
