@@ -1,6 +1,6 @@
 //! `mount` subcommand
 
-use crate::prelude::*;
+use crate::{migration::migration, prelude::*};
 
 #[derive(Command, Debug)]
 pub struct Mount {
@@ -13,6 +13,10 @@ pub struct Mount {
     /// The location the filesytem will be mounted on
     #[clap(short = 'T', long = "target")]
     mount_point: String,
+
+    /// Mounts the filesystem read-write
+    #[clap(short = 'w', long = "read-write")]
+    read_write: bool,
 }
 
 #[cfg(unix)]
@@ -20,11 +24,19 @@ pub struct Mount {
 impl AsyncRunnable for Mount {
     /// Start the application.
     async fn run(&self) {
-        let stash = self.stash.open();
+        let mut stash = self.stash.open();
         let threads = APP.get_worker_threads();
 
-        if let Err(e) =
-            zerostash_fuse::mount::mount(stash, &self.options, &self.mount_point, threads).await
+        migration(&mut stash);
+
+        if let Err(e) = zerostash_fuse::mount::mount(
+            stash,
+            &self.options,
+            &self.mount_point,
+            threads,
+            self.read_write,
+        )
+        .await
         {
             panic!("Error = {}", e)
         }

@@ -35,16 +35,29 @@ pub async fn mount(
     options: &restore::Options,
     mountpoint: &str,
     threads: usize,
+    read_write: bool,
 ) -> anyhow::Result<()> {
     let stash = Arc::new(Mutex::new(stash));
 
-    let stash_clone = Arc::clone(&stash);
-    tokio::spawn(async move {
-        auto_commit(stash_clone).await;
-    });
+    if read_write {
+        let stash_clone = Arc::clone(&stash);
+        tokio::spawn(async move {
+            auto_commit(stash_clone).await;
+        });
+    }
 
-    let filesystem = ZerostashFS::open(stash, options, threads).unwrap();
-    let fuse_args = [OsStr::new("-o"), OsStr::new("fsname=zerostash")];
+    let filesystem = ZerostashFS::open(stash, options, threads, read_write).unwrap();
+
+    let mount_type = match read_write {
+        true => "rw",
+        false => "ro",
+    };
+
+    let fuse_args = vec![
+        OsStr::new("-o"),
+        OsStr::new(mount_type),
+        OsStr::new("fsname=zerostash"),
+    ];
 
     let fs = fuse_mt::FuseMT::new(filesystem, 1);
 
@@ -80,6 +93,7 @@ pub struct ZerostashFS {
     pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
     pub threads: usize,
     pub runtime: Handle,
+    pub read_write: bool,
 }
 
 impl ZerostashFS {
@@ -87,6 +101,7 @@ impl ZerostashFS {
         stash: Arc<Mutex<Infinitree<Files>>>,
         _options: &restore::Options,
         threads: usize,
+        read_write: bool,
     ) -> Result<Self> {
         stash.lock().unwrap().load_all().unwrap();
 
@@ -105,6 +120,7 @@ impl ZerostashFS {
             chunks_cache: scc::HashMap::new(),
             threads,
             runtime: Handle::current(),
+            read_write,
         })
     }
 }
@@ -113,11 +129,13 @@ impl FilesystemMT for ZerostashFS {
     fn destroy(&self) {
         debug!("destroy and commit");
 
-        self.runtime.block_on(async {
-            let mut stash = self.stash.lock().unwrap();
-            let _ = stash.commit("Fuse commit");
-            let _ = stash.backend().sync();
-        });
+        if self.read_write {
+            self.runtime.block_on(async {
+                let mut stash = self.stash.lock().unwrap();
+                let _ = stash.commit("Fuse commit");
+                let _ = stash.backend().sync();
+            });
+        }
     }
 
     fn getattr(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {

@@ -24,7 +24,7 @@ fn mount() -> anyhow::Result<()> {
     let stash = Infinitree::open(backend, key).unwrap();
     let fuse_args = [OsStr::new("-o"), OsStr::new("fsname=zerostash")];
     let options = zerostash_files::restore::Options::default();
-    let filesystem = ZerostashFS::open(Arc::new(Mutex::new(stash)), &options, 0).unwrap();
+    let filesystem = ZerostashFS::open(Arc::new(Mutex::new(stash)), &options, 0, false).unwrap();
     let fs = FuseMT::new(filesystem, 1);
     fuse_mt::spawn_mount(fs, "../tests/data/Mounting/Target/", &fuse_args[..])
         .unwrap()
