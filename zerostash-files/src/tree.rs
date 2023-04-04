@@ -24,40 +24,46 @@ pub struct TreeIterator {
 }
 
 impl Tree {
-    pub fn iter(&self) -> TreeIterator {
-        let node = match self.get("") {
-            Some(node) => node,
-            None => Node::default(),
-        };
-        let stack = vec![(String::new(), node)];
-        TreeIterator { stack }
-    }
-}
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&str, &Node) -> bool,
+    {
+        let mut stack = vec![(String::new(), Self::get_root(self.0.clone()))];
+        let mut to_remove = vec![];
 
-impl Iterator for TreeIterator {
-    type Item = (String, Entry);
+        while let Some((path, node)) = stack.pop() {
+            let mut map = node.lock().unwrap();
 
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some((prefix, node)) = self.stack.pop() {
-            match node {
-                Node::File(entry) => return Some((prefix, entry)),
-                Node::Directory(children) => {
-                    for (name, child) in children.lock().unwrap().iter().rev() {
-                        let path = if prefix.is_empty() {
-                            name.to_string()
+            for (key, value) in map.iter_mut() {
+                let full_path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{}/{}", path, key)
+                };
+
+                match value {
+                    Node::File(_) => {
+                        if !f(&full_path, value) {
+                            to_remove.push(full_path.clone());
+                        }
+                    }
+                    Node::Directory(ref dir) => {
+                        // if the node is not retained dont go down the node
+                        if !f(&full_path, value) {
+                            to_remove.push(full_path.clone());
                         } else {
-                            format!("{prefix}/{name}")
-                        };
-                        self.stack.push((path, child.clone()));
+                            stack.push((full_path, dir.clone()));
+                        }
                     }
                 }
             }
         }
-        None
-    }
-}
 
-impl Tree {
+        let mut map = self.0.lock().unwrap();
+        for key in to_remove {
+            map.remove(&key);
+        }
+    }
     pub fn insert_directory(&mut self, path: &str, node: Option<Node>) {
         let mut current = self.0.clone();
 
@@ -270,6 +276,39 @@ impl Tree {
             };
         }
         (current, parts.last().unwrap())
+    }
+
+    pub fn iter_files(&self) -> TreeIterator {
+        let node = match self.get("") {
+            Some(n) => n,
+            None => Node::default(),
+        };
+
+        let stack = vec![(String::new(), node)];
+        TreeIterator { stack }
+    }
+}
+
+impl Iterator for TreeIterator {
+    type Item = (String, Entry);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some((prefix, node)) = self.stack.pop() {
+            match node {
+                Node::File(entry) => return Some((prefix, entry)),
+                Node::Directory(children) => {
+                    for (name, child) in children.lock().unwrap().iter().rev() {
+                        let path = if prefix.is_empty() {
+                            name.to_string()
+                        } else {
+                            format!("{prefix}/{name}")
+                        };
+                        self.stack.push((path, child.clone()));
+                    }
+                }
+            }
+        }
+        None
     }
 }
 

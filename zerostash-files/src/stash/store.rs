@@ -1,4 +1,9 @@
-use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Files};
+use crate::{
+    files::{self, normalize_filename},
+    rollsum::SeaSplit,
+    splitter::FileSplitter,
+    Files,
+};
 use anyhow::Context;
 use flume as mpsc;
 use futures::future::join_all;
@@ -83,7 +88,7 @@ impl Options {
     ) -> anyhow::Result<()> {
         let (sender, workers) = start_workers(stash, threads, self.force)?;
         let dir_walk = self.dir_walk()?;
-        //let mut current_file_list = vec![];
+        let mut current_file_list = vec![];
 
         for dir_entry in dir_walk {
             let (metadata, path) = match dir_entry {
@@ -93,6 +98,8 @@ impl Options {
                     continue;
                 }
             };
+
+            current_file_list.push(normalize_filename(&path)?);
 
             let metadata = match metadata {
                 Ok(md) if md.is_file() || md.is_symlink() => md,
@@ -112,30 +119,29 @@ impl Options {
             };
 
             trace!(?path, "queued");
-            //current_file_list.push(entry.name.clone());
             sender.send((path, entry)).unwrap();
         }
 
         drop(sender);
         join_all(workers).await;
 
-        //let source_paths = self
-        //    .paths
-        //    .iter()
-        //    .map(files::normalize_filename)
-        //    .collect::<Result<Vec<_>, _>>()?;
+        let source_paths = self
+            .paths
+            .iter()
+            .map(normalize_filename)
+            .collect::<Result<Vec<_>, _>>()?;
 
-        //stash.index().files.retain(|k, _| {
-        //    for path in source_paths.iter() {
-        //        if k.starts_with(path) {
-        //            // if the current directory is part of the new commit, diff
-        //            return current_file_list.contains(k);
-        //        }
-        //    }
+        stash.index().directory_tree.write().retain(|p, _| {
+            for sp in source_paths.iter() {
+                if p.starts_with(sp) {
+                    // if the current directory is part of the new commit, diff
+                    return current_file_list.contains(&p.to_string());
+                }
+            }
 
-        //    // if it's unrelated, keep it in the index
-        //    true
-        //});
+            // if it's unrelated, keep it in the index
+            true
+        });
 
         Ok(())
     }
@@ -284,10 +290,9 @@ async fn index_file(
 
     debug!(?path, chunks = entry.chunks.len(), "indexed");
 
-    let index_tree = &mut index.directory_tree.write();
     let path_str = path.to_str().unwrap();
-    let entry_new = entry.clone();
-    index_tree.insert_file(path_str, entry_new);
+    let index_tree = &mut index.directory_tree.write();
+    index_tree.insert_file(path_str, entry);
 }
 
 pub fn index_buf(

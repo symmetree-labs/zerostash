@@ -58,7 +58,7 @@ fn iter<V: AsRef<[T]>, T: AsRef<str>>(stash: &Infinitree<Files>, glob: V) -> Fil
         .index()
         .directory_tree
         .write()
-        .iter()
+        .iter_files()
         .filter(move |(path, _)| match_c.iter().any(|m| m.matches(path)))
         .map(|(p, e)| (p, Arc::new(e)));
 
