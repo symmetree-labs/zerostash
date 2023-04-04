@@ -20,11 +20,6 @@ pub fn migration(stash: &mut Infinitree<Files>) {
 
     if count != 0 {
         stash.index().files.retain(|_, _| false);
-
-        stash
-            .commit("Files migration")
-            .expect("Failed to write metadata");
-        stash.backend().sync().expect("Failed to write to storage");
     }
 
     println!("Migrated {} files", count);
