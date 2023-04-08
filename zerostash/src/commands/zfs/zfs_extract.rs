@@ -1,5 +1,10 @@
 //! `zfs extract` subcommand
 
+use std::{
+    io::Read,
+    process::{Child, ChildStdin, Stdio},
+};
+
 use infinitree::Infinitree;
 use zerostash_files::Files;
 
@@ -10,9 +15,13 @@ pub struct ZfsExtract {
     #[clap(flatten)]
     stash: StashArgs,
 
-    /// The snapshot stored inside the stash
-    #[clap(long)]
-    snapshot: String,
+    /// name of the stored snapshot
+    #[clap(short = 'n', long)]
+    name: String,
+
+    /// zfs receive arguments to pass
+    #[clap(name = "arguments", multiple_values = true)]
+    arguments: Vec<String>,
 }
 
 #[async_trait]
@@ -22,15 +31,38 @@ impl AsyncRunnable for ZfsExtract {
         let stash = self.stash.open();
         stash.load(stash.index().snapshots()).unwrap();
 
-        extract_snapshot(&stash, &self.snapshot);
+        let mut child = execute_command(&self.arguments);
+        let stdin = child.stdin.as_mut().expect("failed to open stdin");
+        write_stream_to_stdin(&stash, &self.name, stdin);
+
+        let status = child.wait().expect("failed to wait for child process");
+
+        let stderr = child.stderr.as_mut().expect("failed to open stderr");
+        if !status.success() {
+            let mut err = String::new();
+            stderr.read_to_string(&mut err).unwrap();
+            panic!("err: {}", err);
+        }
     }
 }
 
-fn extract_snapshot(stash: &Infinitree<Files>, snapshot: &str) {
+fn execute_command(arguments: &[String]) -> Child {
+    std::process::Command::new("zfs")
+        .arg("receive")
+        .args(arguments)
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to execute zfs receive")
+}
+
+fn write_stream_to_stdin(stash: &Infinitree<Files>, snapshot: &str, stdin: &mut ChildStdin) {
     if let Some(stream) = stash.index().snapshots.get(snapshot) {
         let reader = stash.storage_reader().unwrap();
-        stream.to_stdout(reader).expect("Failed to write to stdout");
+        stream
+            .to_stdin(reader, stdin)
+            .expect("failed to write to stdin");
     } else {
-        panic!("Snapshot not stashed!");
+        panic!("snapshot not stashed");
     }
 }

@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use infinitree::object::{AEADReader, AEADWriter, BufferedSink, PoolRef};
 use std::{
     io::{self, Read, Write},
+    process::{ChildStdin, ChildStdout},
     time::{Duration, SystemTime},
 };
 
@@ -45,8 +46,10 @@ impl From<&Snapshot> for DateTime<Utc> {
 }
 
 impl Snapshot {
-    pub fn from_stdin(writer: AEADWriter) -> Result<Snapshot, SnapshotError> {
-        let mut stdin = std::io::stdin();
+    pub fn from_stdout(
+        writer: AEADWriter,
+        stdin: &mut ChildStdout,
+    ) -> Result<Snapshot, SnapshotError> {
         let mut sink = BufferedSink::new(writer);
         loop {
             let mut buf = vec![0; 1_000_000];
@@ -70,8 +73,11 @@ impl Snapshot {
         })
     }
 
-    pub fn to_stdout(&self, reader: PoolRef<AEADReader>) -> Result<(), SnapshotError> {
-        let mut lock = std::io::stdout().lock();
+    pub fn to_stdin(
+        &self,
+        reader: PoolRef<AEADReader>,
+        lock: &mut ChildStdin,
+    ) -> Result<(), SnapshotError> {
         let mut stream = self.stream.open_reader(reader);
 
         loop {
@@ -80,7 +86,7 @@ impl Snapshot {
             if read_amount == 0 {
                 break;
             }
-            lock.write_all(&buf)?;
+            lock.write_all(&buf[..read_amount])?;
         }
 
         Ok(())
