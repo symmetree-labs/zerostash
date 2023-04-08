@@ -138,7 +138,7 @@ impl From<&Entry> for PathBuf {
 
 impl From<&Entry> for DateTime<Utc> {
     fn from(e: &Entry) -> Self {
-        Utc.timestamp(e.unix_secs, e.unix_nanos)
+        Utc.timestamp_opt(e.unix_secs, e.unix_nanos).unwrap()
     }
 }
 
