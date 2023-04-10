@@ -3,7 +3,7 @@
 use crate::prelude::*;
 use abscissa_core::terminal::{stderr, stdout};
 use chrono::{DateTime, Utc};
-use humansize::{file_size_opts, FileSize};
+use humansize::{format_size, BINARY};
 use std::{io::Write, sync::Arc};
 use termcolor::{Color, ColorSpec, StandardStream, WriteColor};
 use zerostash_files::*;
@@ -56,10 +56,7 @@ impl Ls {
             let formatted_time = local_time.format("%Y %b %e %H:%M:%S").to_string();
 
             let size = if human_readable {
-                format!(
-                    "{:<8}",
-                    entry.size.file_size(file_size_opts::BINARY).unwrap()
-                )
+                format!("{:<8}", format_size(entry.size, BINARY))
             } else {
                 format!("{:<8}", entry.size)
             };

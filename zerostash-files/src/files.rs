@@ -72,30 +72,15 @@ impl FileType {
 #[derive(clap::Args, Clone, Debug, Default)]
 pub struct PreserveMetadata {
     /// Preserve permissions.
-    #[clap(
-        short = 'p',
-        long = "preserve-permissions",
-        default_value = "true",
-        parse(try_from_str)
-    )]
+    #[clap(short = 'p', long = "preserve-permissions", default_value = "true")]
     pub permissions: bool,
 
     /// Preserve owner/gid information. Requires root to restore.
-    #[clap(
-        short = 'o',
-        long = "preserve-ownership",
-        default_value = "true",
-        parse(try_from_str)
-    )]
+    #[clap(short = 'o', long = "preserve-ownership", default_value = "true")]
     pub ownership: bool,
 
     /// Preserve modification and creation times.
-    #[clap(
-        short = 't',
-        long = "preserve-times",
-        default_value = "true",
-        parse(try_from_str)
-    )]
+    #[clap(short = 't', long = "preserve-times", default_value = "true")]
     pub times: bool,
 }
 

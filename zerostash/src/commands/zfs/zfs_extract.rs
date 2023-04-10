@@ -20,7 +20,8 @@ pub struct ZfsExtract {
     name: String,
 
     /// zfs receive arguments to pass
-    #[clap(name = "arguments", multiple_values = true)]
+    #[clap(name = "arguments")]
+    #[arg(num_args(1..))]
     arguments: Vec<String>,
 }
 
