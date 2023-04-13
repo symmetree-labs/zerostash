@@ -4,8 +4,8 @@
     utils = { url = "github:numtide/flake-utils"; };
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
-      inputs.flake-utils = utils;
-      inputs.nixpkgs = nixpkgs;
+      inputs.flake-utils.follows = "utils";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
     flake-compat = {
       url = "github:edolstra/flake-compat";
@@ -20,7 +20,7 @@
         pkgs = import nixpkgs { inherit system overlays; };
 
         # Get a specific rust version
-        rust = pkgs.rust-bin.stable."1.67.0".default;
+        rust = pkgs.rust-bin.stable.default;
 
         rustPlatform = pkgs.makeRustPlatform {
           cargo = rust;
