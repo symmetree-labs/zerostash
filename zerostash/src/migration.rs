@@ -2,7 +2,7 @@ use infinitree::Infinitree;
 use zerostash_files::Files;
 
 pub fn migration(stash: &mut Infinitree<Files>) {
-    stash.load(stash.index().directory_tree()).unwrap();
+    stash.load(stash.index().tree()).unwrap();
     stash.load(stash.index().files()).unwrap();
 
     println!("Attempting migration!");
@@ -14,8 +14,8 @@ pub fn migration(stash: &mut Infinitree<Files>) {
         let filename = path_to_filename(k);
         let mut entry = v.clone();
         entry.name = filename;
-        let tree = &stash.index().directory_tree;
-        tree.write().insert_file(k, entry);
+        let tree = &stash.index().tree;
+        tree.insert_file(k, entry).unwrap();
     });
 
     if count != 0 {

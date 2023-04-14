@@ -2289,6 +2289,9 @@ name = "scc"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d9bf5e8953149d84e5bbcdbc48841b8a2fcf9790b6b5da09fe45a166e3bcc17"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "scopeguard"
@@ -3444,6 +3447,8 @@ dependencies = [
  "libc",
  "memmap2 0.5.10",
  "nix 0.26.2",
+ "rand",
+ "scc",
  "seahash",
  "serde",
  "serde_derive",

@@ -35,6 +35,9 @@ nix = { version = "0.26.2", default-features = false, features = ["fs", "user"] 
 
 chrono = { version = "0.4.24", default-features = false, features = ["std", "clock"] }
 
+scc = { version = "1.4.3", features = ["serde"] }
+rand = "0.8.5"
+
 [dev-dependencies]
 getrandom = "0.2.9"
 tokio = { version = "1.28.0", features = ["rt", "macros", "rt-multi-thread"] }

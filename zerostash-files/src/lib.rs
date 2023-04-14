@@ -25,5 +25,5 @@ pub struct Files {
     pub chunks: ChunkIndex,
     pub files: FileIndex,
     pub zfs_snapshots: ZfsIndex,
-    pub directory_tree: infinitree::fields::Serialized<Tree>,
+    pub tree: Tree,
 }

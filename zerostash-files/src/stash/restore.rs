@@ -1,4 +1,4 @@
-use crate::{files, Files};
+use crate::{files, Entry, Files};
 use flume as mpsc;
 use futures::future::join_all;
 use infinitree::{fields::QueryAction, object, Infinitree, *};
@@ -56,11 +56,12 @@ fn iter<V: AsRef<[T]>, T: AsRef<str>>(stash: &Infinitree<Files>, glob: V) -> Fil
     use QueryAction::{Skip, Take};
     let tree = stash
         .index()
-        .directory_tree
-        .write()
+        .tree
         .iter_files()
         .filter(move |(path, _)| match_c.iter().any(|m| m.matches(path)))
-        .map(|(p, e)| (p, Arc::new(e)));
+        .map(|(a, b)| (a, b))
+        .collect::<Vec<(String, Arc<Entry>)>>()
+        .into_iter();
 
     Box::new(
         stash

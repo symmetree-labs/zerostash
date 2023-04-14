@@ -125,23 +125,23 @@ impl Options {
         drop(sender);
         join_all(workers).await;
 
-        let source_paths = self
+        let _source_paths = self
             .paths
             .iter()
             .map(normalize_filename)
             .collect::<Result<Vec<_>, _>>()?;
 
-        stash.index().directory_tree.write().retain(|p, _| {
-            for sp in source_paths.iter() {
-                if p.starts_with(sp) {
-                    // if the current directory is part of the new commit, diff
-                    return current_file_list.contains(&p.to_string());
-                }
-            }
+        //stash.index().directory_tree.write().retain(|p, _| {
+        //    for sp in source_paths.iter() {
+        //        if p.starts_with(sp) {
+        //            // if the current directory is part of the new commit, diff
+        //            return current_file_list.contains(&p.to_string());
+        //        }
+        //    }
 
-            // if it's unrelated, keep it in the index
-            true
-        });
+        //    // if it's unrelated, keep it in the index
+        //    true
+        //});
 
         Ok(())
     }
@@ -204,26 +204,29 @@ async fn process_file_loop(
 ) {
     let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
 
-    while let Ok((path, entry)) = r.recv_async().await {
+    while let Ok((path, e)) = r.recv_async().await {
         buf.clear();
         let path_str = path.to_str().unwrap();
 
         if !force {
-            let tree = &index.directory_tree.read();
-            if let Some(crate::Node::File(in_store)) = tree.get(path_str) {
-                if in_store == entry {
-                    debug!(?path, "already indexed, skipping");
-                    continue;
-                } else {
-                    debug!(?path, "adding new file");
+            let tree = &index.tree;
+            if let Ok(Some(node)) = tree.get(path_str) {
+                match node.as_ref() {
+                    crate::Node::File { refs: _, entry } if *entry.as_ref() == e => {
+                        debug!(?path, "already indexed, skipping");
+                        continue;
+                    }
+                    crate::Node::File { refs: _, entry: _ } => {
+                        debug!(?path, "adding new file");
+                    }
+                    crate::Node::Directory { .. } => {}
                 }
             }
         }
 
-        let size = entry.size;
-        if size == 0 || entry.file_type.is_symlink() {
-            let tree = &mut index.directory_tree.write();
-            tree.insert_file(path_str, entry);
+        let size = e.size;
+        if size == 0 || e.file_type.is_symlink() {
+            index.tree.insert_file(path_str, e).unwrap();
             continue;
         }
 
@@ -236,7 +239,7 @@ async fn process_file_loop(
         };
 
         index_file(
-            entry,
+            e,
             osfile,
             &mut buf,
             path.clone(),
@@ -291,15 +294,14 @@ async fn index_file(
     debug!(?path, chunks = entry.chunks.len(), "indexed");
 
     let path_str = path.to_str().unwrap();
-    let index_tree = &mut index.directory_tree.write();
-    index_tree.insert_file(path_str, entry);
+    index.tree.insert_file(path_str, entry).unwrap();
 }
 
 pub fn index_buf(
     mut file: Cursor<Vec<u8>>,
     mut entry: files::Entry,
     hasher: infinitree::Hasher,
-    index: &crate::Files,
+    index: &mut crate::Files,
     writer: &Pool<impl Writer + Clone + 'static>,
     path: String,
 ) {
@@ -322,8 +324,8 @@ pub fn index_buf(
         chunks.into_iter().collect::<Result<Vec<_>, _>>().unwrap(),
     );
 
-    let index_tree = &mut index.directory_tree.write();
-    index_tree.insert_file(&path, entry.clone());
+    let index_tree = &mut index.tree;
+    index_tree.insert_file(&path, entry.clone()).unwrap();
 }
 
 struct MmappedFile {
