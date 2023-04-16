@@ -20,7 +20,7 @@
         pkgs = import nixpkgs { inherit system overlays; };
 
         # Get a specific rust version
-        rust = pkgs.rust-bin.stable.default;
+        rust = pkgs.rust-bin.stable.latest.default;
 
         rustPlatform = pkgs.makeRustPlatform {
           cargo = rust;
@@ -37,7 +37,7 @@
             rec { };
       in rec {
         packages = rec {
-          zerostash = rustPlatform.buildRustPackage {
+          zerostash = rustPlatform.buildRustPackage ({
             meta = with pkgs.lib; {
               description = "Secure, speedy, distributed backups";
               homepage = "https://symmetree.dev";
@@ -47,7 +47,6 @@
 
             name = "zerostash";
             pname = "0s";
-            version = "0.5.0";
             src = pkgs.lib.sources.cleanSource ./.;
             # buildFeatures = pkgs.lib.optionals pkgs.stdenv.isLinux [ "fuse" ];
 
@@ -57,7 +56,9 @@
               [ pkg-config ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin macDeps;
             buildInputs = with pkgs;
               [ libusb ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux linuxDeps;
-          };
+          } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+            SODIUM_LIB_DIR="${pkgs.pkgsStatic.libsodium}/lib";
+          });
 
           vm = self.nixosConfigurations.test.config.system.build.vm;
 
