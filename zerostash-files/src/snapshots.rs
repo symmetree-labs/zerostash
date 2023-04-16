@@ -51,8 +51,9 @@ impl Snapshot {
         stdin: &mut ChildStdout,
     ) -> Result<Snapshot, SnapshotError> {
         let mut sink = BufferedSink::new(writer);
+        let mut buf = vec![0; 1_000_000];
+
         loop {
-            let mut buf = vec![0; 1_000_000];
             let read_amount = stdin.read(&mut buf)?;
             if read_amount == 0 {
                 break;
@@ -79,9 +80,9 @@ impl Snapshot {
         lock: &mut ChildStdin,
     ) -> Result<(), SnapshotError> {
         let mut stream = self.stream.open_reader(reader);
+        let mut buf = vec![0; 1_000_000];
 
         loop {
-            let mut buf = vec![0; 1_000_000];
             let read_amount = stream.read(&mut buf)?;
             if read_amount == 0 {
                 break;

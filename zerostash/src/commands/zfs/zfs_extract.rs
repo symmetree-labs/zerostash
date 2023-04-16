@@ -60,8 +60,7 @@ fn execute_command(arguments: &[String]) -> Child {
 fn write_stream_to_stdin(stash: &Infinitree<Files>, snapshot: &str, stdin: &mut ChildStdin) {
     if let Some(stream) = stash.index().snapshots.get(snapshot) {
         let reader = stash.storage_reader().unwrap();
-        stream
-            .to_stdin(reader, stdin)
+        abscissa_tokio::tokio::task::block_in_place(|| stream.to_stdin(reader, stdin))
             .expect("failed to write to stdin");
     } else {
         panic!("snapshot not stashed");

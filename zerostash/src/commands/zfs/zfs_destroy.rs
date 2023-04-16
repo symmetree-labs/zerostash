@@ -7,9 +7,9 @@ pub struct ZfsDestroy {
     #[clap(flatten)]
     stash: StashArgs,
 
-    /// The snapshot stored inside the stash
-    #[clap(long)]
-    snapshot: String,
+    /// name of the stored snapshot
+    #[clap(short = 'n', long)]
+    name: String,
 }
 
 #[async_trait]
@@ -19,11 +19,11 @@ impl AsyncRunnable for ZfsDestroy {
         let mut stash = self.stash.open();
         stash.load_all().unwrap();
 
-        stash.index().snapshots.remove(self.snapshot.clone());
+        stash.index().snapshots.remove(self.name.clone());
 
         stash
-            .commit(format!("Destroyed snapshot '{}'", self.snapshot))
-            .expect("Failed to write metadata");
-        stash.backend().sync().expect("Failed to write to storage");
+            .commit(format!("Destroyed snapshot '{}'", self.name))
+            .expect("failed to write metadata");
+        stash.backend().sync().expect("failed to write to storage");
     }
 }
