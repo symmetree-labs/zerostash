@@ -59,7 +59,6 @@ fn iter<V: AsRef<[T]>, T: AsRef<str>>(stash: &Infinitree<Files>, glob: V) -> Fil
         .tree
         .iter_files()
         .filter(move |(path, _)| match_c.iter().any(|m| m.matches(path)))
-        .map(|(a, b)| (a, b))
         .collect::<Vec<(String, Arc<Entry>)>>()
         .into_iter();
 

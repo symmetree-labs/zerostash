@@ -125,23 +125,24 @@ impl Options {
         drop(sender);
         join_all(workers).await;
 
-        let _source_paths = self
+        let source_paths = self
             .paths
             .iter()
             .map(normalize_filename)
             .collect::<Result<Vec<_>, _>>()?;
 
-        //stash.index().directory_tree.write().retain(|p, _| {
-        //    for sp in source_paths.iter() {
-        //        if p.starts_with(sp) {
-        //            // if the current directory is part of the new commit, diff
-        //            return current_file_list.contains(&p.to_string());
-        //        }
-        //    }
+        stash.index().tree.retain(|p, _| {
+            for sp in source_paths.iter() {
+                if p.starts_with(sp) {
+                    // if the current directory is part of the new commit, diff
+                    let status = current_file_list.contains(&p.to_string());
+                    return status;
+                }
+            }
 
-        //    // if it's unrelated, keep it in the index
-        //    true
-        //});
+            // if it's unrelated, keep it in the index
+            true
+        });
 
         Ok(())
     }
@@ -325,7 +326,7 @@ pub fn index_buf(
     );
 
     let index_tree = &mut index.tree;
-    index_tree.insert_file(&path, entry.clone()).unwrap();
+    index_tree.update_file(&path, entry.clone()).unwrap();
 }
 
 struct MmappedFile {

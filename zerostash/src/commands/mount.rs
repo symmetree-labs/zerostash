@@ -26,7 +26,8 @@ impl AsyncRunnable for Mount {
     async fn run(&self) {
         let mut stash = self.stash.open();
         let threads = APP.get_worker_threads();
-
+        stash.load(stash.index().tree()).unwrap();
+        stash.load(stash.index().files()).unwrap();
         migration(&mut stash);
 
         if let Err(e) = zerostash_fuse::mount::mount(

@@ -20,8 +20,8 @@ impl AsyncRunnable for Commit {
     /// Start the application.
     async fn run(&self) {
         let mut stash = self.stash.open();
-        migration(&mut stash);
         stash.load_all().unwrap();
+        migration(&mut stash);
 
         self.options
             .add_recursive(&stash, APP.get_worker_threads())
