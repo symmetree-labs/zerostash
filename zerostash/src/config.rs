@@ -305,7 +305,7 @@ backend = { type = "fs", path = "/path/to/stash" }
         );
 
         assert_eq!(
-            "s3://access:secret@server.com/bucket/path"
+            "s3://access:secret-@server.com/bucket/path"
                 .parse::<Backend>()
                 .unwrap(),
             Backend::S3 {
@@ -314,7 +314,7 @@ backend = { type = "fs", path = "/path/to/stash" }
                     region: "".into(),
                     endpoint: "server.com".into()
                 },
-                keys: Some(("access".into(), "secret".into()))
+                keys: Some(("access".into(), "secret-".into()))
             }
         );
 

@@ -94,7 +94,7 @@ impl FromStr for Backend {
         match s.split_once("://") {
             Some(("s3", url)) => {
                 let re = regex::Regex::new(
-                    r"^((?P<akey>[a-zA-Z0-9]+):(?P<skey>[a-zA-Z0-9/+=]+)@)?((?P<region>[0-9a-z-]+)#)?(?P<host>[a-zA-Z0-9.-]+)?/(?P<bucketpath>[a-zA-Z0-9./_-]+)?$",
+                    r"^((?P<akey>[a-zA-Z0-9]+):(?P<skey>[a-zA-Z0-9/+=-]+)@)?((?P<region>[0-9a-z-]+)#)?(?P<host>[a-zA-Z0-9.-]+)?/(?P<bucketpath>[a-zA-Z0-9./_-]+)?$",
                 )
                     .expect("syntactically correct");
 
