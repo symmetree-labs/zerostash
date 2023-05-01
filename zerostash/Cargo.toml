@@ -4,7 +4,7 @@ description = "Safe and secure backup CLI"
 authors = ["Peter Parkanyi <p@symmetree.dev>"]
 repository = "https://github.com/symmetree-labs/zerostash"
 license = "MIT/Apache-2.0"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 keywords = ["crypto", "cli", "security", "filesystem", "backup"]
 categories = ["cryptography", "filesystem", "command-line-utilities"]
@@ -16,7 +16,7 @@ thiserror = "1.0.40"
 clap = "4.2.5"
 infinitree = { version = "0.10.0", features = ["cryptobox", "yubikey"] }
 infinitree-backends = { version = "0.10.0", default-features = false, features = ["rustls"] }
-zerostash-files = { version = "0.5.0", path = "../zerostash-files" }
+zerostash-files = { version = "0.6.0", path = "../zerostash-files" }
 rpassword = "7.2.0"
 rprompt = "2.0.2"
 serde = { version = "1.0.160", features = ["serde_derive"] }
