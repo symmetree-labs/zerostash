@@ -7,6 +7,7 @@ use std::{path::PathBuf, sync::Arc};
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "source")]
+#[derive(Default)]
 pub enum Key {
     /// Plain text username/password pair
     #[serde(rename = "plaintext")]
@@ -22,6 +23,7 @@ pub enum Key {
 
     /// Get credentials through other interactive/command line methods
     #[serde(rename = "ask")]
+    #[default]
     Interactive,
 
     /// Plain text username/password pair
@@ -34,11 +36,7 @@ pub enum Key {
     ChangeTo { old: Box<Key>, new: Box<Key> },
 }
 
-impl Default for Key {
-    fn default() -> Self {
-        Key::Interactive
-    }
-}
+
 
 impl Key {
     pub(crate) fn change_to(self, new: Key) -> Key {
