@@ -13,8 +13,8 @@ use ls::*;
 mod wipe;
 use wipe::*;
 mod zfs;
+use zfs::*;
 
-use self::zfs::ZfsCommand;
 use crate::{
     config::{Key, SymmetricKey, YubikeyCRConfig, YubikeyCRKey},
     prelude::*,
@@ -51,7 +51,7 @@ pub enum ZerostashCmd {
 
     /// Provides access to ZFS Subcommands
     #[clap(subcommand)]
-    Zfs(ZfsCommand),
+    Zfs(Zfs),
 }
 
 /// Secure and speedy backups.
