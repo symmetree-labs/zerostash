@@ -100,6 +100,10 @@ pub struct StashArgs {
     /// Use a Yubikey for 2nd factor
     #[clap(short, long)]
     pub yubikey: bool,
+
+    /// Commit ID to load before doing any operations on the stash
+    #[clap(long)]
+    pub commit_id: Option<infinitree::tree::CommitId>
 }
 
 impl StashArgs {
@@ -127,10 +131,16 @@ impl StashArgs {
     }
 
     pub(crate) fn open_with(&self, key: Option<Key>) -> Stash {
-        crate::config::Stash::from_str(&self.stash)
+        let mut stash = crate::config::Stash::from_str(&self.stash)
             .unwrap()
             .open_or_new(key)
-            .unwrap()
+            .unwrap();
+
+	if let Some(commit) = self.commit_id {
+	    stash.filter_commits(infinitree::tree::CommitFilter::UpTo(commit));
+	}
+
+	stash
     }
 
     pub(crate) fn open(&self) -> Stash {
