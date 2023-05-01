@@ -10,11 +10,12 @@ pub struct ZfsLs {
     #[clap(flatten)]
     stash: StashArgs,
 
+    /// Use detailed output
     #[clap(short = 'l', long)]
     list: bool,
 
     #[clap(flatten)]
-    options: zerostash_files::list::List,
+    options: zerostash_files::ZfsSnapshotList,
 }
 
 #[async_trait]

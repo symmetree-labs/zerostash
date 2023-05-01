@@ -103,7 +103,7 @@ pub struct StashArgs {
 
     /// Commit ID to load before doing any operations on the stash
     #[clap(long)]
-    pub commit_id: Option<infinitree::tree::CommitId>
+    pub commit_id: Option<infinitree::tree::CommitId>,
 }
 
 impl StashArgs {
@@ -136,11 +136,11 @@ impl StashArgs {
             .open_or_new(key)
             .unwrap();
 
-	if let Some(commit) = self.commit_id {
-	    stash.filter_commits(infinitree::tree::CommitFilter::UpTo(commit));
-	}
+        if let Some(commit) = self.commit_id {
+            stash.filter_commits(infinitree::tree::CommitFilter::UpTo(commit));
+        }
 
-	stash
+        stash
     }
 
     pub(crate) fn open(&self) -> Stash {

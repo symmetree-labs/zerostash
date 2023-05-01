@@ -28,14 +28,14 @@ pub enum SnapshotError {
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
-pub struct Snapshot {
+pub struct ZfsSnapshot {
     pub stream: infinitree::object::Stream,
     pub creation_time_secs: u64,
     pub creation_time_nanos: u128,
 }
 
-impl From<&Snapshot> for DateTime<Utc> {
-    fn from(e: &Snapshot) -> Self {
+impl From<&ZfsSnapshot> for DateTime<Utc> {
+    fn from(e: &ZfsSnapshot) -> Self {
         let duration = Duration::new(
             e.creation_time_secs,
             e.creation_time_nanos.try_into().unwrap_or(0),
@@ -45,11 +45,11 @@ impl From<&Snapshot> for DateTime<Utc> {
     }
 }
 
-impl Snapshot {
+impl ZfsSnapshot {
     pub fn from_stdout(
         writer: AEADWriter,
         stdin: &mut ChildStdout,
-    ) -> Result<Snapshot, SnapshotError> {
+    ) -> Result<ZfsSnapshot, SnapshotError> {
         let mut sink = BufferedSink::new(writer);
         let mut buf = vec![0; 1_000_000];
 

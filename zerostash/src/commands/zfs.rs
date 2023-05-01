@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use clap::Parser;
 
 mod commit;
-mod extract;
 mod destroy;
+mod extract;
 mod ls;
 
 #[derive(Debug, Parser)]

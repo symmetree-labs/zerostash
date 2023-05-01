@@ -7,7 +7,7 @@ pub struct ZfsDestroy {
     #[clap(flatten)]
     stash: StashArgs,
 
-    /// name of the stored snapshot
+    /// Name of the stored snapshot
     #[clap(short = 'n', long)]
     name: String,
 }
@@ -19,7 +19,7 @@ impl AsyncRunnable for ZfsDestroy {
         let mut stash = self.stash.open();
         stash.load_all().unwrap();
 
-        stash.index().snapshots.remove(self.name.clone());
+        stash.index().zfs_snapshots.remove(self.name.clone());
 
         stash
             .commit(format!("Destroyed snapshot '{}'", self.name))

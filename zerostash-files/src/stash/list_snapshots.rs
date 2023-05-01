@@ -5,12 +5,12 @@ use itertools::Itertools;
 use crate::Files;
 
 #[derive(clap::Args, Debug, Clone, Default)]
-pub struct List {
+pub struct ZfsSnapshotList {
     /// List of globs to match in the database
     pub globs: Vec<String>,
 }
 
-impl List {
+impl ZfsSnapshotList {
     pub fn list<'stash>(
         &'stash self,
         stash: &'stash Infinitree<Files>,
@@ -38,7 +38,7 @@ fn iter<V: Iterator<Item = T>, T: AsRef<str>>(
     use QueryAction::{Skip, Take};
     Box::new(
         stash
-            .iter(stash.index().snapshots(), move |snapname| {
+            .iter(stash.index().zfs_snapshots(), move |snapname| {
                 if matchers.iter().any(|m| m.matches(snapname)) {
                     Take
                 } else {

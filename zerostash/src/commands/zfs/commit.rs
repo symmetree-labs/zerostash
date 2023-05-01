@@ -6,7 +6,7 @@ use std::{
 };
 
 use infinitree::Infinitree;
-use zerostash_files::{Files, Snapshot};
+use zerostash_files::{Files, ZfsSnapshot};
 
 use crate::prelude::*;
 
@@ -15,15 +15,15 @@ pub struct ZfsCommit {
     #[clap(flatten)]
     stash: StashArgs,
 
-    /// commit message to include in the changeset
+    /// Commit message to include in the changeset
     #[clap(short = 'm', long)]
     message: Option<String>,
 
-    /// name the snapshot will be stored by
+    /// Name of the snapshot to commit (automatically appended to `zfs send`)
     #[clap(short = 'n', long)]
     name: String,
 
-    /// zfs send arguments to pass
+    /// Extra arguments to `zfs send`
     #[clap(name = "arguments")]
     #[arg(num_args(1..))]
     arguments: Vec<String>,
@@ -34,9 +34,16 @@ impl AsyncRunnable for ZfsCommit {
     /// Start the application.
     async fn run(&self) {
         let mut stash = self.stash.open();
-        stash.load(stash.index().snapshots()).unwrap();
+        stash.load(stash.index().zfs_snapshots()).unwrap();
 
-        let mut child = execute_command(&self.arguments);
+        let args = {
+            let mut args = self.arguments.to_vec();
+            args.push(self.name.clone());
+
+            args
+        };
+
+        let mut child = execute_command(&args);
         let mut stdout = child.stdout.take().expect("failed to open stdout");
 
         store_stream_from_stdout(&stash, self.name.clone(), &mut stdout).await;
@@ -71,7 +78,7 @@ async fn store_stream_from_stdout(
     snapshot: String,
     stdout: &mut ChildStdout,
 ) {
-    let snapshots = &stash.index().snapshots;
+    let snapshots = &stash.index().zfs_snapshots;
 
     if snapshots.get(&snapshot).is_some() {
         panic!("cannot overwrite existing snapshot");
@@ -79,7 +86,7 @@ async fn store_stream_from_stdout(
 
     let writer = stash.storage_writer().unwrap();
     let stream = abscissa_tokio::tokio::task::block_in_place(|| {
-        Snapshot::from_stdout(writer, stdout).expect("failed to capture snapshot")
+        ZfsSnapshot::from_stdout(writer, stdout).expect("failed to capture snapshot")
     });
 
     snapshots.insert(snapshot, stream);

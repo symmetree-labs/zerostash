@@ -36,8 +36,6 @@ pub enum Key {
     ChangeTo { old: Box<Key>, new: Box<Key> },
 }
 
-
-
 impl Key {
     pub(crate) fn change_to(self, new: Key) -> Key {
         Key::ChangeTo {

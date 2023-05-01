@@ -15,11 +15,11 @@ pub struct ZfsExtract {
     #[clap(flatten)]
     stash: StashArgs,
 
-    /// name of the stored snapshot
+    /// Name of the stored snapshot to restore
     #[clap(short = 'n', long)]
     name: String,
 
-    /// zfs receive arguments to pass
+    /// Arguments to `zfs recv`
     #[clap(name = "arguments")]
     #[arg(num_args(1..))]
     arguments: Vec<String>,
@@ -30,7 +30,7 @@ impl AsyncRunnable for ZfsExtract {
     /// Start the application.
     async fn run(&self) {
         let stash = self.stash.open();
-        stash.load(stash.index().snapshots()).unwrap();
+        stash.load(stash.index().zfs_snapshots()).unwrap();
 
         let mut child = execute_command(&self.arguments);
         let stdin = child.stdin.as_mut().expect("failed to open stdin");
@@ -58,7 +58,7 @@ fn execute_command(arguments: &[String]) -> Child {
 }
 
 fn write_stream_to_stdin(stash: &Infinitree<Files>, snapshot: &str, stdin: &mut ChildStdin) {
-    if let Some(stream) = stash.index().snapshots.get(snapshot) {
+    if let Some(stream) = stash.index().zfs_snapshots.get(snapshot) {
         let reader = stash.storage_reader().unwrap();
         abscissa_tokio::tokio::task::block_in_place(|| stream.to_stdin(reader, stdin))
             .expect("failed to write to stdin");
