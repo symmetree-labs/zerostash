@@ -107,14 +107,10 @@ impl ZerostashFS {
     ) -> Result<Self> {
         stash.lock().unwrap().load_all().unwrap();
 
-        let commit_timestamp = stash
-            .lock()
-            .unwrap()
-            .commit_list()
-            .last()
-            .unwrap()
-            .metadata
-            .time;
+        let commit_timestamp = match stash.lock().unwrap().commit_list().last() {
+            Some(last) => last.metadata.time,
+            None => panic!("stash is empty"),
+        };
 
         Ok(ZerostashFS {
             commit_timestamp,
@@ -440,12 +436,13 @@ impl FilesystemMT for ZerostashFS {
         let path_str = strip_path(&path).to_str().unwrap().to_string();
         let new_path = newparent.join(newname);
         let new_path_str = strip_path(&new_path).to_str().unwrap().to_string();
-
         let stash = self.stash.lock().unwrap();
         let index = stash.index();
-
         let tree = &index.tree;
-        let _ = tree.move_node(&path_str, &new_path_str);
+
+        if tree.move_node(&path_str, &new_path_str).is_err() {
+            return Err(libc::EIO);
+        }
 
         Ok(())
     }

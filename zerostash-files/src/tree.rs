@@ -1,7 +1,4 @@
-use std::{
-    collections::VecDeque,
-    sync::{atomic::AtomicUsize, Arc},
-};
+use std::sync::{atomic::AtomicUsize, Arc};
 
 use infinitree::{
     fields::{Collection, Store, VersionedMap},
@@ -95,6 +92,7 @@ impl Tree {
         Ok(())
     }
 
+    /// Updates an file at `path`
     pub fn update_file<'a>(&self, path: &'a str, file: Entry) -> Result<'a, ()> {
         self.insert_root().unwrap();
         let file_ref = self.get_ref(path)?.ok_or(FsError::NoSuchFileOrDirectory)?;
@@ -108,24 +106,24 @@ impl Tree {
     pub fn remove<'a>(&self, path: &'a str) -> Result<'a, ()> {
         self.insert_root().unwrap();
         let (parent_ref, parent, to_delete) = self.path_to_parent(path)?;
+
         let stack = scc::Stack::default();
 
         if let Node::Directory { ref entries } = parent.as_ref() {
-            let file_node_ref = entries
+            let node_ref = entries
                 .read(to_delete, |_, v| *v)
                 .ok_or(FsError::NoSuchFileOrDirectory)?;
 
-            stack.push((parent_ref, file_node_ref, to_delete.to_string()));
+            stack.push((parent_ref, node_ref, to_delete.to_string()));
 
             while let Some(next) = stack.pop().as_deref() {
-                let (parent_ref, noderef, filename) = (next.0, next.1, next.2.to_string());
-                let file_node = self.0.get(&noderef);
+                let (parent_ref, node_ref, entry_name) = (next.0, next.1, next.2.to_string());
+                let file_node = self.0.get(&node_ref);
 
                 match file_node.as_deref() {
                     Some(Node::File { .. }) => {
-                        self.remove_file(&parent_ref, &filename);
-                        self.0.remove(file_node_ref);
-                        entries.remove(&filename);
+                        self.remove_file(&parent_ref, &entry_name);
+                        self.0.remove(node_ref);
                     }
 
                     Some(Node::Directory {
@@ -134,18 +132,17 @@ impl Tree {
                         if inner_entries.is_empty() {
                             // if it's empty, just delete it
                             //
-                            self.remove_file(&parent_ref, &filename);
-                            self.0.remove(noderef);
-                            entries.remove(&filename);
+                            self.remove_file(&parent_ref, &entry_name);
+                            self.0.remove(node_ref);
                         } else {
                             // if not empty, queue it for visit again
                             //
-                            stack.push((parent_ref, noderef, filename.to_string()));
+                            stack.push((parent_ref, node_ref, entry_name.to_string()));
 
                             // then push all the children as well
                             //
                             inner_entries.scan(|file, childref| {
-                                stack.push((noderef, *childref, file.to_string()));
+                                stack.push((node_ref, *childref, file.to_string()));
                             });
                         }
                     }
@@ -266,8 +263,6 @@ impl Tree {
 
     /// Traverses the tree to the parent node of the path
     ///
-    /// # Errors
-    ///
     /// Returns a list of valid path components, followed by the
     /// erroring component.
     fn path_to_parent<'a>(&self, path: &'a str) -> Result<'a, (Digest, Arc<Node>, &'a str)> {
@@ -303,8 +298,6 @@ impl Tree {
     /// Traverses the tree to the parent node of the path, or creates
     /// the entire path
     ///
-    /// # Errors
-    ///
     /// Returns a list of valid path components, followed by the
     /// erroring component.
     fn create_path_to_parent<'a>(&self, path: &'a str) -> Result<'a, (Digest, Arc<Node>, &'a str)> {
@@ -337,9 +330,10 @@ impl Tree {
             }
         }
 
+        let current = current.ok_or(FsError::InvalidPath(consumed))?;
         Ok((
             current_ref.expect("must be Some"),
-            current.expect("must be Some"),
+            current,
             parts.last().unwrap_or(&""),
         ))
     }
@@ -377,54 +371,54 @@ impl Tree {
         F: FnMut(&str, &Node) -> bool,
     {
         self.insert_root().unwrap();
-        let entries = match self.root().as_ref() {
-            Node::Directory { entries } => entries.clone(),
-            Node::File { refs: _, entry: _ } => panic!(""),
-        };
+        let stack = scc::Stack::default();
+        stack.push((String::new(), Digest::default()));
 
-        let mut stack = VecDeque::new();
-        stack.push_front((String::new(), entries));
         let mut to_remove = vec![];
 
-        while let Some((path, node)) = stack.pop_front() {
-            node.scan(|relative_path, noderef| {
-                let full_path = if path.is_empty() {
-                    relative_path.clone()
-                } else {
-                    format!("{}/{}", path, relative_path)
-                };
-
-                if let Some(node) = self.0.get(noderef) {
-                    match node.as_ref() {
-                        Node::File { refs: _, entry: _ } => {
-                            if !f(&full_path, &node) {
-                                to_remove.push(full_path);
-                            }
+        while let Some(next) = stack.pop() {
+            let (path, noderef) = (next.0.to_string(), next.1);
+            if let Some(node) = self.0.get(&noderef) {
+                match node.as_ref() {
+                    Node::File { refs: _, entry: _ } => {
+                        if !f(&path, &node) {
+                            to_remove.push(path);
                         }
-                        Node::Directory { entries } => {
-                            //issue with removal of folders so currently only files
-                            stack.push_front((full_path, entries.clone()));
+                    }
+                    Node::Directory { entries } => {
+                        if !f(&path, &node) {
+                            to_remove.push(path);
+                        } else {
+                            entries.scan(|relative_path, noderef| {
+                                let full_path = if path.is_empty() {
+                                    relative_path.clone()
+                                } else {
+                                    format!("{}/{}", path, relative_path)
+                                };
+                                stack.push((full_path, *noderef));
+                            });
                         }
                     }
                 }
-            })
+            }
         }
 
         for key in to_remove {
-            let _ = self.remove(&key);
+            _ = self.remove(&key);
         }
     }
 
     pub fn iter_files(&self) -> TreeIterator {
         self.insert_root().unwrap();
         let root = Arc::clone(&self.root());
-        let stack = vec![(String::new(), root)];
+        let stack = scc::Stack::default();
+        stack.push((String::new(), root));
         TreeIterator { stack, inner: self }
     }
 }
 
 pub struct TreeIterator<'a> {
-    stack: Vec<(String, Arc<Node>)>,
+    stack: scc::Stack<(String, Arc<Node>)>,
     inner: &'a Tree,
 }
 
@@ -432,8 +426,9 @@ impl<'a> Iterator for TreeIterator<'a> {
     type Item = (String, Arc<Entry>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((prefix, node)) = self.stack.pop() {
-            match node.as_ref() {
+        while let Some(next) = self.stack.pop() {
+            let (prefix, node) = (next.0.to_string(), next.1.as_ref());
+            match node {
                 Node::File { refs: _, entry } => return Some((prefix, entry.clone())),
                 Node::Directory { entries } => {
                     entries.scan(|name, digest| {
@@ -487,9 +482,9 @@ impl Store for Tree {
 
 #[cfg(test)]
 mod test {
-    use infinitree::{crypto::UsernamePassword, Infinitree};
+    use infinitree::{crypto::UsernamePassword, Digest, Infinitree};
 
-    use crate::{Entry, Files, Tree};
+    use crate::{Entry, Files, Node, Tree};
 
     #[test]
     fn create_path_to_parent() {
@@ -564,7 +559,7 @@ mod test {
 
             {
                 let index = &tree.index().tree;
-                let _ = index.insert_root();
+                index.insert_root().unwrap();
                 let file3 = "file3.rs".to_string();
                 index.insert_file(&file3, Entry::default()).unwrap();
             }
@@ -593,8 +588,14 @@ mod test {
             let mut tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
 
             {
-                let _ = tree.index().tree.insert_file(&file1, Entry::default());
-                let _ = tree.index().tree.insert_file(&file2, Entry::default());
+                tree.index()
+                    .tree
+                    .insert_file(&file1, Entry::default())
+                    .unwrap();
+                tree.index()
+                    .tree
+                    .insert_file(&file2, Entry::default())
+                    .unwrap();
                 assert_eq!(tree.index().tree.iter_files().count(), 2);
             }
 
@@ -616,36 +617,56 @@ mod test {
     }
 
     #[test]
-    fn test_dir_removal() {
+    fn getting_folders() {
         let tree = Tree::default();
-        let file1 = "test/path/to/file1.rs".to_string();
-        let file2 = "test/path/to/file2.rs".to_string();
-        let file3 = "test/path/to/file3.rs".to_string();
-        let files = [file1, file2, file3];
+        let file = "test/path/to/file1.rs".to_string();
+        tree.insert_file(&file, Entry::default()).unwrap();
 
-        let _ = tree.insert_file(&files[0], Entry::default());
-        let _ = tree.insert_file(&files[1], Entry::default());
-        let _ = tree.insert_file(&files[2], Entry::default());
+        assert!(tree.get("test/path/to").is_ok());
+    }
 
-        for file in files.iter() {
-            let file = tree.get_file(file);
-            assert!(file.is_ok() & file.unwrap().is_some());
+    #[test]
+    fn path_to_folder() {
+        let tree = Tree::default();
+        let file = "home/travel/pic.png".to_string();
+        tree.insert_file(&file, Entry::default()).unwrap();
+        let root = tree.root();
+
+        let (root_ref, root_node, test_name) = tree.path_to_parent("home").unwrap();
+
+        assert_eq!(Digest::default(), root_ref);
+        assert_eq!(root.is_dir(), root_node.is_dir());
+        assert_eq!("home", test_name);
+
+        if let Node::Directory { entries } = root.as_ref().clone() {
+            let (test_ref, test_node, to_name) = tree.path_to_parent("home/travel").unwrap();
+
+            let t_ref = entries.read("home", |_, v| *v).unwrap();
+            let t_node = tree.0.get(&t_ref).unwrap();
+
+            assert_eq!(t_ref, test_ref);
+            assert_eq!(t_node.is_dir(), test_node.is_dir());
+            assert_eq!("travel", to_name);
         }
+    }
 
-        let _ = tree.remove("test/path/to");
-        let folder = tree.get_file("test/path/to");
-        assert!(folder.is_err());
+    #[test]
+    fn removing_folder() {
+        let tree = Tree::default();
+        let file = "home/travel/pic.png".to_string();
+        let file2 = "home/travel/dogs/dog.png".to_string();
+        tree.insert_file(&file, Entry::default()).unwrap();
+        tree.insert_file(&file2, Entry::default()).unwrap();
 
-        for file in files.iter() {
-            let file = tree.get_file(file);
-            assert!(file.is_err());
-        }
+        assert!(tree.remove("home/travel").is_ok());
+
+        assert!(tree.get("home/travel").unwrap().is_none());
     }
 
     #[test]
     fn path_to_root() {
         let tree = Tree::default();
-        let _ = tree.insert_root();
+        tree.insert_root().unwrap();
 
         let res = tree.path_to_parent("/");
         assert!(res.is_ok());

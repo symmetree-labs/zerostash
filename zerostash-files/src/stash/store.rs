@@ -103,6 +103,11 @@ impl Options {
 
             let metadata = match metadata {
                 Ok(md) if md.is_file() || md.is_symlink() => md,
+                Ok(md) if md.is_dir() => {
+                    let path_str = path.to_str().unwrap();
+                    stash.index().tree.insert_directory(path_str).unwrap();
+                    continue;
+                }
                 Err(error) => {
                     warn!(%error, ?path, "failed to get file metadata; skipping");
                     continue;
