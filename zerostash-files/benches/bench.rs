@@ -32,14 +32,14 @@ fn fill_tree(tree: &mut Tree, branches: usize, depth: usize, files: usize) {
         let mut path = PathBuf::from(format!("{branch}"));
         for level in 1..=depth {
             path = path.join(format!("{level}"));
-            tree.insert_directory(path.to_str().unwrap(), None);
+            _ = tree.insert_directory(path.to_str().unwrap());
             for file in 1..=files {
                 let name = format!("{file}.txt");
                 let entry = Entry {
                     name: name.clone(),
                     ..Entry::default()
                 };
-                tree.insert_file(&format!("{}/{name}", path.to_str().unwrap()), entry);
+                _ = tree.insert_file(&format!("{}/{name}", path.to_str().unwrap()), entry);
             }
         }
     }
@@ -64,7 +64,7 @@ fn tree_insert_new(c: &mut Criterion) {
 
     c.bench_function("tree insert new 10_000", |b| {
         b.iter(|| {
-            tree.insert_file(&path, entry.clone());
+            _ = tree.insert_file(&path, entry.clone());
             tree = Tree::default();
         });
     });
@@ -76,8 +76,8 @@ fn tree_rename_node(c: &mut Criterion) {
 
     c.bench_function("tree rename node", |b| {
         b.iter(|| {
-            tree.move_node("1/1/2", "1/1/renamed");
-            tree.move_node("1/1/renamed", "1/1/2");
+            _ = tree.move_node("1/1/2", "1/1/renamed");
+            _ = tree.move_node("1/1/renamed", "1/1/2");
         });
     });
 }
@@ -109,15 +109,15 @@ fn tree_fill(c: &mut Criterion) {
 }
 
 fn tree_rename(c: &mut Criterion) {
-    let mut tree = Tree::default();
+    let tree = Tree::default();
     let path = format!("{}/1.txt", get_path("1", 1_000));
     let entry = Entry {
         name: "1.txt".to_string(),
         ..Default::default()
     };
-    tree.insert_file(&path, entry);
+    _ = tree.insert_file(&path, entry);
     c.bench_function("tree rename file depth 1_000", |b| {
-        b.iter(|| tree.rename_file(&path, "2.txt"))
+        b.iter(|| tree.move_node(&path, "2.txt"))
     });
 }
 
@@ -135,13 +135,13 @@ fn tree_remove(c: &mut Criterion) {
     let mut tree = Tree::default();
 
     let path = get_path("root", 0);
-    tree.insert_directory(&path, None);
+    _ = tree.insert_directory(&path);
 
     group.bench_function("tree remove 1", |b| b.iter(|| tree.clone().remove("/root")));
 
     tree = Tree::default();
     let path = get_path("root", 10);
-    tree.insert_directory(&path, None);
+    _ = tree.insert_directory(&path);
 
     group.bench_function("tree remove 10", |b| {
         b.iter(|| tree.clone().remove("/root"))
@@ -149,7 +149,7 @@ fn tree_remove(c: &mut Criterion) {
 
     tree = Tree::default();
     let path = get_path("root", 100);
-    tree.insert_directory(&path, None);
+    _ = tree.insert_directory(&path);
 
     group.bench_function("tree remove 100", |b| {
         b.iter(|| tree.clone().remove("/root"))
@@ -157,7 +157,7 @@ fn tree_remove(c: &mut Criterion) {
 
     tree = Tree::default();
     let path = get_path("root", 1_000);
-    tree.insert_directory(&path, None);
+    _ = tree.insert_directory(&path);
 
     group.bench_function("tree remove 1000", |b| {
         b.iter(|| tree.clone().remove("/root"))
@@ -165,7 +165,7 @@ fn tree_remove(c: &mut Criterion) {
 
     tree = Tree::default();
     let path = get_path("root", 5_000);
-    tree.insert_directory(&path, None);
+    _ = tree.insert_directory(&path);
 
     group.bench_function("tree remove 5000", |b| {
         b.iter(|| tree.clone().remove("/root"))
@@ -173,7 +173,7 @@ fn tree_remove(c: &mut Criterion) {
 
     tree = Tree::default();
     let path = get_path("root", 10_000);
-    tree.insert_directory(&path, None);
+    _ = tree.insert_directory(&path);
 
     group.bench_function("tree remove 10_000", |b| {
         b.iter(|| tree.clone().remove("/root"))
@@ -181,7 +181,7 @@ fn tree_remove(c: &mut Criterion) {
 
     tree = Tree::default();
     let path = get_path("root", 50_000);
-    tree.insert_directory(&path, None);
+    _ = tree.insert_directory(&path);
 
     group.bench_function("tree remove 50_000", |b| {
         b.iter(|| tree.clone().remove("/root"))
@@ -198,8 +198,8 @@ fn set_test_cwd() {
 
 fn rollsum_sum(buf: &[u8], ofs: usize, len: usize) -> u32 {
     let mut r = BupSplit::new();
-    for b in buf.iter().take(len).skip(ofs) {
-        r.roll(*b);
+    for count in ofs..len {
+        r.roll(buf[count]);
     }
     r.digest()
 }
