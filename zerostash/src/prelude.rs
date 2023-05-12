@@ -8,6 +8,7 @@ pub use crate::config::ZerostashConfig;
 pub use abscissa_core::{status_err, Application};
 pub use async_trait::async_trait;
 pub use clap::Parser as Command;
+pub use std::io::Write;
 
 pub type Stash = infinitree::Infinitree<zerostash_files::Files>;
 
