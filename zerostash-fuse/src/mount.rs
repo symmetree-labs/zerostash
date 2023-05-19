@@ -25,7 +25,7 @@ use std::io::Result;
 use fuse_mt::*;
 use infinitree::Infinitree;
 use nix::libc;
-use zerostash_files::{restore, Entry, Files};
+use zerostash_files::{Entry, Files};
 
 use crate::chunks::ChunkStack;
 use crate::chunks::ChunkStackCache;
@@ -33,7 +33,6 @@ use crate::openfile::OpenFile;
 
 pub async fn mount(
     stash: Infinitree<Files>,
-    options: &restore::Options,
     mountpoint: &str,
     threads: usize,
     read_write: bool,
@@ -53,7 +52,7 @@ pub async fn mount(
 
     let mount_type = if read_write { "rw" } else { "ro" };
 
-    let filesystem = ZerostashFS::open(stash, options, threads, read_write).unwrap();
+    let filesystem = ZerostashFS::open(stash, threads, read_write).unwrap();
 
     let fuse_args = vec![
         OsStr::new("-o"),
@@ -94,14 +93,13 @@ pub struct ZerostashFS {
     pub stash: Arc<Mutex<Infinitree<Files>>>,
     pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
     pub threads: usize,
-    pub runtime: Handle,
     pub read_write: bool,
+    pub runtime: Handle,
 }
 
 impl ZerostashFS {
     pub fn open(
         stash: Arc<Mutex<Infinitree<Files>>>,
-        _options: &restore::Options,
         threads: usize,
         read_write: bool,
     ) -> Result<Self> {
@@ -117,8 +115,8 @@ impl ZerostashFS {
             stash,
             chunks_cache: scc::HashMap::new(),
             threads,
-            runtime: Handle::current(),
             read_write,
+            runtime: Handle::current(),
         })
     }
 }

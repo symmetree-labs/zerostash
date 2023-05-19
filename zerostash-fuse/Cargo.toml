@@ -19,6 +19,6 @@ tokio = { version = "1.25.0", features = ["rt", "time", "signal", "rt-multi-thre
 criterion = "0.3.6"
 
 [[bench]]
-name = "bench"
+name = "fuse_bench"
 harness = false
 path = "benches/bench.rs"

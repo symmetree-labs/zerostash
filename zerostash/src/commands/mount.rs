@@ -30,14 +30,8 @@ impl AsyncRunnable for Mount {
         stash.load(stash.index().files()).unwrap();
         migration(&mut stash);
 
-        if let Err(e) = zerostash_fuse::mount::mount(
-            stash,
-            &self.options,
-            &self.mount_point,
-            threads,
-            self.read_write,
-        )
-        .await
+        if let Err(e) =
+            zerostash_fuse::mount::mount(stash, &self.mount_point, threads, self.read_write).await
         {
             panic!("Error = {}", e)
         }
