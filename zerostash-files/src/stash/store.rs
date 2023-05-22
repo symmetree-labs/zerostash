@@ -210,15 +210,15 @@ async fn process_file_loop(
 ) {
     let mut buf = Vec::with_capacity(MAX_FILE_SIZE);
 
-    while let Ok((path, e)) = r.recv_async().await {
+    while let Ok((path, entry)) = r.recv_async().await {
         buf.clear();
-        let path_str = path.to_str().unwrap();
+        let path_str = path.to_string_lossy();
 
         if !force {
             let tree = &index.tree;
-            if let Ok(Some(node)) = tree.get(path_str) {
+            if let Ok(Some(node)) = tree.get(&path_str) {
                 match node.as_ref() {
-                    crate::Node::File { refs: _, entry } if *entry.as_ref() == e => {
+                    crate::Node::File { refs: _, entry: e } if *e.as_ref() == entry => {
                         debug!(?path, "already indexed, skipping");
                         continue;
                     }
@@ -230,9 +230,9 @@ async fn process_file_loop(
             }
         }
 
-        let size = e.size;
-        if size == 0 || e.file_type.is_symlink() {
-            index.tree.insert_file(path_str, e).unwrap();
+        let size = entry.size;
+        if size == 0 || entry.file_type.is_symlink() {
+            index.tree.insert_file(&path_str, entry).unwrap();
             continue;
         }
 
@@ -245,7 +245,7 @@ async fn process_file_loop(
         };
 
         index_file(
-            e,
+            entry,
             osfile,
             &mut buf,
             path.clone(),

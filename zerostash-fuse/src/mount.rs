@@ -149,14 +149,14 @@ impl FilesystemMT for ZerostashFS {
                 tree.get(path_str)
             }
         };
-        match node {
-            Ok(Some(node)) => match node.as_ref() {
-                Node::File { refs: _, entry } => {
-                    Ok((TTL, file_to_fuse(entry, self.commit_timestamp)))
-                }
-                Node::Directory { entries: _ } => Ok((TTL, DIR_ATTR)),
-            },
-            _ => Err(libc::ENOENT),
+
+        let Ok(Some(node)) = node else {
+            return Err(libc::ENOENT)
+        };
+
+        match node.as_ref() {
+            Node::File { refs: _, entry } => Ok((TTL, file_to_fuse(entry, self.commit_timestamp))),
+            Node::Directory { entries: _ } => Ok((TTL, DIR_ATTR)),
         }
     }
 
@@ -180,34 +180,34 @@ impl FilesystemMT for ZerostashFS {
             }
         };
 
-        match node {
-            Ok(Some(node)) => {
-                if let Node::Directory { entries } = node.as_ref() {
-                    let mut vec: Vec<DirectoryEntry> = vec![];
-                    entries.for_each(|k, v| {
-                        let stash = self.stash.lock().unwrap();
-                        let index = stash.index();
+        let Ok(Some(node)) = node else {
+            return Err(libc::ENOENT);
+        };
 
-                        if let Some(node) = index.tree.0.get(v) {
-                            let kind = if node.is_dir() {
-                                fuse_mt::FileType::Directory
-                            } else {
-                                fuse_mt::FileType::RegularFile
-                            };
-                            let directory_entry = DirectoryEntry {
-                                name: k.clone().into(),
-                                kind,
-                            };
-                            vec.push(directory_entry);
-                        }
-                    });
-                    Ok(vec)
+        let Node::Directory { entries } = node.as_ref() else  {
+            return Err(libc::ENOENT);
+        };
+
+        let stash = self.stash.lock().unwrap();
+        let index = stash.index();
+
+        let mut vec: Vec<DirectoryEntry> = vec![];
+        entries.for_each(|k, v| {
+            if let Some(node) = index.tree.0.get(v) {
+                let kind = if node.is_dir() {
+                    fuse_mt::FileType::Directory
                 } else {
-                    Err(libc::ENOENT)
-                }
+                    fuse_mt::FileType::RegularFile
+                };
+                let directory_entry = DirectoryEntry {
+                    name: k.clone().into(),
+                    kind,
+                };
+                vec.push(directory_entry);
             }
-            _ => Err(libc::ENOENT),
-        }
+        });
+
+        Ok(vec)
     }
 
     fn open(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
@@ -233,10 +233,10 @@ impl FilesystemMT for ZerostashFS {
             let stash = self.stash.lock().unwrap();
             let index = &stash.index();
             let tree = &index.tree;
-            match tree.get_file(path_string) {
-                Ok(Some(entry)) => entry,
-                _ => return callback(Err(libc::EINVAL)),
-            }
+            let Ok(Some(entry)) = tree.get_file(path_string) else {
+                return callback(Err(libc::EINVAL));
+            };
+            entry
         };
 
         let file_size = entry.size as usize;
@@ -318,10 +318,10 @@ impl FilesystemMT for ZerostashFS {
             let stash = self.stash.lock().unwrap();
             let index = &stash.index();
             let tree = &index.tree;
-            match tree.get_file(path_string) {
-                Ok(Some(entry)) => entry,
-                _ => return Err(libc::EINVAL),
-            }
+            let Ok(Some(entry)) = tree.get_file(path_string) else {
+                return Err(libc::EINVAL);
+            };
+            entry
         };
 
         let obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
@@ -374,10 +374,10 @@ impl FilesystemMT for ZerostashFS {
             let stash = self.stash.lock().unwrap();
             let index = &stash.index();
             let tree = &index.tree;
-            match tree.get_file(path_string) {
-                Ok(Some(entry)) => entry,
-                _ => return Err(libc::EINVAL),
-            }
+            let Ok(Some(entry)) = tree.get_file(path_string) else {
+                return Err(libc::EINVAL);
+            };
+            entry
         };
 
         let obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
@@ -586,9 +586,8 @@ impl FilesystemMT for ZerostashFS {
         let mut index = stash.index().clone();
 
         let tree = &mut index.tree;
-        let entry = match tree.get_file(&path_string) {
-            Ok(Some(entry)) => entry,
-            _ => return Err(libc::EINVAL),
+        let Ok(Some(entry)) = tree.get_file(&path_string) else {
+            return Err(libc::EINVAL)
         };
 
         let new_entry = Entry {

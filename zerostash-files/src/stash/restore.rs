@@ -1,4 +1,4 @@
-use crate::{files, Entry, Files};
+use crate::{files, Files};
 use flume as mpsc;
 use futures::future::join_all;
 use infinitree::{fields::QueryAction, object, Infinitree, *};
@@ -53,29 +53,25 @@ fn iter<V: AsRef<[T]>, T: AsRef<str>>(stash: &Infinitree<Files>, glob: V) -> Fil
         .collect::<Vec<glob::Pattern>>();
     let match_c = matchers.clone();
 
-    use QueryAction::{Skip, Take};
-    let tree = stash
+    let filtered_tree = stash
         .index()
         .tree
         .iter_files()
         .filter(move |(path, _)| match_c.iter().any(|m| m.matches(path)))
-        .collect::<Vec<(String, Arc<Entry>)>>()
-        .into_iter();
+        .collect::<Vec<_>>();
 
-    Box::new(
-        stash
-            .iter(stash.index().files(), move |fname| {
-                if matchers.iter().any(|m| m.matches(fname)) {
-                    Take
-                } else {
-                    Skip
-                }
-            })
-            .unwrap()
-            .filter(|(_, entry)| entry.is_some())
-            .map(|(path, entry)| (path, entry.unwrap()))
-            .chain(tree),
-    )
+    let filtered_files = stash
+        .iter(stash.index().files(), move |fname| {
+            if matchers.iter().any(|m| m.matches(fname)) {
+                QueryAction::Take
+            } else {
+                QueryAction::Skip
+            }
+        })
+        .unwrap()
+        .filter_map(|(path, entry)| entry.map(|e| (path, e)));
+
+    Box::new(filtered_files.chain(filtered_tree))
 }
 
 impl Options {

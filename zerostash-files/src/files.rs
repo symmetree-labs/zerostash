@@ -23,6 +23,10 @@ macro_rules! if_yes {
 pub enum EntryError {
     #[error("Path contains `..` or `.` in a non-prefix position")]
     InvalidInputPath,
+    #[error("Path has no file name component")]
+    NoFileNameComponent,
+    #[error("Not all sequences of bytes are valid UTF-8")]
+    NonUtf8Path,
     #[error("Time error: {source}")]
     Time {
         #[from]
@@ -78,7 +82,6 @@ pub struct PreserveMetadata {
     /// Preserve owner/gid information. Requires root to restore.
     #[clap(short = 'o', long = "preserve-ownership", default_value = "true")]
     pub ownership: bool,
-
     /// Preserve modification and creation times.
     #[clap(short = 't', long = "preserve-times", default_value = "true")]
     pub times: bool,
@@ -158,9 +161,9 @@ impl Entry {
         let name = path
             .as_ref()
             .file_name()
-            .unwrap()
+            .ok_or(EntryError::NoFileNameComponent)?
             .to_str()
-            .unwrap()
+            .ok_or(EntryError::NonUtf8Path)?
             .to_string();
 
         Ok(Entry {
@@ -204,9 +207,9 @@ impl Entry {
         let name = path
             .as_ref()
             .file_name()
-            .unwrap()
+            .ok_or(EntryError::NoFileNameComponent)?
             .to_str()
-            .unwrap()
+            .ok_or(EntryError::NonUtf8Path)?
             .to_string();
 
         Ok(Entry {

@@ -66,20 +66,20 @@ impl ChunkStackCache {
         file_size: usize,
         objectreader: &mut PoolRef<AEADReader>,
     ) -> anyhow::Result<(), ChunkDataError> {
-        if let Some((c_offset, pointer)) = self.chunks.get_next() {
-            let next_c_offset = self.chunks.peek_next_offset(file_size);
+        let Some((c_offset, pointer)) = self.chunks.get_next() else {
+            return Err(ChunkDataError::NullChunkPointer);
+        };
 
-            let len = next_c_offset - c_offset;
-            self.buf.extend(std::iter::repeat(0).take(len));
-            let start = self.buf.len() - len;
-            objectreader
-                .read_chunk(&pointer, &mut self.buf[start..])
-                .unwrap();
+        let next_c_offset = self.chunks.peek_next_offset(file_size);
 
-            Ok(())
-        } else {
-            Err(ChunkDataError::NullChunkPointer)
-        }
+        let len = next_c_offset - c_offset;
+        self.buf.extend(std::iter::repeat(0).take(len));
+        let start = self.buf.len() - len;
+        objectreader
+            .read_chunk(&pointer, &mut self.buf[start..])
+            .unwrap();
+
+        Ok(())
     }
 }
 
@@ -97,6 +97,7 @@ impl ChunkStack {
             Err(v) => v - 1,
         };
         let chunks = ChunksIter::new(chunks.into_iter().skip(index));
+
         Self {
             chunks,
             buf: Default::default(),
@@ -112,24 +113,24 @@ impl ChunkStack {
         offset: usize,
         objectreader: &mut PoolRef<AEADReader>,
     ) -> anyhow::Result<(), ChunkDataError> {
-        if let Some((c_offset, pointer)) = self.chunks.get_next() {
-            let next_c_offset = self.chunks.peek_next_offset(file_size);
+        let Some((c_offset, pointer)) = self.chunks.get_next() else {
+            return Err(ChunkDataError::NullChunkPointer)
+        };
 
-            if self.start.is_none() {
-                self.start = Some(offset - c_offset);
-            }
+        let next_c_offset = self.chunks.peek_next_offset(file_size);
 
-            let len = next_c_offset - c_offset;
-            self.buf.extend(std::iter::repeat(0).take(len));
-            let start = self.buf.len() - len;
-            objectreader
-                .read_chunk(&pointer, &mut self.buf[start..])
-                .unwrap();
-
-            Ok(())
-        } else {
-            Err(ChunkDataError::NullChunkPointer)
+        if self.start.is_none() {
+            self.start = Some(offset - c_offset);
         }
+
+        let len = next_c_offset - c_offset;
+        self.buf.extend(std::iter::repeat(0).take(len));
+        let start = self.buf.len() - len;
+        objectreader
+            .read_chunk(&pointer, &mut self.buf[start..])
+            .unwrap();
+
+        Ok(())
     }
 
     #[inline(always)]
