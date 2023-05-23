@@ -495,12 +495,15 @@ impl Store for Tree {
 
 #[cfg(test)]
 mod test {
+    use std::assert_eq;
+
     use infinitree::{crypto::UsernamePassword, Digest, Infinitree};
+    use scc::HashSet;
 
     use crate::{Entry, Files, Node, Tree};
 
     #[test]
-    fn create_path_to_parent() {
+    fn test_create_path_to_parent() {
         let tree = Tree::default();
         let path = "/test/path/to/dir";
 
@@ -515,7 +518,7 @@ mod test {
     }
 
     #[test]
-    fn test_file_insert_and_removal() {
+    fn test_insert_and_remove_file() {
         let tree = Tree::default();
         let file_path = "test/path/to/file.rs";
 
@@ -529,23 +532,137 @@ mod test {
     }
 
     #[test]
-    fn test_file_iteration() {
-        let tree = Tree::default();
-        let file1 = "test/path/to/file1.rs".to_string();
-        let file2 = "test/path/to/file2.rs".to_string();
+    fn test_move_node() {
+        let key = || {
+            UsernamePassword::with_credentials("bare_index_map".to_string(), "password".to_string())
+                .unwrap()
+        };
+        let storage = crate::backends::test::InMemoryBackend::shared();
+        let file_path = "test/path/file.rs".to_string();
+        let random_file = "test/path/to/random.rs".to_string();
+        let new_file_path = "test/path/to/file.rs".to_string();
+        let entry = Entry {
+            name: String::from("file.rs"),
+            ..Default::default()
+        };
 
-        let files = vec![file1.clone(), file2.clone()];
+        {
+            let mut tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
 
-        assert!(tree.insert_file(&file1, Entry::default()).is_ok());
-        assert!(tree.insert_file(&file2, Entry::default()).is_ok());
+            {
+                let tree_index = &tree.index().tree;
+                _ = tree_index.insert_file(&file_path, entry);
+                _ = tree_index.insert_file(&random_file, Entry::default());
 
-        for (k, _) in tree.iter_files() {
-            assert!(files.contains(&k));
+                _ = tree_index.move_node(&file_path, &new_file_path);
+                assert!(tree_index.get_file(&file_path).unwrap().is_none());
+
+                let entry_name = &tree_index.get_file(&new_file_path).unwrap().unwrap().name;
+                assert_eq!(entry_name, "file.rs");
+            }
+
+            tree.commit(None).unwrap();
+            tree.index().tree.0.clear();
+            tree.load_all().unwrap();
+
+            {
+                let tree_index = &tree.index().tree;
+
+                assert!(tree_index.get_file(&file_path).unwrap().is_none());
+                let entry_name = &tree_index.get_file(&new_file_path).unwrap().unwrap().name;
+                assert_eq!(entry_name, "file.rs");
+            }
+
+            tree.commit(None).unwrap();
         }
+
+        let tree = Infinitree::<Files>::open(storage, key()).unwrap();
+
+        tree.load_all().unwrap();
+        let tree_index = &tree.index().tree;
+
+        assert!(tree_index.get_file(&file_path).unwrap().is_none());
+        let entry_name = &tree_index.get_file(&new_file_path).unwrap().unwrap().name;
+        assert_eq!(entry_name, "file.rs");
     }
 
     #[test]
-    fn bare_index_can_be_restored() {
+    fn test_iterate_all_files() {
+        let tree = Tree::default();
+        let file1 = "test/path/to/file.rs".to_string();
+        let file2 = "test/path/file.rs".to_string();
+
+        _ = tree.insert_file(&file1, Entry::default());
+        _ = tree.insert_file(&file2, Entry::default());
+
+        let files = HashSet::new();
+        _ = files.insert(file1);
+        _ = files.insert(file2);
+
+        for (k, _) in tree.iter_files() {
+            files.remove(&k);
+        }
+
+        assert_eq!(files.len(), 0);
+    }
+
+    #[test]
+    fn test_update_file() {
+        let key = || {
+            UsernamePassword::with_credentials("bare_index_map".to_string(), "password".to_string())
+                .unwrap()
+        };
+        let storage = crate::backends::test::InMemoryBackend::shared();
+        let file_path = "test/path/file.rs".to_string();
+        let entry = Entry {
+            name: String::from("file.rs"),
+            ..Default::default()
+        };
+        let new_entry = Entry {
+            name: String::from("new_file.rs"),
+            ..Default::default()
+        };
+
+        {
+            let mut tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
+
+            {
+                let tree_index = &tree.index().tree;
+                tree_index.insert_file(&file_path, entry).unwrap();
+                let entry_name = &tree_index.get_file(&file_path).unwrap().unwrap().name;
+
+                assert_eq!(entry_name, "file.rs");
+            }
+
+            tree.commit(None).unwrap();
+            tree.index().tree.0.clear();
+            tree.load_all().unwrap();
+
+            {
+                let tree_index = &tree.index().tree;
+
+                let entry_name = &tree_index.get_file(&file_path).unwrap().unwrap().name;
+                assert_eq!(entry_name, "file.rs");
+
+                let _ = tree_index.update_file(&file_path, new_entry);
+                let entry_name = &tree_index.get_file(&file_path).unwrap().unwrap().name;
+                assert_eq!(entry_name, "new_file.rs");
+            }
+
+            tree.commit(None).unwrap();
+        }
+
+        let tree = Infinitree::<Files>::open(storage, key()).unwrap();
+
+        tree.load_all().unwrap();
+        let tree_index = &tree.index().tree;
+        let entry_name = &tree_index.get_file(&file_path).unwrap().unwrap().name;
+
+        assert_eq!(entry_name, "new_file.rs");
+    }
+
+    #[test]
+    fn test_bare_index_can_be_restored() {
         let key = || {
             UsernamePassword::with_credentials("bare_index_map".to_string(), "password".to_string())
                 .unwrap()
@@ -586,15 +703,15 @@ mod test {
     }
 
     #[test]
-    fn test_iter() {
+    fn test_iter_all_files_2() {
         let key = || {
             UsernamePassword::with_credentials("bare_index_map".to_string(), "password".to_string())
                 .unwrap()
         };
         let storage = crate::backends::test::InMemoryBackend::shared();
-        let file1 = "test/path/to/file1.rs".to_string();
-        let file2 = "test/path/to/file2.rs".to_string();
-        let file3 = "test/path/to/file3.rs".to_string();
+        let file1 = "test/path/to/file.rs".to_string();
+        let file2 = "test/path/file.rs".to_string();
+        let file3 = "test/file.rs".to_string();
 
         {
             let mut tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
@@ -629,16 +746,17 @@ mod test {
     }
 
     #[test]
-    fn getting_folders() {
+    fn test_get_dir() {
         let tree = Tree::default();
-        let file = "test/path/to/file1.rs".to_string();
+        let file = "test/path/to/file.rs".to_string();
         tree.insert_file(&file, Entry::default()).unwrap();
 
-        assert!(tree.get("test/path/to").is_ok());
+        let node = tree.get("test/path/to").unwrap().unwrap();
+        assert!(node.is_dir());
     }
 
     #[test]
-    fn path_to_folder() {
+    fn test_path_to_folder() {
         let tree = Tree::default();
         let file = "home/travel/pic.png".to_string();
         tree.insert_file(&file, Entry::default()).unwrap();
@@ -663,7 +781,7 @@ mod test {
     }
 
     #[test]
-    fn removing_folder() {
+    fn test_remove_dir() {
         let tree = Tree::default();
         let file = "home/travel/pic.png".to_string();
         let file2 = "home/travel/dogs/dog.png".to_string();
