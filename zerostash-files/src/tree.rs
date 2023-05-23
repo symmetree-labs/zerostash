@@ -1,4 +1,7 @@
-use std::sync::{atomic::AtomicUsize, Arc};
+use std::{
+    sync::{atomic::AtomicUsize, Arc},
+    vec,
+};
 
 use infinitree::{
     fields::{Collection, Store, VersionedMap},
@@ -17,8 +20,15 @@ pub type Result<'a, T> = std::result::Result<T, FsError<'a>>;
 
 type InnerTree = VersionedMap<Digest, Node>;
 
-#[derive(Default)]
 pub struct Tree(pub InnerTree);
+
+impl Default for Tree {
+    fn default() -> Tree {
+        let tree = Tree(InnerTree::default());
+        tree.insert_root().unwrap();
+        tree
+    }
+}
 
 // auto-derive will not work for resolving constraints properly
 impl Clone for Tree {
@@ -69,7 +79,7 @@ impl Node {
 }
 
 impl Tree {
-    pub fn insert_root<'a>(&self) -> Result<'a, ()> {
+    fn insert_root<'a>(&self) -> Result<'a, ()> {
         if self.0.get(&Digest::default()).is_none() {
             _ = self.0.insert(Digest::default(), Node::directory());
         }
@@ -78,7 +88,6 @@ impl Tree {
 
     /// Create a new directory at `path`, creating all entries in between
     pub fn insert_directory<'a>(&self, path: &'a str) -> Result<'a, ()> {
-        self.insert_root().unwrap();
         let (noderef, _current, filename) = self.create_path_to_parent(path)?;
         self.add_empty_dir(&noderef, filename);
         Ok(())
@@ -86,7 +95,6 @@ impl Tree {
 
     /// Insert or overwrite an file at `path`, creating all entries in between
     pub fn insert_file<'a>(&self, path: &'a str, file: Entry) -> Result<'a, ()> {
-        self.insert_root().unwrap();
         let (noderef, _current, filename) = self.create_path_to_parent(path)?;
         self.add_file(&noderef, filename, file);
         Ok(())
@@ -94,7 +102,6 @@ impl Tree {
 
     /// Updates an file at `path`
     pub fn update_file<'a>(&self, path: &'a str, file: Entry) -> Result<'a, ()> {
-        self.insert_root().unwrap();
         let file_ref = self.get_ref(path)?.ok_or(FsError::NoSuchFileOrDirectory)?;
         self.0
             .update_with(file_ref, |_| Node::file(file))
@@ -104,7 +111,6 @@ impl Tree {
 
     /// Recursively remove a subtree the `path`
     pub fn remove<'a>(&self, path: &'a str) -> Result<'a, ()> {
-        self.insert_root().unwrap();
         let (parent_ref, parent, to_delete) = self.path_to_parent(path)?;
 
         let stack = scc::Stack::default();
@@ -159,7 +165,6 @@ impl Tree {
 
     /// Return a file
     pub fn get_file<'a>(&self, path: &'a str) -> Result<'a, Option<Arc<Entry>>> {
-        self.insert_root().unwrap();
         let Some(noderef) = self.get_ref(path)? else {
             return Ok(None);
         };
@@ -173,7 +178,10 @@ impl Tree {
 
     /// Return a file system node
     pub fn get<'a>(&self, path: &'a str) -> Result<'a, Option<Arc<Node>>> {
-        self.insert_root().unwrap();
+        if path == "/" {
+            return Ok(Some(self.root()));
+        }
+
         let Some(noderef) = self.get_ref(path)? else {
             return Ok(None);
         };
@@ -187,7 +195,6 @@ impl Tree {
 
     /// Move the file from the old path to the new path in the tree
     pub fn move_node<'a>(&self, old_path: &'a str, new_path: &'a str) -> Result<'a, ()> {
-        self.insert_root().unwrap();
         let (parent_ref, _, node_name) = self.path_to_parent(old_path)?;
         let noderef = {
             let mut noderef = None;
@@ -220,7 +227,7 @@ impl Tree {
         Ok(())
     }
 
-    pub fn root(&self) -> Arc<Node> {
+    fn root(&self) -> Arc<Node> {
         self.0.get(&Digest::default()).expect("uninitialized tree")
     }
 
@@ -247,7 +254,6 @@ impl Tree {
 
     /// Returns if the path is a file
     pub fn is_file<'a>(&self, path: &'a str) -> Result<'a, bool> {
-        self.insert_root().unwrap();
         let (_, current, _filename) = self.path_to_parent(path)?;
 
         let Node::Directory { ref entries } = current.as_ref() else {
@@ -266,17 +272,21 @@ impl Tree {
     /// Returns a list of valid path components, followed by the
     /// erroring component.
     fn path_to_parent<'a>(&self, path: &'a str) -> Result<'a, (Digest, Arc<Node>, &'a str)> {
-        let parts = path
+        let mut parts = path
             .split('/')
             .filter(|s| !s.is_empty())
-            .collect::<Vec<&str>>();
+            .collect::<Vec<&'a str>>();
+
+        if parts.is_empty() {
+            return Err(FsError::InvalidPath(Vec::default()));
+        }
 
         let mut current = Some(self.root());
         let mut current_ref = Some(Digest::default());
-        let mut consumed = vec![];
+        let mut consumed = Vec::with_capacity(parts.len());
+        let last_part = parts.pop().unwrap();
 
-        let take_len = if parts.is_empty() { 0 } else { parts.len() - 1 };
-        for part in parts.iter().take(take_len) {
+        for part in parts.iter() {
             consumed.push(*part);
 
             let Some(Node::Directory { entries }) = current.as_deref() else {
@@ -288,11 +298,8 @@ impl Tree {
         }
 
         let parent = current.ok_or(FsError::InvalidPath(consumed))?;
-        Ok((
-            current_ref.expect("must be Some"),
-            parent,
-            parts.last().unwrap_or(&""),
-        ))
+
+        Ok((current_ref.expect("must be Some"), parent, last_part))
     }
 
     /// Traverses the tree to the parent node of the path, or creates
@@ -301,18 +308,22 @@ impl Tree {
     /// Returns a list of valid path components, followed by the
     /// erroring component.
     fn create_path_to_parent<'a>(&self, path: &'a str) -> Result<'a, (Digest, Arc<Node>, &'a str)> {
-        let parts = path
+        let mut parts = path
             .split('/')
             .filter(|s| !s.is_empty())
-            .collect::<Vec<&str>>();
+            .collect::<Vec<&'a str>>();
+
+        if parts.is_empty() {
+            return Err(FsError::InvalidPath(Vec::default()));
+        }
 
         let mut parent: Digest;
         let mut current = Some(self.root());
         let mut current_ref = Some(Digest::default());
-        let mut consumed = vec![];
+        let mut consumed = Vec::with_capacity(parts.len());
+        let last_part = parts.pop().unwrap();
 
-        let take_len = if parts.is_empty() { 0 } else { parts.len() - 1 };
-        for part in parts.iter().take(take_len) {
+        for part in parts.iter() {
             consumed.push(*part);
 
             let Some(Node::Directory { entries }) = current.as_deref() else {
@@ -331,11 +342,8 @@ impl Tree {
         }
 
         let current = current.ok_or(FsError::InvalidPath(consumed))?;
-        Ok((
-            current_ref.expect("must be Some"),
-            current,
-            parts.last().unwrap_or(&""),
-        ))
+
+        Ok((current_ref.expect("must be Some"), current, last_part))
     }
 
     fn add_empty_dir(&self, parent: &Digest, name: &str) -> (Digest, Arc<Node>) {
@@ -370,7 +378,6 @@ impl Tree {
     where
         F: FnMut(&str, &Node) -> bool,
     {
-        self.insert_root().unwrap();
         let stack = scc::Stack::default();
         stack.push((String::new(), Digest::default()));
 
@@ -409,7 +416,6 @@ impl Tree {
     }
 
     pub fn iter_files(&self) -> TreeIterator {
-        self.insert_root().unwrap();
         let root = Arc::clone(&self.root());
         let stack = scc::Stack::default();
         stack.push((String::new(), root));
@@ -466,7 +472,14 @@ impl Collection for Tree {
     }
 
     fn insert(&mut self, record: Self::Item) {
-        <InnerTree as Collection>::insert(&mut self.0, record)
+        static DIGEST: Digest = [0u8; 32];
+
+        if record.0 == DIGEST && self.0.contains(&DIGEST) {
+            self.0
+                .update_with(record.0, |_| record.1.unwrap().as_ref().clone());
+        } else {
+            <InnerTree as Collection>::insert(&mut self.0, record)
+        }
     }
 }
 
@@ -489,7 +502,6 @@ mod test {
     #[test]
     fn create_path_to_parent() {
         let tree = Tree::default();
-        tree.insert_root().unwrap();
         let path = "/test/path/to/dir";
 
         assert!(tree.path_to_parent(path).is_err());
@@ -666,7 +678,6 @@ mod test {
     #[test]
     fn path_to_root() {
         let tree = Tree::default();
-        tree.insert_root().unwrap();
 
         let res = tree.path_to_parent("/");
         assert!(res.is_ok());

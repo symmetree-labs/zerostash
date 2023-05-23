@@ -143,11 +143,7 @@ impl FilesystemMT for ZerostashFS {
             let stash = self.stash.lock().unwrap();
             let index = &stash.index();
             let tree = &index.tree;
-            if path_str == "/" {
-                Ok(Some(tree.root()))
-            } else {
-                tree.get(path_str)
-            }
+            tree.get(path_str)
         };
 
         let Ok(Some(node)) = node else {
@@ -173,11 +169,7 @@ impl FilesystemMT for ZerostashFS {
             let stash = self.stash.lock().unwrap();
             let index = stash.index();
             let tree = &index.tree;
-            if path_str == "/" {
-                Ok(Some(tree.root()))
-            } else {
-                tree.get(path_str)
-            }
+            tree.get(path_str)
         };
 
         let Ok(Some(node)) = node else {
