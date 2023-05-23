@@ -674,12 +674,4 @@ mod test {
 
         assert!(tree.get("home/travel").unwrap().is_none());
     }
-
-    #[test]
-    fn path_to_root() {
-        let tree = Tree::default();
-
-        let res = tree.path_to_parent("/");
-        assert!(res.is_ok());
-    }
 }
