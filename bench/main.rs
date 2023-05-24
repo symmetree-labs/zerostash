@@ -76,11 +76,11 @@ async fn main() {
             let commit_time = commit_start.elapsed();
 
             let ol = repo.index_object_count();
-            let fl = repo.index().files.len();
+            let fl = repo.index().tree.iter_files().count();
             let cl = repo.index().chunks.len();
             let (creuse_sum, creuse_cnt) = {
                 let mut chunk_reuse = HashMap::new();
-                repo.index().files.for_each(|_, f| {
+                repo.index().tree.iter_files().for_each(|(_, f)| {
                     f.chunks
                         .iter()
                         .for_each(|(_, c)| *chunk_reuse.entry(*c.hash()).or_insert(0u32) += 1)
@@ -95,8 +95,9 @@ async fn main() {
             let ssize = {
                 let mut data_size = 0.0f64;
                 repo.index()
-                    .files
-                    .for_each(|_, f| data_size += f.size as f64);
+                    .tree
+                    .iter_files()
+                    .for_each(|(_, f)| data_size += f.size as f64);
                 data_size
             };
 

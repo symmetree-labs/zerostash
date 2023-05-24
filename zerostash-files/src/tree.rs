@@ -198,9 +198,8 @@ impl Tree {
         let (parent_ref, _, node_name) = self.path_to_parent(old_path)?;
         let noderef = {
             let mut noderef = None;
-            self.0.update_with(parent_ref, |v| {
-                let current = v.as_ref().clone();
-                let Node::Directory { ref entries } = current else {
+            self.0.update_with(parent_ref, |current| {
+                let Node::Directory { ref entries } = current.as_ref() else {
                     unreachable!()
                 };
                 noderef = entries.remove(node_name);
@@ -215,9 +214,8 @@ impl Tree {
 
         // add to the new place, overwriting an existing file there
         let (new_ref, _, new_node_name) = self.path_to_parent(new_path)?;
-        self.0.update_with(new_ref, |v| {
-            let new = v.as_ref().clone();
-            let Node::Directory { ref entries } = new else {
+        self.0.update_with(new_ref, |new| {
+            let Node::Directory { ref entries } = new.as_ref() else {
                 unreachable!()
             };
             _ = entries.insert(new_node_name.into(), noderef);
@@ -232,9 +230,8 @@ impl Tree {
     }
 
     fn remove_file(&self, parent_ref: &Digest, filename: &str) {
-        self.0.update_with(*parent_ref, |v| {
-            let new = v.as_ref().clone();
-            if let Node::Directory { ref entries } = new {
+        self.0.update_with(*parent_ref, |new| {
+            if let Node::Directory { ref entries } = new.as_ref() {
                 entries.remove(filename);
                 return new;
             }
@@ -353,7 +350,7 @@ impl Tree {
                 panic!("invalid use of library");
             };
             _ = entries.insert(name.into(), noderef);
-            parent.as_ref().clone()
+            parent
         });
 
         self.0.insert(noderef, Node::directory());
@@ -367,7 +364,7 @@ impl Tree {
                 panic!("invalid use of library");
             };
             _ = entries.insert(name.into(), noderef);
-            parent.as_ref().clone()
+            parent
         });
 
         self.0.insert(noderef, Node::file(file));
@@ -475,8 +472,7 @@ impl Collection for Tree {
         static DIGEST: Digest = [0u8; 32];
 
         if record.0 == DIGEST && self.0.contains(&DIGEST) {
-            self.0
-                .update_with(record.0, |_| record.1.unwrap().as_ref().clone());
+            self.0.update_with(record.0, |_| record.1.unwrap());
         } else {
             <InnerTree as Collection>::insert(&mut self.0, record)
         }
@@ -688,7 +684,6 @@ mod test {
 
             {
                 let index = &tree.index().tree;
-                index.insert_root().unwrap();
                 let file3 = "file3.rs".to_string();
                 index.insert_file(&file3, Entry::default()).unwrap();
             }

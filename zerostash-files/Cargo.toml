@@ -10,7 +10,7 @@ keywords = ["crypto", "api", "security", "filesystem", "backup"]
 categories = ["cryptography", "filesystem"]
 
 [dependencies]
-infinitree = { version = "0.10.0", features = ["mmap"] }
+infinitree = { version = "0.10.2", features = ["mmap"] }
 serde = { version = "1.0.160", features = ["rc"] }
 serde_derive = "1.0.160"
 tracing = "0.1.37"
@@ -42,7 +42,7 @@ rand = "0.8.5"
 getrandom = "0.2.9"
 tokio = { version = "1.28.0", features = ["rt", "macros", "rt-multi-thread"] }
 criterion = "0.4.0"
-infinitree = { version = "0.10.0", features = ["test"] }
+infinitree = { version = "0.10.2", features = ["test"] }
 
 [[bench]]
 name = "bench"
