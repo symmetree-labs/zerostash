@@ -198,8 +198,8 @@ fn set_test_cwd() {
 
 fn rollsum_sum(buf: &[u8], ofs: usize, len: usize) -> u32 {
     let mut r = BupSplit::new();
-    for count in ofs..len {
-        r.roll(buf[count]);
+    for b in buf.iter().skip(ofs).take(len) {
+        r.roll(*b);
     }
     r.digest()
 }

@@ -4,7 +4,9 @@ lto = true
 strip = "symbols"
 
 [workspace]
+resolver = "2"
 members = [
+    "zerostash-fuse",
     "zerostash-files",
     "zerostash",
 ]
