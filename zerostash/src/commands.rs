@@ -14,6 +14,10 @@ mod wipe;
 use wipe::*;
 mod zfs;
 use zfs::*;
+#[cfg(feature = "fuse")]
+pub mod mount;
+#[cfg(feature = "fuse")]
+pub use mount::*;
 
 use crate::{
     config::{Key, SymmetricKey, YubikeyCRConfig, YubikeyCRKey},
@@ -42,6 +46,10 @@ pub enum ZerostashCmd {
 
     /// List files in a stash
     Ls(Ls),
+
+    /// Mount the files in a stash
+    #[cfg(feature = "fuse")]
+    Mount(Mount),
 
     /// Key management & generation
     Keys(Keys),
@@ -160,6 +168,8 @@ impl Runnable for EntryPoint {
                 Keys(cmd) => cmd.run().await,
                 Wipe(cmd) => cmd.run().await,
                 Zfs(cmd) => cmd.run().await,
+                #[cfg(feature = "fuse")]
+                Mount(cmd) => cmd.run().await,
             }
         })
         .unwrap()

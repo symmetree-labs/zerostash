@@ -23,6 +23,10 @@ macro_rules! if_yes {
 pub enum EntryError {
     #[error("Path contains `..` or `.` in a non-prefix position")]
     InvalidInputPath,
+    #[error("Path has no file name component")]
+    NoFileNameComponent,
+    #[error("Not all sequences of bytes are valid UTF-8")]
+    NonUtf8Path,
     #[error("Time error: {source}")]
     Time {
         #[from]
@@ -78,7 +82,6 @@ pub struct PreserveMetadata {
     /// Preserve owner/gid information. Requires root to restore.
     #[clap(short = 'o', long = "preserve-ownership", default_value = "true")]
     pub ownership: bool,
-
     /// Preserve modification and creation times.
     #[clap(short = 't', long = "preserve-times", default_value = "true")]
     pub times: bool,
@@ -99,7 +102,7 @@ pub(crate) fn normalize_filename(path: &impl AsRef<Path>) -> Result<String, Entr
         .join("/"))
 }
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Entry {
     pub unix_secs: i64,
     pub unix_nanos: u32,
@@ -155,6 +158,14 @@ impl Entry {
             (0, 0)
         };
 
+        let name = path
+            .as_ref()
+            .file_name()
+            .ok_or(EntryError::NoFileNameComponent)?
+            .to_str()
+            .ok_or(EntryError::NonUtf8Path)?
+            .to_string();
+
         Ok(Entry {
             unix_secs,
             unix_nanos,
@@ -172,7 +183,7 @@ impl Entry {
             readonly: if_yes!(preserve.permissions, metadata.permissions().readonly()),
 
             size: metadata.len(),
-            name: normalize_filename(path)?,
+            name,
 
             chunks: Vec::new(),
         })
@@ -193,6 +204,14 @@ impl Entry {
             (0, 0)
         };
 
+        let name = path
+            .as_ref()
+            .file_name()
+            .ok_or(EntryError::NoFileNameComponent)?
+            .to_str()
+            .ok_or(EntryError::NonUtf8Path)?
+            .to_string();
+
         Ok(Entry {
             unix_secs,
             unix_nanos,
@@ -210,7 +229,7 @@ impl Entry {
             },
 
             size: metadata.len(),
-            name: normalize_filename(path)?,
+            name,
 
             chunks: Vec::new(),
         })

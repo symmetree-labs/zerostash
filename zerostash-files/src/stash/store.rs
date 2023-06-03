@@ -1,4 +1,9 @@
-use crate::{files, rollsum::SeaSplit, splitter::FileSplitter, Files};
+use crate::{
+    files::{self, normalize_filename},
+    rollsum::SeaSplit,
+    splitter::FileSplitter,
+    Files,
+};
 use anyhow::Context;
 use flume as mpsc;
 use futures::future::join_all;
@@ -8,7 +13,12 @@ use infinitree::{
     Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
-use std::{fs, io::Read, num::NonZeroUsize, path::PathBuf};
+use std::{
+    fs,
+    io::{Cursor, Read},
+    num::NonZeroUsize,
+    path::PathBuf,
+};
 use tokio::task;
 use tracing::{debug, debug_span, error, trace, warn, Instrument};
 
@@ -89,8 +99,15 @@ impl Options {
                 }
             };
 
+            current_file_list.push(normalize_filename(&path)?);
+
             let metadata = match metadata {
                 Ok(md) if md.is_file() || md.is_symlink() => md,
+                Ok(md) if md.is_dir() => {
+                    let path_str = path.to_str().unwrap();
+                    stash.index().tree.insert_directory(path_str).unwrap();
+                    continue;
+                }
                 Err(error) => {
                     warn!(%error, ?path, "failed to get file metadata; skipping");
                     continue;
@@ -107,7 +124,6 @@ impl Options {
             };
 
             trace!(?path, "queued");
-            current_file_list.push(entry.name.clone());
             sender.send((path, entry)).unwrap();
         }
 
@@ -117,14 +133,15 @@ impl Options {
         let source_paths = self
             .paths
             .iter()
-            .map(files::normalize_filename)
+            .map(normalize_filename)
             .collect::<Result<Vec<_>, _>>()?;
 
-        stash.index().files.retain(|k, _| {
-            for path in source_paths.iter() {
-                if k.starts_with(path) {
+        stash.index().tree.retain(|p, _| {
+            for sp in source_paths.iter() {
+                if p.starts_with(sp) {
                     // if the current directory is part of the new commit, diff
-                    return current_file_list.contains(k);
+                    let status = current_file_list.contains(&p.to_string());
+                    return status;
                 }
             }
 
@@ -195,21 +212,27 @@ async fn process_file_loop(
 
     while let Ok((path, entry)) = r.recv_async().await {
         buf.clear();
+        let path_str = path.to_string_lossy();
 
         if !force {
-            if let Some(in_store) = index.files.get(&entry.name) {
-                if in_store.as_ref() == &entry {
-                    debug!(?path, "already indexed, skipping");
-                    continue;
-                } else {
-                    debug!(?path, "adding new file");
+            let tree = &index.tree;
+            if let Ok(Some(node)) = tree.get(&path_str) {
+                match node.as_ref() {
+                    crate::Node::File { refs: _, entry: e } if *e.as_ref() == entry => {
+                        debug!(?path, "already indexed, skipping");
+                        continue;
+                    }
+                    crate::Node::File { refs: _, entry: _ } => {
+                        debug!(?path, "adding new file");
+                    }
+                    crate::Node::Directory { .. } => {}
                 }
             }
         }
 
         let size = entry.size;
         if size == 0 || entry.file_type.is_symlink() {
-            index.files.insert(entry.name.clone(), entry);
+            index.tree.insert_file(&path_str, entry).unwrap();
             continue;
         }
 
@@ -276,13 +299,39 @@ async fn index_file(
 
     debug!(?path, chunks = entry.chunks.len(), "indexed");
 
-    if index
-        .files
-        .update_with(entry.name.clone(), |_v| entry.clone())
-        .is_none()
-    {
-        index.files.insert(entry.name.clone(), entry);
+    let path_str = path.to_str().unwrap();
+    index.tree.insert_file(path_str, entry).unwrap();
+}
+
+pub fn index_buf(
+    mut file: Cursor<Vec<u8>>,
+    mut entry: files::Entry,
+    hasher: infinitree::Hasher,
+    index: &mut crate::Files,
+    writer: &Pool<impl Writer + Clone + 'static>,
+    path: String,
+) {
+    let mut buf = Vec::with_capacity(entry.size as usize);
+    file.read_to_end(&mut buf).unwrap();
+    let splitter = FileSplitter::<SeaSplit>::new(&buf, hasher);
+    let mut chunks: Vec<Result<(u64, std::sync::Arc<infinitree::ChunkPointer>), anyhow::Error>> =
+        Vec::default();
+
+    for (start, hash, data) in splitter {
+        let mut writer = writer.clone();
+
+        let store = || writer.write_chunk(&hash, data).unwrap();
+        let ptr = index.chunks.insert_with(hash, store);
+        chunks.push(Ok((start, ptr)))
     }
+
+    _ = std::mem::replace(
+        &mut entry.chunks,
+        chunks.into_iter().collect::<Result<Vec<_>, _>>().unwrap(),
+    );
+
+    let index_tree = &mut index.tree;
+    index_tree.update_file(&path, entry.clone()).unwrap();
 }
 
 struct MmappedFile {

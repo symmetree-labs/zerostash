@@ -17,6 +17,7 @@ impl AsyncRunnable for Checkout {
     /// Start the application.
     async fn run(&self) {
         let stash = self.stash.open();
+        stash.load(stash.index().tree()).unwrap();
 
         self.options
             .from_iter(&stash, APP.get_worker_threads())

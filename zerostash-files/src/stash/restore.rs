@@ -12,7 +12,7 @@ type ThreadWork = (PathBuf, Arc<files::Entry>);
 type Sender = mpsc::Sender<ThreadWork>;
 type Receiver = mpsc::Receiver<ThreadWork>;
 
-pub type FileIterator<'a> = Box<(dyn Iterator<Item = Arc<files::Entry>> + Send + 'a)>;
+pub type FileIterator<'a> = Box<(dyn Iterator<Item = (String, Arc<files::Entry>)> + Send + 'a)>;
 
 #[derive(clap::Args, Debug, Clone, Default)]
 pub struct Options {
@@ -51,34 +51,41 @@ fn iter<V: AsRef<[T]>, T: AsRef<str>>(stash: &Infinitree<Files>, glob: V) -> Fil
         .iter()
         .map(|g| glob::Pattern::new(g.as_ref()).unwrap())
         .collect::<Vec<glob::Pattern>>();
+    let match_c = matchers.clone();
 
-    use QueryAction::{Skip, Take};
-    Box::new(
-        stash
-            .iter(stash.index().files(), move |fname| {
-                if matchers.iter().any(|m| m.matches(fname)) {
-                    Take
-                } else {
-                    Skip
-                }
-            })
-            .unwrap()
-            .filter_map(|(_, v)| v),
-    )
+    let filtered_tree = stash
+        .index()
+        .tree
+        .iter_files()
+        .filter(move |(path, _)| match_c.iter().any(|m| m.matches(path)))
+        .collect::<Vec<_>>();
+
+    let filtered_files = stash
+        .iter(stash.index().files(), move |fname| {
+            if matchers.iter().any(|m| m.matches(fname)) {
+                QueryAction::Take
+            } else {
+                QueryAction::Skip
+            }
+        })
+        .unwrap()
+        .filter_map(|(path, entry)| entry.map(|e| (path, e)));
+
+    Box::new(filtered_files.chain(filtered_tree))
 }
 
 impl Options {
     pub fn list<'stash>(
         &'stash self,
         stash: &'stash Infinitree<Files>,
-    ) -> impl Iterator<Item = Arc<crate::files::Entry>> + 'stash {
+    ) -> impl Iterator<Item = (String, Arc<crate::files::Entry>)> + 'stash {
         let globs = if !self.globs.is_empty() {
             self.globs.clone()
         } else {
             vec!["*".into()]
         };
 
-        iter(stash, globs).filter(|md| {
+        iter(stash, globs).filter(|(_, md)| {
             if let Some(max) = self.max_size {
                 if max > md.size {
                     return false;
@@ -103,11 +110,9 @@ impl Options {
         self.setup_env()?;
         let (sender, workers) = self.start_workers(stash, threads)?;
 
-        for md in self.list(stash) {
-            let path = md.as_ref().into();
-
+        for (path, md) in self.list(stash) {
             trace!(?path, "queued");
-            sender.send_async((path, md)).await.unwrap();
+            sender.send_async((path.into(), md)).await.unwrap();
         }
 
         drop(sender);

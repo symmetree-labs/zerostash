@@ -18,12 +18,15 @@
     unused_qualifications
 )]
 
+pub mod migration;
 pub mod application;
 pub mod commands;
 pub mod config;
 pub mod error;
 pub mod keygen;
 pub mod prelude;
+#[cfg(feature = "fuse")]
+pub use zerostash_fuse;
 
 // These dependencies are required for the e2e benchmark
 #[cfg(test)]

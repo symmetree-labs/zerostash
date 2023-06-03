@@ -1,6 +1,6 @@
 //! `commit` subcommand
 
-use crate::prelude::*;
+use crate::{migration::migration, prelude::*};
 
 #[derive(Command, Debug)]
 pub struct Commit {
@@ -21,6 +21,7 @@ impl AsyncRunnable for Commit {
     async fn run(&self) {
         let mut stash = self.stash.open();
         stash.load_all().unwrap();
+        migration(&mut stash);
 
         self.options
             .add_recursive(&stash, APP.get_worker_threads())

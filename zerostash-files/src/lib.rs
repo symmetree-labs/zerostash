@@ -2,7 +2,8 @@
 extern crate serde_derive;
 
 use infinitree::*;
-
+pub mod tree;
+pub use tree::*;
 mod files;
 pub use files::*;
 mod zfs_snapshots;
@@ -24,4 +25,5 @@ pub struct Files {
     pub chunks: ChunkIndex,
     pub files: FileIndex,
     pub zfs_snapshots: ZfsIndex,
+    pub tree: Tree,
 }
