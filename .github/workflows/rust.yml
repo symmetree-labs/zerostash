@@ -50,7 +50,7 @@ jobs:
             os: ubuntu-latest
             asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-linux-x86_64
             target: x86_64-unknown-linux-musl
-            cross: true
+            cross: false
 
           - name: macos
             os: macos-latest
