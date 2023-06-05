@@ -1,15 +1,19 @@
 name: "NixOS Test"
 on:
   pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
 jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@8230315d06ad95c617244d2f265d237a1682d445
-    - uses: cachix/install-nix-action@daddc62a2e67d1decb56e028c9fa68344b9b7c2a
+    - uses: cachix/install-nix-action@4b933aa7ebcc94a6174cf1364864e957b4910265
       with:
         extra_nix_config: "system-features = nixos-test benchmark big-parallel kvm"
-    - uses: cachix/cachix-action@75d46f58e6608ffed5276b4aa8de78d300911526
+    - uses: cachix/cachix-action@6a9a34cdd93d0ae4b4b59fd678660efb08109f2f
       with:
         name: symmetree-labs
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
