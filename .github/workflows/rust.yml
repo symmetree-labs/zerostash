@@ -23,6 +23,7 @@ jobs:
   clippy_check:
     runs-on: ubuntu-latest
     steps:
+    - run: sudo apt-get -y install fuse3 libfuse3-dev
     - uses: actions/checkout@v1
     - uses: actions-rs/toolchain@v1
       with:
@@ -81,9 +82,13 @@ jobs:
           profile: minimal
           target: ${{ matrix.target }}
 
-      - name: Install musl-gcc
+      - name: Install deps
         if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get install -y musl-tools
+        run: sudo apt-get install -y musl-tools libfuse3-dev
+
+      - name: Install deps
+        if: matrix.os == 'macos-latest'
+        run: brew install macfuse
 
       - name: Test
         if: matrix.target != 'aarch64-apple-darwin'
