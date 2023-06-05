@@ -50,7 +50,7 @@ jobs:
             os: ubuntu-latest
             asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-linux-x86_64
             target: x86_64-unknown-linux-musl
-            cross: false
+            cross: true
 
           - name: macos
             os: macos-latest
@@ -83,10 +83,6 @@ jobs:
           override: true
           profile: minimal
           target: ${{ matrix.target }}
-
-      - name: Install deps
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get install -y musl-tools libfuse3-dev
 
       - name: Install deps
         if: matrix.os == 'macos-latest'
