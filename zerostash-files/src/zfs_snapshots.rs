@@ -50,7 +50,7 @@ impl ZfsSnapshot {
         writer: AEADWriter,
         stdin: &mut ChildStdout,
     ) -> Result<ZfsSnapshot, SnapshotError> {
-        let mut sink = BufferedSink::new(writer);
+        let mut sink = BufferedSink::with_chunk_size(writer, 4_100_000);
         let mut buf = vec![0; 1_000_000];
 
         loop {
