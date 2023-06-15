@@ -39,7 +39,6 @@ jobs:
     strategy:
       matrix:
         name: [
-          linux,
           macos,
           macos-m1,
           windows
@@ -51,27 +50,35 @@ jobs:
             asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-linux-x86_64
             target: x86_64-unknown-linux-musl
             cross: true
+            tests: true
+            packages: -p zerostash -p zerostash-files
 
           - name: macos
             os: macos-latest
             asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-macos-x86_64
             target: x86_64-apple-darwin
             cross: false
+            tests: true
+            packages: -p zerostash -p zerostash-files
 
           - name: macos-m1
             os: macos-latest
             asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-macos-aarch64
             target: aarch64-apple-darwin
             cross: true
+            tests: false
+            packages: -p zerostash -p zerostash-files
 
           - name: windows
             os: windows-latest
             asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-windows-x86_64.exe
             target: x86_64-pc-windows-msvc
             cross: false
+            tests: true
+            packages: -p zerostash -p zerostash-files
 
         rust:
-          - 1.70.0 # MSRV
+          - 1.69.0 # MSRV
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -84,23 +91,19 @@ jobs:
           profile: minimal
           target: ${{ matrix.target }}
 
-      - name: Install deps
-        if: matrix.os == 'macos-latest'
-        run: brew install macfuse
-
       - name: Test
-        if: matrix.target != 'aarch64-apple-darwin'
+        if: matrix.tests != false
         uses: actions-rs/cargo@v1
         with:
             use-cross: ${{ matrix.cross }}
-            args: --locked --target ${{ matrix.target }} --release
-            command: test
+            args: --locked --target ${{ matrix.target }} --release ${{ matrix.packages }}
+            command: test 
 
       - name: Build
         uses: actions-rs/cargo@v1
         with:
             use-cross: ${{ matrix.cross }}
-            args: --locked --target ${{ matrix.target }} --release
+            args: --locked --target ${{ matrix.target }} --release ${{ matrix.packages }}
             command: build
 
       - name: Upload binaries
