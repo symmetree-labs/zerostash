@@ -2,42 +2,34 @@
   inputs = rec {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-23.05";
     utils = { url = "github:numtide/flake-utils"; };
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.flake-utils.follows = "utils";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
-      flake = false;
-    };
   };
 
-  outputs = { self, nixpkgs, utils, rust-overlay, ... }:
+  outputs = { self, nixpkgs, utils, ... }:
     utils.lib.eachDefaultSystem (system:
       let
-        overlays = [ (import rust-overlay) ];
+        overlays = [ ];
         pkgs = import nixpkgs { inherit system overlays; };
 
-        # Get a specific rust version
-        rust = pkgs.rust-bin.stable.latest.default;
-
-        rustPlatform = pkgs.makeRustPlatform {
-          cargo = rust;
-          rustc = rust;
-        };
-
-        macDeps = with pkgs; [ darwin.apple_sdk.frameworks.Security ];
+        fuseEnabled = pkgs.stdenv.isLinux;
         linuxDeps = with pkgs; [ fuse3 ];
+        macDeps = with pkgs; [
+          macfuse-stubs
+          darwin.apple_sdk.frameworks.Security
+        ];
+
+        buildFlags = "-p zerostash -p zerostash-files"
+          + pkgs.lib.optionalString fuseEnabled "-p zerostash-fuse";
+
+        features = pkgs.lib.optionals fuseEnabled [ "fuse" ];
 
         ifTestable = block:
           if (pkgs.stdenv.isLinux && pkgs.stdenv.isx86_64) then
             block
           else
             rec { };
-      in rec {
-        packages = rec {
-          zerostash = rustPlatform.buildRustPackage ({
+
+        zstashpkg = pkgs:
+          pkgs.rustPlatform.buildRustPackage ({
             meta = with pkgs.lib; {
               description = "Secure, speedy, distributed backups";
               homepage = "https://symmetree.dev";
@@ -48,17 +40,26 @@
             name = "zerostash";
             pname = "0s";
             src = pkgs.lib.sources.cleanSource ./.;
-            # buildFeatures = pkgs.lib.optionals pkgs.stdenv.isLinux [ "fuse" ];
 
             cargoLock = { lockFile = ./Cargo.lock; };
+
+            buildFeatures = features;
+            cargoCheckFeatures = features;
+
+            cargoBuildFlags = buildFlags;
+            cargoTestFlags = buildFlags;
 
             nativeBuildInputs = with pkgs;
               [ pkg-config ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin macDeps;
             buildInputs = with pkgs;
               [ libusb ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux linuxDeps;
           } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
-            SODIUM_LIB_DIR="${pkgs.pkgsStatic.libsodium}/lib";
+            SODIUM_LIB_DIR = "${pkgs.pkgsStatic.libsodium}/lib";
           });
+      in rec {
+        packages = rec {
+          zerostash = zstashpkg pkgs;
+          zerostash-static = zstashpkg pkgs.pkgsStatic;
 
           vm = self.nixosConfigurations.test.config.system.build.vm;
 
@@ -86,10 +87,10 @@
           };
         });
 
-        devShell = pkgs.mkShell {
-          inputsFrom = [ self.packages.${system}.default ];
-          nativeBuildInputs = [ rust ];
-        };
+        devShells.default =
+          pkgs.mkShell { inputsFrom = [ self.packages.${system}.default ]; };
+
+        formatter = pkgs.nixfmt;
 
       }) // {
         nixosModule = { pkgs, ... }: {
