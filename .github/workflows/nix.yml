@@ -17,5 +17,6 @@ jobs:
       with:
         name: symmetree-labs
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - run: nix build
+    - run: nix build --json .#zerostash
+    - run: nix build --json .#zerostash-static
     - run: nix run '.#nixosTest'

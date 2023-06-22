@@ -11,11 +11,12 @@
         pkgs = import nixpkgs { inherit system overlays; };
 
         fuseEnabled = pkgs.stdenv.isLinux;
-        linuxDeps = with pkgs; [ fuse3 ];
-        macDeps = with pkgs; [
-          macfuse-stubs
-          darwin.apple_sdk.frameworks.Security
-        ];
+        linuxDeps = pkgs: with pkgs; [ fuse3 ];
+        macDeps = pkgs:
+          with pkgs; [
+            macfuse-stubs
+            darwin.apple_sdk.frameworks.Security
+          ];
 
         buildFlags = "-p zerostash -p zerostash-files"
           + pkgs.lib.optionalString fuseEnabled " -p zerostash-fuse";
@@ -39,7 +40,10 @@
 
             name = "zerostash";
             pname = "0s";
-            src = pkgs.lib.sources.cleanSource ./.;
+            src = pkgs.lib.sources.cleanSource (pkgs.lib.sources.cleanSourceWith {
+              src = ./.;
+              filter = name: type: !(pkgs.lib.hasPrefix ".github" (toString name));
+            });
 
             cargoLock = { lockFile = ./Cargo.lock; };
 
@@ -50,10 +54,14 @@
             cargoTestFlags = buildFlags;
 
             nativeBuildInputs = with pkgs;
-              [ pkg-config ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin macDeps;
+              [ stdenv.cc.cc.lib pkg-config ]
+              ++ pkgs.lib.optionals pkgs.stdenv.isDarwin (macDeps pkgs);
             buildInputs = with pkgs;
-              [ libusb ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux linuxDeps;
+              [ libusb ]
+              ++ pkgs.lib.optionals pkgs.stdenv.isLinux (linuxDeps pkgs);
           } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+            RUSTFLAGS =
+              "-L${pkgs.stdenv.cc.cc}/lib/gcc/${pkgs.stdenv.targetPlatform.config}/${pkgs.stdenv.cc.cc.version} -lc";
             SODIUM_LIB_DIR = "${pkgs.pkgsStatic.libsodium}/lib";
           });
       in rec {
