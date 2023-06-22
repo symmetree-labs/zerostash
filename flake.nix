@@ -18,7 +18,7 @@
         ];
 
         buildFlags = "-p zerostash -p zerostash-files"
-          + pkgs.lib.optionalString fuseEnabled "-p zerostash-fuse";
+          + pkgs.lib.optionalString fuseEnabled " -p zerostash-fuse";
 
         features = pkgs.lib.optionals fuseEnabled [ "fuse" ];
 
