@@ -9,33 +9,25 @@ on:
     types: [ published ]
 
 env:
-  version: ${{ github.event.release.tag_name || github.head_ref }}
+  version: ${{ github.event.release.tag_name || github.sha }}
+  rust: 1.69.0 # same as nixos 23.05
 
 jobs:
   security_audit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
-    - uses: actions-rs/audit-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-
-  clippy_check:
-    runs-on: ubuntu-latest
-    steps:
-    - run: sudo apt-get -y install fuse3 libfuse3-dev
-    - uses: actions/checkout@v1
-    - uses: Swatinem/rust-cache@v2.4.0
-    - uses: actions-rs/toolchain@v1
-      with:
-          toolchain: nightly
-          components: clippy
-          override: true
-    - uses: actions-rs/clippy-check@v1
+    - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9
+    - uses: actions-rs/audit-check@35b7b53b1e25b55642157ac01b4adceb5b9ebef3
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
 
   build:
+    env:
+      clippy_args: --locked --target ${{ matrix.target }} ${{ matrix.packages }}
+      build_args: --locked --release --target ${{ matrix.target }} ${{ matrix.packages }}
+      target_path: target/${{ matrix.target }}/release/0s${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+      asset_name: 0s-${{ github.event.release.tag_name || github.sha }}-${{ matrix.target }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+
     strategy:
       matrix:
         name: [
@@ -45,80 +37,104 @@ jobs:
         ]
 
         include:
-          - name: linux
-            os: ubuntu-latest
-            asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-linux-x86_64
-            target: x86_64-unknown-linux-musl
-            cross: true
-            tests: true
-            packages: -p zerostash -p zerostash-files
-
           - name: macos
             os: macos-latest
-            asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-macos-x86_64
             target: x86_64-apple-darwin
             cross: false
-            tests: true
             packages: -p zerostash -p zerostash-files
 
           - name: macos-m1
             os: macos-latest
-            asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-macos-aarch64
             target: aarch64-apple-darwin
             cross: true
-            tests: false
             packages: -p zerostash -p zerostash-files
+            skip_tests: true
 
           - name: windows
             os: windows-latest
-            asset_name: 0s-${{ github.event.release.tag_name || github.head_ref }}-windows-x86_64.exe
             target: x86_64-pc-windows-msvc
             cross: false
-            tests: true
             packages: -p zerostash -p zerostash-files
-
-        rust:
-          - 1.69.0 # MSRV
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: Swatinem/rust-cache@v2.4.0
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9
+      - uses: Swatinem/rust-cache@2656b87321093db1cb55fbd73183d195214fdfd1
+      - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
         with:
-          toolchain: stable
+          toolchain: ${{ env.rust }}
+          target: ${{ matrix.target }}
           override: true
           profile: minimal
-          target: ${{ matrix.target }}
+          components: clippy
+
+      - uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
+        if: matrix.skip_clippy != true
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: ${{ env.clippy_args }}
 
       - name: Test
-        if: matrix.tests != false
-        uses: actions-rs/cargo@v1
+        if: matrix.skip_tests != true
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
         with:
             use-cross: ${{ matrix.cross }}
-            args: --locked --target ${{ matrix.target }} --release ${{ matrix.packages }}
+            args: ${{ env.build_args }}
             command: test 
 
       - name: Build
-        uses: actions-rs/cargo@v1
+        id: build
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b
         with:
             use-cross: ${{ matrix.cross }}
-            args: --locked --target ${{ matrix.target }} --release ${{ matrix.packages }}
+            args: ${{ env.build_args }}
             command: build
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce
         with:
-          name: ${{ matrix.asset_name }}
-          path: "target/${{ matrix.target }}/release/0s${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+          name: ${{ env.asset_name }}
+          path: ${{ env.target_path }}
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9
+    - uses: cachix/install-nix-action@4b933aa7ebcc94a6174cf1364864e957b4910265
+    - uses: cachix/cachix-action@6a9a34cdd93d0ae4b4b59fd678660efb08109f2f
+      with:
+        name: symmetree-labs
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+    - uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f
+      with:
+        toolchain: ${{ env.rust }}
+        override: true
+        components: clippy
+
+    - run: sudo apt-get update && sudo apt-get install -y libfuse3-dev
+    - uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - id: build
+      run: |
+        path=$(nix build --json .#zerostash-static | jq -r .[].outputs.out)/bin/0s
+        echo bin_path=$path >> "$GITHUB_OUTPUT"
+
+    - name: Upload binaries
+      uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce
+      with:
+        name: 0s-linux-${{ github.event.release.tag_name || github.sha }}-x86_64
+        path: ${{ steps.build.outputs.bin_path }}
 
   release:
     runs-on: ubuntu-latest
-    needs: [build, security_audit]
+    needs: [build, linux, security_audit]
     if: github.event_name == 'release' && github.event.action == 'published'
     steps:
     - name: Download artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a
       with:
         path: bin
 
@@ -135,7 +151,7 @@ jobs:
         done
 
     - name: Attach binaries to release
-      uses: actions/github-script@v6
+      uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
       with:
         script: |
           const fs = require('fs/promises');

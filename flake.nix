@@ -40,10 +40,12 @@
 
             name = "zerostash";
             pname = "0s";
-            src = pkgs.lib.sources.cleanSource (pkgs.lib.sources.cleanSourceWith {
-              src = ./.;
-              filter = name: type: !(pkgs.lib.hasPrefix ".github" (toString name));
-            });
+            src = pkgs.lib.sources.cleanSourceWith {
+              src = pkgs.lib.sources.cleanSource ./.;
+              filter = name: type:
+                let baseName = baseNameOf (toString name);
+                in !(".github" == baseName || ("nix" == baseName && type == "directory"));
+            };
 
             cargoLock = { lockFile = ./Cargo.lock; };
 
