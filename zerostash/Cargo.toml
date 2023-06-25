@@ -13,15 +13,15 @@ categories = ["cryptography", "filesystem", "command-line-utilities"]
 [dependencies]
 anyhow = "1.0.71"
 thiserror = "1.0.40"
-clap = "4.3.5"
-infinitree = { version = "0.10.2", features = ["cryptobox", "yubikey"] }
-infinitree-backends = { version = "0.10.2", default-features = false, features = ["rustls"] }
+clap = "4.3.8"
+infinitree = { version = "0.10.3", features = ["cryptobox", "yubikey"] }
+infinitree-backends = { version = "0.10.3", default-features = false, features = ["rustls"] }
 zerostash-files = { version = "0.6.0", path = "../zerostash-files" }
 zerostash-fuse = { version = "0.1.0", path = "../zerostash-fuse", optional = true}
 rpassword = "7.2.0"
 rprompt = "2.0.2"
 serde = { version = "1.0.164", features = ["serde_derive"] }
-toml = "0.7.4"
+toml = "0.7.5"
 bech32 = "0.9.1"
 
 dirs = "5.0.1"
