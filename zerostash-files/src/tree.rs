@@ -363,7 +363,7 @@ impl Tree {
             let Node::Directory { ref entries } = parent.as_ref() else {
                 panic!("invalid use of library");
             };
-            _ = entries.insert(name.into(), noderef);
+            _ = entries.upsert(name.into(), || noderef, |_, v| *v = noderef);
             parent
         });
 
