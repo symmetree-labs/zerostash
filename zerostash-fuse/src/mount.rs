@@ -53,17 +53,20 @@ pub async fn mount(
     let mount_type = if read_write { "rw" } else { "ro" };
 
     let filesystem = ZerostashFS::open(stash, threads, read_write).unwrap();
-
-    let fuse_args = vec![
-        OsStr::new("-o"),
-        OsStr::new(mount_type),
-        OsStr::new("fsname=zerostash"),
-    ];
-
     let fs = fuse_mt::FuseMT::new(filesystem, 1);
 
     // Mount the filesystem.
-    let handle = spawn_mount(fs, mountpoint, &fuse_args[..])?;
+    let handle = spawn_mount(
+        fs,
+        mountpoint,
+        &[
+            OsStr::new(mount_type),
+            OsStr::new("nodev"),
+            OsStr::new("nosuid"),
+            OsStr::new("noatime"),
+            OsStr::new("fsname=zerostash"),
+        ],
+    )?;
 
     // Wait until we are done.
     tokio::signal::ctrl_c().await?;

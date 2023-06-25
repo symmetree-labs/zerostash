@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-infinitree = { version = "0.10.2", features = ["cryptobox", "yubikey"] }
+infinitree = { version = "0.10.2" }
 zerostash-files = { version = "0.6.0", path = "../zerostash-files" }
 scc = "1.8.2"
 fuse_mt = "0.6.0"

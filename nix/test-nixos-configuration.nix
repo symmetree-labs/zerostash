@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ lib, pkgs, ... }:
 {
   # Easy debugging via console and ssh
   # WARNING: root access with empty password
@@ -9,7 +9,20 @@
   users.extraUsers.root.password = "";
   users.mutableUsers = false;
 
+  environment.systemPackages = [ pkgs.zerostash pkgs.screen ];
+
   # set up example stash
+  system.activationScripts.fuse-mount.text = ''
+    set -e
+    mkdir -p /mount_target
+
+    cat >/key.toml <<EOF
+    source = "plaintext"
+    user = "123"
+    password = "123"
+    EOF
+  '';
+
   system.activationScripts.setup-stash.text = ''
     set -e
     mkdir -p /zerostash-destination
