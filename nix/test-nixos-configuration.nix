@@ -43,9 +43,8 @@
         timerConfig = lib.mkForce { };
         stash = {
           key = {
-            source = "plaintext";
-            user = "123";
-            password = "123"; # DO NOT include your password in the NixOS configuration, use a keyfile!
+            source = "file";
+            path = "/key.toml";
           };
           backend = {
             type = "fs";

@@ -18,8 +18,8 @@ pkgs.nixosTest ({ ... }: {
     print(zerostash.succeed("ls /zerostash-destination/005d19bf*497a0be1"))
 
     zerostash.succeed("screen -dm 0s mount --keyfile /key.toml --target /mount_target /zerostash-destination")
-    machine.wait_until_succeeds("pgrep 0s")
 
+    machine.wait_until_succeeds("ls /mount_target/zerostash-source/test-file", timeout=10)
     print(zerostash.succeed('test "$(cat /mount_target/zerostash-source/test-file)" = "test"'))
   '';
 })
