@@ -2,8 +2,6 @@ use infinitree::Infinitree;
 use zerostash_files::Files;
 
 pub fn migration(stash: &mut Infinitree<Files>) {
-    println!("Attempting migration!");
-
     let mut count = 0;
 
     stash.index().files.for_each(|k, v| {
@@ -17,9 +15,8 @@ pub fn migration(stash: &mut Infinitree<Files>) {
 
     if count > 0 {
         stash.index().files.retain(|_, _| false);
+        println!("Migrated {} files", count);
     }
-
-    println!("Migrated {} files", count);
 }
 
 fn path_to_filename(path: &str) -> String {
