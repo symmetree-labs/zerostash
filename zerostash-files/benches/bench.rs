@@ -125,7 +125,9 @@ fn tree_get(c: &mut Criterion) {
     let mut tree = Tree::default();
     fill_tree(&mut tree, 50, 1_000, 10);
     let path = get_path("1", 1_000);
-    c.bench_function("tree get 50,1000,10", |b| b.iter(|| tree.get(&path)));
+    c.bench_function("tree get 50,1000,10", |b| {
+        b.iter(|| tree.node_by_path(&path))
+    });
 }
 
 fn tree_remove(c: &mut Criterion) {

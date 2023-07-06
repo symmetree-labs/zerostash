@@ -168,7 +168,7 @@ impl Tree {
     }
 
     /// Return a file
-    pub fn get_file<'a>(&self, path: &'a str) -> Result<'a, Option<Arc<Entry>>> {
+    pub fn file<'a>(&self, path: &'a str) -> Result<'a, Option<Arc<Entry>>> {
         let Some(noderef) = self.get_ref(path)? else {
             return Ok(None);
         };
@@ -180,8 +180,12 @@ impl Tree {
         Ok(node.as_file())
     }
 
+    pub fn node_by_ref(&self, noderef: &Digest) -> Option<Arc<Node>> {
+        self.0.get(noderef)
+    }
+
     /// Return a file system node
-    pub fn get<'a>(&self, path: &'a str) -> Result<'a, Option<Arc<Node>>> {
+    pub fn node_by_path<'a>(&self, path: &'a str) -> Result<'a, Option<Arc<Node>>> {
         if path == "/" {
             return Ok(Some(self.root()));
         }
@@ -546,11 +550,11 @@ mod test {
         let res = tree.insert_file(file_path, Entry::default());
         assert!(res.is_ok());
 
-        let res = tree.get_file(file_path);
+        let res = tree.file(file_path);
         assert!(res.is_ok() && res.unwrap().is_some());
 
         assert!(tree.remove(file_path).is_ok());
-        assert!(tree.get_file(file_path).unwrap().is_none());
+        assert!(tree.file(file_path).unwrap().is_none());
     }
 
     #[test]
@@ -578,14 +582,10 @@ mod test {
                 _ = tree_index.insert_file(&random_file, Entry::default());
 
                 _ = tree_index.move_node(&file_path, &new_file_path);
-                assert!(tree_index.get_file(&file_path).unwrap().is_none());
+                assert!(tree_index.file(&file_path).unwrap().is_none());
 
                 assert_eq!(
-                    tree_index
-                        .get_file(&new_file_path)
-                        .unwrap()
-                        .unwrap()
-                        .as_ref(),
+                    tree_index.file(&new_file_path).unwrap().unwrap().as_ref(),
                     &entry
                 );
             }
@@ -597,13 +597,9 @@ mod test {
             {
                 let tree_index = &tree.index().tree;
 
-                assert!(tree_index.get_file(&file_path).unwrap().is_none());
+                assert!(tree_index.file(&file_path).unwrap().is_none());
                 assert_eq!(
-                    tree_index
-                        .get_file(&new_file_path)
-                        .unwrap()
-                        .unwrap()
-                        .as_ref(),
+                    tree_index.file(&new_file_path).unwrap().unwrap().as_ref(),
                     &entry
                 );
             }
@@ -616,13 +612,9 @@ mod test {
         tree.load_all().unwrap();
         let tree_index = &tree.index().tree;
 
-        assert!(tree_index.get_file(&file_path).unwrap().is_none());
+        assert!(tree_index.file(&file_path).unwrap().is_none());
         assert_eq!(
-            tree_index
-                .get_file(&new_file_path)
-                .unwrap()
-                .unwrap()
-                .as_ref(),
+            tree_index.file(&new_file_path).unwrap().unwrap().as_ref(),
             &entry
         );
     }
@@ -702,7 +694,7 @@ mod test {
                     .is_err());
 
                 tree_index.insert_file(&file_path, entry).unwrap();
-                let entry_name = &tree_index.get_file(&file_path).unwrap().unwrap().name;
+                let entry_name = &tree_index.file(&file_path).unwrap().unwrap().name;
 
                 assert_eq!(entry_name, "file.rs");
             }
@@ -714,11 +706,11 @@ mod test {
             {
                 let tree_index = &tree.index().tree;
 
-                let entry_name = &tree_index.get_file(&file_path).unwrap().unwrap().name;
+                let entry_name = &tree_index.file(&file_path).unwrap().unwrap().name;
                 assert_eq!(entry_name, "file.rs");
 
                 let _ = tree_index.update_file(&file_path, new_entry);
-                let entry_name = &tree_index.get_file(&file_path).unwrap().unwrap().name;
+                let entry_name = &tree_index.file(&file_path).unwrap().unwrap().name;
                 assert_eq!(entry_name, "new_file.rs");
             }
 
@@ -729,7 +721,7 @@ mod test {
 
         tree.load_all().unwrap();
         let tree_index = &tree.index().tree;
-        let entry_name = &tree_index.get_file(&file_path).unwrap().unwrap().name;
+        let entry_name = &tree_index.file(&file_path).unwrap().unwrap().name;
 
         assert_eq!(entry_name, "new_file.rs");
     }
@@ -774,7 +766,7 @@ mod test {
                     .unwrap();
 
                 assert_eq!(
-                    &tree.index().tree.get_file(&file1).unwrap().unwrap().name,
+                    &tree.index().tree.file(&file1).unwrap().unwrap().name,
                     "file1.rs"
                 );
                 index.insert_file(&file3, Entry::default()).unwrap();
@@ -787,7 +779,7 @@ mod test {
         tree.load_all().unwrap();
 
         assert_eq!(
-            &tree.index().tree.get_file(&file1).unwrap().unwrap().name,
+            &tree.index().tree.file(&file1).unwrap().unwrap().name,
             "file1.rs"
         );
 
@@ -843,7 +835,7 @@ mod test {
         let file = "test/path/to/file.rs".to_string();
         tree.insert_file(&file, Entry::default()).unwrap();
 
-        let node = tree.get("test/path/to").unwrap().unwrap();
+        let node = tree.node_by_path("test/path/to").unwrap().unwrap();
         assert!(node.is_dir());
     }
 
@@ -882,6 +874,6 @@ mod test {
 
         assert!(tree.remove("home/travel").is_ok());
 
-        assert!(tree.get("home/travel").unwrap().is_none());
+        assert!(tree.node_by_path("home/travel").unwrap().is_none());
     }
 }

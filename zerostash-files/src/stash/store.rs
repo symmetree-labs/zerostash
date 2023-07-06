@@ -216,7 +216,7 @@ async fn process_file_loop(
 
         if !force {
             let tree = &index.tree;
-            if let Ok(Some(node)) = tree.get(&path_str) {
+            if let Ok(Some(node)) = tree.node_by_path(&path_str) {
                 match node.as_ref() {
                     crate::Node::File { refs: _, entry: e } if *e.as_ref() == entry => {
                         debug!(?path, "already indexed, skipping");
