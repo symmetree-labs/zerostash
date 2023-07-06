@@ -11,7 +11,6 @@
 key = { source = "plaintext", user = "123", password = "123" }
 backend = { type = "fs", path = "/path/to/stash" }
 
-
 ####################################################
 # macOS Keychain support
 #
@@ -31,7 +30,6 @@ backend = { type = "fs", path = "/path/to/stash" }
 key = { source = "plaintext", user = "user@example.com", keychain = true }
 backend = { type = "fs", path = "/path/to/stash" }
 
-
 ####################################################
 # Interactive passwords
 #
@@ -42,7 +40,6 @@ backend = { type = "fs", path = "/path/to/stash" }
 key = { source = "ask" }
 backend = { type = "fs", path = "/path/to/stash" }
 
-
 ####################################################
 # Key file
 #
@@ -52,6 +49,36 @@ backend = { type = "fs", path = "/path/to/stash" }
 [stash.local_keyfile]
 key = { source = "file", path = "keyfile.toml.example" }
 backend = { type = "fs", path = "/path/to/stash" }
+
+####################################################
+# Split keyfile
+#
+# To create an archive that's only written by one machine and read by
+# another, you can create split keys.
+#
+# Use the following command line to generate the keys:
+#
+#   0s keys gen test_stash_name \
+#     split_key \
+#     --user test \
+#     --read-keyfile rw.toml \
+#     --write-keyfile w.toml
+# 
+# The directory listings and metadata are encrypted with a
+# symmetric key in `w.toml`, however the file contents can
+# only be decrypted with `rw.toml`'s secret asymmetric key.
+#
+# Set up the machine that's making backups with the following config:
+[stash.test_stash_writer]
+key = { source = "file", path = "w.toml" }
+backend = { type = "s3", bucket = "test_bucket", region = { name = "us-east-1" } }
+#
+# Then set up your backup reader with the following, very similar
+# config:
+#
+[stash.test_stash_reader]
+key = { source = "file", path = "rw.toml" }
+backend = { type = "s3", bucket = "test_bucket", region = { name = "us-east-1" } }
 
 
 ####################################################
