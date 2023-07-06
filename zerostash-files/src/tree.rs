@@ -1,5 +1,8 @@
 use std::{
-    sync::{atomic::AtomicUsize, Arc},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    },
     vec,
 };
 
@@ -20,11 +23,11 @@ pub type Result<'a, T> = std::result::Result<T, FsError<'a>>;
 
 type InnerTree = VersionedMap<Digest, Node>;
 
-pub struct Tree(pub InnerTree);
+pub struct Tree(InnerTree, AtomicBool);
 
 impl Default for Tree {
     fn default() -> Tree {
-        let tree = Tree(InnerTree::default());
+        let tree = Tree(InnerTree::default(), false.into());
         tree.insert_root().unwrap();
         tree
     }
@@ -33,7 +36,7 @@ impl Default for Tree {
 // auto-derive will not work for resolving constraints properly
 impl Clone for Tree {
     fn clone(&self) -> Self {
-        Tree(self.0.clone())
+        Tree(self.0.clone(), self.1.load(Ordering::SeqCst).into())
     }
 }
 
@@ -83,6 +86,7 @@ impl Tree {
         if self.0.get(&Digest::default()).is_none() {
             _ = self.0.insert(Digest::default(), Node::directory());
         }
+        self.1.store(false, Ordering::SeqCst);
         Ok(())
     }
 
@@ -358,17 +362,30 @@ impl Tree {
     }
 
     fn add_file(&self, parent: &Digest, name: &str, file: Entry) -> (Digest, Arc<Node>) {
-        let noderef: Digest = rand::random();
+        let mut noderef: Digest = rand::random();
+        let mut update = false;
         self.0.update_with(*parent, |parent| {
             let Node::Directory { ref entries } = parent.as_ref() else {
                 panic!("invalid use of library");
             };
-            _ = entries.upsert(name.into(), || noderef, |_, v| *v = noderef);
+            _ = entries.upsert(
+                name.into(),
+                move || noderef,
+                |_, v| {
+                    noderef = *v;
+                    update = true;
+                },
+            );
             parent
         });
 
-        self.0.insert(noderef, Node::file(file));
-        (noderef, self.0.get(&noderef).expect("just inserted"))
+        let new_node = Arc::new(Node::file(file));
+        if update {
+            self.0.update_with(noderef, |_| new_node.clone());
+        } else {
+            self.0.insert(noderef, new_node.clone());
+        }
+        (noderef, new_node)
     }
 
     pub fn retain<F>(&self, mut f: F)
@@ -417,6 +434,12 @@ impl Tree {
         let stack = scc::Stack::default();
         stack.push((String::new(), root));
         TreeIterator { stack, inner: self }
+    }
+
+    pub fn clear(&self) -> usize {
+        let count = self.0.clear();
+        self.insert_root().expect("just cleared");
+        count
     }
 }
 
@@ -470,11 +493,13 @@ impl Collection for Tree {
 
     fn insert(&mut self, record: Self::Item) {
         static DIGEST: Digest = [0u8; 32];
+        let (key, new_entry) = record;
 
-        if record.0 == DIGEST && self.0.contains(&DIGEST) {
-            self.0.update_with(record.0, |_| record.1.unwrap());
-        } else {
-            <InnerTree as Collection>::insert(&mut self.0, record)
+        if !self.1.load(Ordering::Relaxed) && key == DIGEST && self.0.contains(&DIGEST) {
+            self.0.update_with(key, |_| new_entry.expect("not-null"));
+            self.1.store(true, Ordering::Relaxed);
+        } else if !self.0.contains(&key) {
+            <InnerTree as Collection>::insert(&mut self.0, (key, new_entry))
         }
     }
 }
@@ -525,6 +550,7 @@ mod test {
         assert!(res.is_ok() && res.unwrap().is_some());
 
         assert!(tree.remove(file_path).is_ok());
+        assert!(tree.get_file(file_path).unwrap().is_none());
     }
 
     #[test]
@@ -539,6 +565,7 @@ mod test {
         let new_file_path = "test/path/to/file.rs".to_string();
         let entry = Entry {
             name: String::from("file.rs"),
+            size: 1234,
             ..Default::default()
         };
 
@@ -547,26 +574,38 @@ mod test {
 
             {
                 let tree_index = &tree.index().tree;
-                _ = tree_index.insert_file(&file_path, entry);
+                _ = tree_index.insert_file(&file_path, entry.clone());
                 _ = tree_index.insert_file(&random_file, Entry::default());
 
                 _ = tree_index.move_node(&file_path, &new_file_path);
                 assert!(tree_index.get_file(&file_path).unwrap().is_none());
 
-                let entry_name = &tree_index.get_file(&new_file_path).unwrap().unwrap().name;
-                assert_eq!(entry_name, "file.rs");
+                assert_eq!(
+                    tree_index
+                        .get_file(&new_file_path)
+                        .unwrap()
+                        .unwrap()
+                        .as_ref(),
+                    &entry
+                );
             }
 
             tree.commit(None).unwrap();
-            tree.index().tree.0.clear();
+            tree.index().tree.clear();
             tree.load_all().unwrap();
 
             {
                 let tree_index = &tree.index().tree;
 
                 assert!(tree_index.get_file(&file_path).unwrap().is_none());
-                let entry_name = &tree_index.get_file(&new_file_path).unwrap().unwrap().name;
-                assert_eq!(entry_name, "file.rs");
+                assert_eq!(
+                    tree_index
+                        .get_file(&new_file_path)
+                        .unwrap()
+                        .unwrap()
+                        .as_ref(),
+                    &entry
+                );
             }
 
             tree.commit(None).unwrap();
@@ -578,25 +617,57 @@ mod test {
         let tree_index = &tree.index().tree;
 
         assert!(tree_index.get_file(&file_path).unwrap().is_none());
-        let entry_name = &tree_index.get_file(&new_file_path).unwrap().unwrap().name;
-        assert_eq!(entry_name, "file.rs");
+        assert_eq!(
+            tree_index
+                .get_file(&new_file_path)
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            &entry
+        );
     }
 
     #[test]
     fn test_iterate_all_files() {
         let tree = Tree::default();
         let file1 = "test/path/to/file.rs".to_string();
-        let file2 = "test/path/file.rs".to_string();
+        let file2 = "test/path/file2.rs".to_string();
 
-        _ = tree.insert_file(&file1, Entry::default());
-        _ = tree.insert_file(&file2, Entry::default());
+        _ = tree.insert_file(
+            &file1,
+            Entry {
+                name: "file.rs".into(),
+                size: 1234,
+                ..Default::default()
+            },
+        );
+        _ = tree.insert_file(
+            &file1,
+            Entry {
+                name: "file.rs".into(),
+                size: 4321,
+                ..Default::default()
+            },
+        );
+        _ = tree.insert_file(
+            &file2,
+            Entry {
+                name: "file2.rs".into(),
+                ..Default::default()
+            },
+        );
 
         let files = HashSet::new();
         _ = files.insert(file1);
         _ = files.insert(file2);
 
-        for (k, _) in tree.iter_files() {
-            files.remove(&k);
+        for (k, v) in tree.iter_files() {
+            files.remove(&k).unwrap();
+            match v.name.as_ref() {
+                "file.rs" => assert_eq!(v.size, 4321),
+                "file2.rs" => (),
+                _ => panic!("invalid file"),
+            }
         }
 
         assert_eq!(files.len(), 0);
@@ -624,6 +695,12 @@ mod test {
 
             {
                 let tree_index = &tree.index().tree;
+
+                // can't update what doesn't exist
+                assert!(tree_index
+                    .update_file(&file_path, new_entry.clone())
+                    .is_err());
+
                 tree_index.insert_file(&file_path, entry).unwrap();
                 let entry_name = &tree_index.get_file(&file_path).unwrap().unwrap().name;
 
@@ -631,7 +708,7 @@ mod test {
             }
 
             tree.commit(None).unwrap();
-            tree.index().tree.0.clear();
+            tree.index().tree.clear();
             tree.load_all().unwrap();
 
             {
@@ -658,33 +735,48 @@ mod test {
     }
 
     #[test]
-    fn test_bare_index_can_be_restored() {
+    fn test_index_can_be_restored() {
         let key = || {
             UsernamePassword::with_credentials("bare_index_map".to_string(), "password".to_string())
                 .unwrap()
         };
         let storage = crate::backends::test::InMemoryBackend::shared();
 
+        let file1 = "file1.rs".to_string();
+        let file2 = "file2.rs".to_string();
+        let file3 = "file3.rs".to_string();
+
         {
             let mut tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
 
             {
                 let index = &tree.index().tree;
-                let file1 = "file1.rs".to_string();
-                let file2 = "file2.rs".to_string();
-
                 index.insert_file(&file1, Entry::default()).unwrap();
                 index.insert_file(&file2, Entry::default()).unwrap();
             }
 
             assert_eq!(tree.index().tree.0.len(), 3);
             tree.commit(None).unwrap();
-            tree.index().tree.0.clear();
+            assert_eq!(3, tree.index().tree.clear());
+
             tree.load_all().unwrap();
 
             {
                 let index = &tree.index().tree;
-                let file3 = "file3.rs".to_string();
+                index
+                    .insert_file(
+                        &file1,
+                        Entry {
+                            name: "file1.rs".into(),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+
+                assert_eq!(
+                    &tree.index().tree.get_file(&file1).unwrap().unwrap().name,
+                    "file1.rs"
+                );
                 index.insert_file(&file3, Entry::default()).unwrap();
             }
 
@@ -693,6 +785,11 @@ mod test {
 
         let tree = Infinitree::<Files>::open(storage, key()).unwrap();
         tree.load_all().unwrap();
+
+        assert_eq!(
+            &tree.index().tree.get_file(&file1).unwrap().unwrap().name,
+            "file1.rs"
+        );
 
         assert_eq!(tree.index().tree.0.len(), 4);
     }
@@ -724,7 +821,7 @@ mod test {
             }
 
             tree.commit(None).unwrap();
-            tree.index().tree.0.clear();
+            tree.index().tree.clear();
             tree.load_all().unwrap();
 
             {
