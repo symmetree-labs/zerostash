@@ -6,17 +6,17 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-infinitree = { version = "0.10.3" }
+infinitree = { version = "0.10.4" }
 zerostash-files = { version = "0.6.0", path = "../zerostash-files" }
-scc = "1.8.2"
+scc = "1.8.3"
 fuse_mt = "0.6.0"
 tracing = "0.1.37"
 nix = { version = "0.26.2", default-features = false, features = ["user"] }
 anyhow = "1.0.71"
-tokio = { version = "1.28.2", features = ["rt", "time", "signal", "rt-multi-thread"] }
+tokio = { version = "1.29.1", features = ["rt", "time", "signal", "rt-multi-thread"] }
 
 [dev-dependencies]
-criterion = "0.3.6"
+criterion = "0.5.1"
 
 [[bench]]
 name = "fuse_bench"

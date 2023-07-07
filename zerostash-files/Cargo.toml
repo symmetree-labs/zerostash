@@ -10,13 +10,13 @@ keywords = ["crypto", "api", "security", "filesystem", "backup"]
 categories = ["cryptography", "filesystem"]
 
 [dependencies]
-infinitree = { version = "0.10.3", features = ["mmap"] }
-serde = { version = "1.0.164", features = ["rc"] }
-serde_derive = "1.0.164"
+infinitree = { version = "0.10.4", features = ["mmap"] }
+serde = { version = "1.0.167", features = ["rc"] }
+serde_derive = "1.0.167"
 tracing = "0.1.37"
-clap = { version = "4.3.8", features = ["derive"] }
+clap = { version = "4.3.11", features = ["derive"] }
 anyhow = "1.0.71"
-thiserror = "1.0.40"
+thiserror = "1.0.43"
 
 memmap2 = "0.7.1"
 glob = "0.3.1"
@@ -24,25 +24,25 @@ ignore = "0.4.20"
 
 flume = "0.10.14"
 futures = "0.3.28"
-tokio = { version = "1.28.2", features = ["fs", "io-util", "rt", "sync"] }
+tokio = { version = "1.29.1", features = ["fs", "io-util", "rt", "sync"] }
 async-scoped = { version = "0.7.1", features = ["use-tokio"] }
 
 itertools = "0.11.0"
 seahash = "4.1.0"
 
-libc = "0.2.146"
+libc = "0.2.147"
 nix = { version = "0.26.2", default-features = false, features = ["fs", "user"] }
 
 chrono = { version = "0.4.26", default-features = false, features = ["std", "clock"] }
 
-scc = { version = "1.8.2", features = ["serde"] }
+scc = { version = "1.8.3", features = ["serde"] }
 rand = "0.8.5"
 
 [dev-dependencies]
 getrandom = "0.2.10"
-tokio = { version = "1.28.2", features = ["rt", "macros", "rt-multi-thread"] }
-criterion = "0.4.0"
-infinitree = { version = "0.10.3", features = ["test"] }
+tokio = { version = "1.29.1", features = ["rt", "macros", "rt-multi-thread"] }
+criterion = "0.5.1"
+infinitree = { version = "0.10.4", features = ["test"] }
 
 [[bench]]
 name = "bench"
