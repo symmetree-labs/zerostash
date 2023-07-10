@@ -1,13 +1,13 @@
 [package]
 name = "zerostash-fuse"
-version = "0.1.0"
+version = "0.7.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 infinitree = { version = "0.10.4" }
-zerostash-files = { version = "0.6.0", path = "../zerostash-files" }
+zerostash-files = { version = "0.7.0", path = "../zerostash-files" }
 scc = "1.8.3"
 fuse_mt = "0.6.0"
 tracing = "0.1.37"
