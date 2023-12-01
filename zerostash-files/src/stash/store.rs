@@ -13,12 +13,7 @@ use infinitree::{
     Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
-use std::{
-    fs,
-    io::{Cursor, Read},
-    num::NonZeroUsize,
-    path::PathBuf,
-};
+use std::{fs, io::Read, num::NonZeroUsize, path::PathBuf};
 use tokio::task;
 use tracing::{debug, debug_span, error, trace, warn, Instrument};
 
@@ -304,16 +299,14 @@ async fn index_file(
 }
 
 pub fn index_buf(
-    mut file: Cursor<Vec<u8>>,
+    file: Vec<u8>,
     mut entry: files::Entry,
     hasher: infinitree::Hasher,
     index: &mut crate::Files,
     writer: &Pool<impl Writer + Clone + 'static>,
     path: String,
 ) {
-    let mut buf = Vec::with_capacity(entry.size as usize);
-    file.read_to_end(&mut buf).unwrap();
-    let splitter = FileSplitter::<SeaSplit>::new(&buf, hasher);
+    let splitter = FileSplitter::<SeaSplit>::new(&file, hasher);
     let mut chunks: Vec<Result<(u64, std::sync::Arc<infinitree::ChunkPointer>), anyhow::Error>> =
         Vec::default();
 

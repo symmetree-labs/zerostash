@@ -154,7 +154,7 @@ impl FilesystemMT for ZerostashFS {
         };
 
         match node.as_ref() {
-            Node::File { refs: _, entry } => Ok((TTL, file_to_fuse(&entry, self.commit_timestamp))),
+            Node::File { refs: _, entry } => Ok((TTL, file_to_fuse(entry, self.commit_timestamp))),
             Node::Directory { entries: _ } => Ok((TTL, DIR_ATTR)),
         }
     }
@@ -351,7 +351,7 @@ impl FilesystemMT for ZerostashFS {
         .unwrap();
 
         index_buf(
-            open_file.open_file,
+            open_file.open_file.into_inner(),
             new_entry,
             hasher,
             &mut index,
@@ -404,7 +404,7 @@ impl FilesystemMT for ZerostashFS {
         };
 
         index_buf(
-            open_file,
+            open_file.into_inner(),
             new_entry,
             hasher,
             &mut index,

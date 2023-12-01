@@ -2,18 +2,20 @@ use infinitree::{
     object::{AEADReader, PoolRef, Reader},
     ChunkPointer,
 };
-use std::{iter::Skip, sync::Arc, vec::IntoIter};
+use std::{iter::Peekable, sync::Arc};
 
-type Chunks = Skip<IntoIter<(u64, Arc<ChunkPointer>)>>;
+type Chunk = (u64, Arc<ChunkPointer>);
 
-pub struct ChunksIter {
-    pub chunks: std::iter::Peekable<Chunks>,
+struct ChunksIter {
+    pub chunks: Peekable<Box<dyn Iterator<Item = Chunk> + Send + Sync>>,
 }
 
 impl ChunksIter {
-    fn new(chunks: Chunks) -> Self {
-        let chunks = chunks.peekable();
-        Self { chunks }
+    fn new(chunks: impl Iterator<Item = Chunk> + Send + Sync + 'static) -> Self {
+        let chunks: Box<dyn Iterator<Item = Chunk> + Send + Sync> = Box::new(chunks);
+        Self {
+            chunks: chunks.peekable(),
+        }
     }
 
     fn peek_next_offset(&mut self, file_size: usize) -> usize {
@@ -35,14 +37,14 @@ pub enum ChunkDataError {
 }
 
 pub struct ChunkStackCache {
-    pub chunks: ChunksIter,
+    chunks: ChunksIter,
     pub buf: Vec<u8>,
     pub last_read_offset: usize,
 }
 
 impl ChunkStackCache {
-    pub fn new(chunks: Vec<(u64, Arc<ChunkPointer>)>) -> Self {
-        let chunks = ChunksIter::new(chunks.into_iter().skip(0));
+    pub fn new(chunks: Vec<Chunk>) -> Self {
+        let chunks = ChunksIter::new(chunks.into_iter());
         Self {
             chunks,
             buf: Default::default(),
@@ -84,14 +86,14 @@ impl ChunkStackCache {
 }
 
 pub struct ChunkStack {
-    pub chunks: ChunksIter,
+    chunks: ChunksIter,
     pub buf: Vec<u8>,
     pub start: Option<usize>,
     pub end: Option<usize>,
 }
 
 impl ChunkStack {
-    pub fn new(chunks: Vec<(u64, Arc<ChunkPointer>)>, offset: usize) -> Self {
+    pub fn new(chunks: Vec<Chunk>, offset: usize) -> Self {
         let index = match chunks.binary_search_by(|a| a.0.cmp(&(offset as u64))) {
             Ok(v) => v,
             Err(v) => v - 1,
@@ -114,7 +116,7 @@ impl ChunkStack {
         objectreader: &mut PoolRef<AEADReader>,
     ) -> anyhow::Result<(), ChunkDataError> {
         let Some((c_offset, pointer)) = self.chunks.get_next() else {
-            return Err(ChunkDataError::NullChunkPointer)
+            return Err(ChunkDataError::NullChunkPointer);
         };
 
         let next_c_offset = self.chunks.peek_next_offset(file_size);
