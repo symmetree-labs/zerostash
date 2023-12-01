@@ -372,14 +372,15 @@ impl Tree {
             let Node::Directory { ref entries } = parent.as_ref() else {
                 panic!("invalid use of library");
             };
-            _ = entries.upsert(
-                name.into(),
-                move || noderef,
-                |_, v| {
-                    noderef = *v;
+            match entries.entry(name.into()) {
+                scc::hash_map::Entry::Occupied(mut entry) => {
+                    noderef = *entry.get_mut();
                     update = true;
-                },
-            );
+                }
+                scc::hash_map::Entry::Vacant(entry) => {
+                    entry.insert_entry(noderef);
+                }
+            }
             parent
         });
 
@@ -440,10 +441,9 @@ impl Tree {
         TreeIterator { stack, inner: self }
     }
 
-    pub fn clear(&self) -> usize {
-        let count = self.0.clear();
+    pub fn clear(&self) {
+        self.0.clear();
         self.insert_root().expect("just cleared");
-        count
     }
 }
 
@@ -749,8 +749,12 @@ mod test {
 
             assert_eq!(tree.index().tree.0.len(), 3);
             tree.commit(None).unwrap();
-            assert_eq!(3, tree.index().tree.clear());
 
+            // clear restores the root node, so total length will be 1
+            tree.index().tree.clear();
+            assert_eq!(tree.index().tree.0.len(), 1);
+
+            // reload the existing files
             tree.load_all().unwrap();
 
             {

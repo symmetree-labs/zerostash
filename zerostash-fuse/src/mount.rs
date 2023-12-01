@@ -150,11 +150,11 @@ impl FilesystemMT for ZerostashFS {
         };
 
         let Ok(Some(node)) = node else {
-            return Err(libc::ENOENT)
+            return Err(libc::ENOENT);
         };
 
         match node.as_ref() {
-            Node::File { refs: _, entry } => Ok((TTL, file_to_fuse(entry, self.commit_timestamp))),
+            Node::File { refs: _, entry } => Ok((TTL, file_to_fuse(&entry, self.commit_timestamp))),
             Node::Directory { entries: _ } => Ok((TTL, DIR_ATTR)),
         }
     }
@@ -179,7 +179,7 @@ impl FilesystemMT for ZerostashFS {
             return Err(libc::ENOENT);
         };
 
-        let Node::Directory { entries } = node.as_ref() else  {
+        let Node::Directory { entries } = node.as_ref() else {
             return Err(libc::ENOENT);
         };
 
@@ -187,20 +187,23 @@ impl FilesystemMT for ZerostashFS {
         let index = stash.index();
 
         let mut vec: Vec<DirectoryEntry> = vec![];
-        entries.for_each(|k, v| {
-            if let Some(node) = index.tree.node_by_ref(v) {
+
+        let mut current = entries.first_entry();
+        while let Some(entry) = current {
+            if let Some(node) = index.tree.node_by_ref(entry.get()) {
                 let kind = if node.is_dir() {
                     fuse_mt::FileType::Directory
                 } else {
                     fuse_mt::FileType::RegularFile
                 };
                 let directory_entry = DirectoryEntry {
-                    name: k.clone().into(),
+                    name: entry.key().clone().into(),
                     kind,
                 };
                 vec.push(directory_entry);
             }
-        });
+            current = entry.next();
+        }
 
         Ok(vec)
     }
@@ -548,7 +551,7 @@ impl FilesystemMT for ZerostashFS {
 
         let tree = &mut index.tree;
         let Ok(Some(entry)) = tree.file(&path_string) else {
-            return Err(libc::EINVAL)
+            return Err(libc::EINVAL);
         };
 
         let new_entry = Entry {
@@ -582,7 +585,7 @@ impl FilesystemMT for ZerostashFS {
 
         let tree = &mut index.tree;
         let Ok(Some(entry)) = tree.file(&path_string) else {
-            return Err(libc::EINVAL)
+            return Err(libc::EINVAL);
         };
 
         let new_entry = Entry {
@@ -652,7 +655,7 @@ fn read_chunks_into_buf(buf: &mut [u8], mut reader: PoolRef<AEADReader>, entry: 
     }
 }
 
-fn file_to_fuse(file: &Arc<Entry>, atime: SystemTime) -> FileAttr {
+fn file_to_fuse(file: &Entry, atime: SystemTime) -> FileAttr {
     let mtime = UNIX_EPOCH
         + Duration::from_secs(file.unix_secs as u64)
         + Duration::from_nanos(file.unix_nanos as u64);

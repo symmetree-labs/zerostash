@@ -1,6 +1,6 @@
 {
   inputs = rec {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.05";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.11";
     utils = { url = "github:numtide/flake-utils"; };
   };
 
@@ -16,6 +16,7 @@
           with pkgs; [
             macfuse-stubs
             darwin.apple_sdk.frameworks.Security
+            darwin.apple_sdk.frameworks.SystemConfiguration
           ];
 
         buildFlags = "-p zerostash -p zerostash-files"
