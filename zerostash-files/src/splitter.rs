@@ -6,6 +6,7 @@ use std::marker::PhantomData;
 pub struct FileSplitter<'file, RS> {
     hasher: Hasher,
     data: &'file [u8],
+    len: usize,
     cur: usize,
     _rs: PhantomData<RS>,
 }
@@ -18,6 +19,7 @@ where
         FileSplitter {
             hasher,
             data,
+            len: data.len(),
             _rs: PhantomData,
             cur: 0,
         }
@@ -32,14 +34,13 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         self.hasher.reset();
-        if self.cur >= self.data.len() {
+        if self.cur >= self.len {
             return None;
         }
 
         let start = self.cur;
-        let end = RS::new().find_offset(&self.data[start..]);
-        let data = &self.data[start..start + end];
-        self.cur += end;
+        self.cur += RS::new().find_offset(&self.data[start..]);
+        let data = &self.data[start..self.cur];
 
         self.hasher.update(data);
         Some((start as u64, *self.hasher.finalize().as_bytes(), data))

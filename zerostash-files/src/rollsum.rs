@@ -6,7 +6,7 @@ use std::hash::Hasher;
 const ROLLSUM_CHAR_OFFSET: u32 = 31;
 const BLOBBITS: u32 = (16);
 const BLOBSIZE: u32 = (1 << BLOBBITS);
-const WINDOWBITS: u32 = (6);
+const WINDOWBITS: u32 = (8);
 const WINDOWSIZE: u32 = (1 << WINDOWBITS);
 const CHUNK_SIZE_LIMIT: usize = 256 * 1024;
 
@@ -50,24 +50,24 @@ pub struct BupSplit {
     s1: u32,
     s2: u32,
     window: [u8; WINDOWSIZE as usize],
-    wofs: usize,
+    wofs: u8,
 }
 
 impl BupSplit {
     #[inline]
     pub fn add(&mut self, drop: u8, add: u8) {
-        self.s1 = self.s1.wrapping_add(u32::from(add.wrapping_sub(drop)));
+        self.s1 = self.s1.wrapping_add(add.wrapping_sub(drop) as u32);
         self.s2 = self.s2.wrapping_add(
             self.s1
-                .wrapping_sub(WINDOWSIZE * (u32::from(drop) + ROLLSUM_CHAR_OFFSET)),
+                .wrapping_sub(WINDOWSIZE * ((drop as u32) + ROLLSUM_CHAR_OFFSET)),
         );
     }
 
     #[inline]
     pub fn roll(&mut self, ch: u8) {
-        self.add(self.window[self.wofs], ch);
-        self.window[self.wofs] = ch;
-        self.wofs = (self.wofs + 1) % (WINDOWSIZE as usize);
+        self.add(self.window[self.wofs as usize], ch);
+        self.window[self.wofs as usize] = ch;
+        self.wofs = self.wofs.wrapping_add(1);
     }
 
     #[inline]

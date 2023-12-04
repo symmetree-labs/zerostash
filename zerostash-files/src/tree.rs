@@ -23,6 +23,7 @@ pub type Result<'a, T> = std::result::Result<T, FsError<'a>>;
 
 type InnerTree = VersionedMap<Digest, Node>;
 
+// InnerTree, is root initialized
 pub struct Tree(InnerTree, AtomicBool);
 
 impl Default for Tree {
@@ -234,7 +235,7 @@ impl Tree {
     }
 
     fn root(&self) -> Arc<Node> {
-        self.0.get(&Digest::default()).expect("uninitialized tree")
+        self.0.get(&Digest::default()).unwrap()
     }
 
     fn remove_file(&self, parent_ref: &Digest, filename: &str) {
@@ -302,9 +303,11 @@ impl Tree {
             current = current_ref.and_then(|nodeid| self.0.get(&nodeid));
         }
 
-        let parent = current.ok_or(FsError::InvalidPath(consumed))?;
+        let (parent, current_ref) = current
+            .zip(current_ref)
+            .ok_or_else(|| FsError::InvalidPath(consumed))?;
 
-        Ok((current_ref.expect("must be Some"), parent, last_part))
+        Ok((current_ref, parent, last_part))
     }
 
     /// Traverses the tree to the parent node of the path, or creates
@@ -338,17 +341,21 @@ impl Tree {
             if let Some(new_current_ref) = entries.read(*part, |_, v| *v) {
                 current_ref = Some(new_current_ref);
                 current = current_ref.and_then(|noderef| self.0.get(&noderef));
-            } else {
-                parent = current_ref.expect("current is Some");
+            } else if let Some(parent_ref) = current_ref {
+                parent = parent_ref;
                 let (new_current_ref, new_current) = self.add_empty_dir(&parent, part);
                 current_ref = Some(new_current_ref);
                 current = Some(new_current);
+            } else {
+                return Err(FsError::InvalidPath(consumed));
             }
         }
 
-        let current = current.ok_or(FsError::InvalidPath(consumed))?;
+        let (parent, current_ref) = current
+            .zip(current_ref)
+            .ok_or_else(|| FsError::InvalidPath(consumed))?;
 
-        Ok((current_ref.expect("must be Some"), current, last_part))
+        Ok((current_ref, parent, last_part))
     }
 
     fn add_empty_dir(&self, parent: &Digest, name: &str) -> (Digest, Arc<Node>) {
@@ -362,7 +369,7 @@ impl Tree {
         });
 
         self.0.insert(noderef, Node::directory());
-        (noderef, self.0.get(&noderef).expect("just inserted"))
+        (noderef, self.0.get(&noderef).unwrap())
     }
 
     fn add_file(&self, parent: &Digest, name: &str, file: Entry) -> (Digest, Arc<Node>) {
@@ -441,9 +448,9 @@ impl Tree {
         TreeIterator { stack, inner: self }
     }
 
-    pub fn clear(&self) {
+    pub fn clear<'a>(&'a self) -> Result<'a, ()> {
         self.0.clear();
-        self.insert_root().expect("just cleared");
+        self.insert_root()
     }
 }
 
@@ -496,11 +503,11 @@ impl Collection for Tree {
     }
 
     fn insert(&mut self, record: Self::Item) {
-        static DIGEST: Digest = [0u8; 32];
+        static ROOT: Digest = [0u8; 32];
         let (key, new_entry) = record;
 
-        if !self.1.load(Ordering::Relaxed) && key == DIGEST && self.0.contains(&DIGEST) {
-            self.0.update_with(key, |_| new_entry.expect("not-null"));
+        if !self.1.load(Ordering::Relaxed) && key == ROOT && self.0.contains(&ROOT) {
+            self.0.update_with(key, |_| new_entry.unwrap());
             self.1.store(true, Ordering::Relaxed);
         } else if !self.0.contains(&key) {
             <InnerTree as Collection>::insert(&mut self.0, (key, new_entry))

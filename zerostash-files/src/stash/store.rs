@@ -1,6 +1,6 @@
 use crate::{
     files::{self, normalize_filename},
-    rollsum::SeaSplit,
+    rollsum::{BupSplit, SeaSplit},
     splitter::FileSplitter,
     Files,
 };
@@ -10,7 +10,7 @@ use futures::future::join_all;
 use ignore::{DirEntry, WalkBuilder};
 use infinitree::{
     object::{Pool, Writer},
-    Infinitree,
+    Digest, Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
 use std::{fs, io::Read, num::NonZeroUsize, path::PathBuf};
@@ -20,7 +20,7 @@ use tracing::{debug, debug_span, error, trace, warn, Instrument};
 type Sender = mpsc::Sender<(PathBuf, files::Entry)>;
 type Receiver = mpsc::Receiver<(PathBuf, files::Entry)>;
 
-const MAX_FILE_SIZE: usize = 4 * 1024 * 1024;
+const MAX_FILE_SIZE: usize = 16 * 1024 * 1024;
 
 #[derive(clap::Args, Debug, Default, Clone)]
 pub struct Options {
@@ -83,7 +83,7 @@ impl Options {
     ) -> anyhow::Result<()> {
         let (sender, workers) = start_workers(stash, threads, self.force)?;
         let dir_walk = self.dir_walk()?;
-        let mut current_file_list = vec![];
+        let mut current_file_list = std::collections::HashSet::new();
 
         for dir_entry in dir_walk {
             let (metadata, path) = match dir_entry {
@@ -94,7 +94,7 @@ impl Options {
                 }
             };
 
-            current_file_list.push(normalize_filename(&path)?);
+            current_file_list.insert(normalize_filename(&path)?);
 
             let metadata = match metadata {
                 Ok(md) if md.is_file() || md.is_symlink() => md,
@@ -135,8 +135,7 @@ impl Options {
             for sp in source_paths.iter() {
                 if p.starts_with(sp) {
                     // if the current directory is part of the new commit, diff
-                    let status = current_file_list.contains(&p.to_string());
-                    return status;
+                    return current_file_list.contains(p);
                 }
             }
 
@@ -270,10 +269,10 @@ async fn index_file(
 
     let mut mmap = MmappedFile::new(size, osfile);
     let (_, chunks) = async_scoped::TokioScope::scope_and_block(|s| {
-        let splitter = if size < MAX_FILE_SIZE {
-            FileSplitter::<SeaSplit>::new(&buf[0..size], hasher)
+        let splitter: Box<dyn Iterator<Item = (u64, Digest, &[u8])>> = if size < MAX_FILE_SIZE {
+            Box::new(FileSplitter::<SeaSplit>::new(&buf[0..size], hasher))
         } else {
-            FileSplitter::<SeaSplit>::new(mmap.open(), hasher)
+            Box::new(FileSplitter::<BupSplit>::new(mmap.open(), hasher))
         };
 
         for (start, hash, data) in splitter {
@@ -306,7 +305,7 @@ pub fn index_buf(
     writer: &Pool<impl Writer + Clone + 'static>,
     path: String,
 ) {
-    let splitter = FileSplitter::<SeaSplit>::new(&file, hasher);
+    let splitter = FileSplitter::<BupSplit>::new(&file, hasher);
     let mut chunks: Vec<Result<(u64, std::sync::Arc<infinitree::ChunkPointer>), anyhow::Error>> =
         Vec::default();
 
