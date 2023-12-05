@@ -1,30 +1,23 @@
 //! `mount` subcommand
 
-use std::ffi::OsStr;
-
-use std::io::Cursor;
-use std::num::NonZeroUsize;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-use infinitree::object::AEADReader;
-use infinitree::object::Pool;
-use infinitree::object::PoolRef;
-use infinitree::object::Reader;
-use tokio::runtime::Handle;
-use tracing::debug;
-use zerostash_files::store::index_buf;
-use zerostash_files::FileType;
-use zerostash_files::Node;
-
-use std::io::Result;
+use std::{
+    ffi::OsStr,
+    io::Result,
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use fuse_mt::*;
-use infinitree::Infinitree;
+use infinitree::{
+    object::{AEADReader, AEADWriter, Pool, PoolRef, Reader, Writer},
+    Infinitree,
+};
 use nix::libc;
-use zerostash_files::{Entry, Files};
+use tokio::runtime::Handle;
+use tracing::debug;
+use zerostash_files::{store::index_buf, Entry, FileType, Files, Node};
 
 use crate::chunks::ChunkStack;
 use crate::chunks::ChunkStackCache;
@@ -88,9 +81,9 @@ async fn auto_commit(stash: Arc<Infinitree<Files>>) {
 pub struct ZerostashFS {
     pub commit_timestamp: SystemTime,
     pub stash: Arc<Infinitree<Files>>,
+    pub writer: Option<Mutex<Pool<AEADWriter>>>,
     pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
     pub threads: usize,
-    pub read_write: bool,
     pub runtime: Handle,
 }
 
@@ -103,12 +96,25 @@ impl ZerostashFS {
             None => panic!("stash is empty"),
         };
 
+        let writer = if read_write {
+            Some(
+                Pool::new(
+                    NonZeroUsize::new(threads).unwrap(),
+                    stash.storage_writer().unwrap(),
+                )
+                .expect("Failed to open stash for writing")
+                .into(),
+            )
+        } else {
+            None
+        };
+
         Ok(ZerostashFS {
             commit_timestamp,
             stash,
             chunks_cache: scc::HashMap::new(),
             threads,
-            read_write,
+            writer,
             runtime: Handle::current(),
         })
     }
@@ -118,7 +124,7 @@ impl FilesystemMT for ZerostashFS {
     fn destroy(&self) {
         debug!("destroy and commit");
 
-        if self.read_write {
+        if self.writer.is_some() {
             self.runtime.block_on(async {
                 _ = self.stash.commit("Fuse commit");
                 _ = self.stash.backend().sync();
@@ -327,18 +333,14 @@ impl FilesystemMT for ZerostashFS {
 
         let index = self.stash.index();
         let hasher = self.stash.hasher().unwrap();
-        let balancer = Pool::new(
-            NonZeroUsize::new(self.threads).unwrap(),
-            self.stash.storage_writer().unwrap(),
-        )
-        .unwrap();
+        let balancer = self.writer.as_ref().unwrap();
 
         index_buf(
             open_file.open_file.into_inner(),
             new_entry,
             hasher,
             &index,
-            &balancer,
+            &balancer.lock().unwrap(),
             path_string.to_string(),
         );
 
@@ -352,46 +354,63 @@ impl FilesystemMT for ZerostashFS {
         let path_string = real_path.to_str().unwrap();
 
         let entry = {
-            let index = &self.stash.index();
-            let tree = &index.tree;
+            let tree = &self.stash.index().tree;
             let Ok(Some(entry)) = tree.file(path_string) else {
                 return Err(libc::EINVAL);
             };
             entry
         };
 
-        let obj_reader = self.stash.storage_reader().unwrap();
-        let mut buf: Vec<u8> = vec![0; entry.size as usize];
-        read_chunks_into_buf(&mut buf, obj_reader, &entry);
+        if entry.size < size {
+            return Ok(());
+        }
 
-        buf.truncate(size as usize);
-        let len = buf.len() as u64;
-        let open_file = Cursor::new(buf);
+        let mut chunks = entry.chunks.clone();
+        chunks.sort_by_key(|e| e.0);
+        let last_chunk_idx = chunks
+            .iter()
+            .position(|(start, _cp)| start > &size)
+            .unwrap_or_else(|| entry.chunks.len())
+            - 1;
+
+        let (last_chunk_start, last_chunk) = chunks.swap_remove(last_chunk_idx);
+        chunks.truncate(last_chunk_idx);
+
+        let truncated_chunk = {
+            let mut reader = self.stash.storage_reader().unwrap();
+            // i'm assuming we're not so good at compression that this
+            // isn't enough?
+            let mut buf: Vec<u8> = vec![0; last_chunk.size() * 16];
+            reader.read_chunk(&last_chunk, &mut buf).unwrap();
+
+            buf.truncate((size - last_chunk_start) as usize);
+            buf
+        };
+
+        let hash = *self
+            .stash
+            .hasher()
+            .unwrap()
+            .update(&truncated_chunk)
+            .finalize()
+            .as_bytes();
 
         let index = self.stash.index();
-        let hasher = self.stash.hasher().unwrap();
-        let balancer = Pool::new(
-            NonZeroUsize::new(self.threads).unwrap(),
-            self.stash.storage_writer().unwrap(),
-        )
-        .unwrap();
+        let mut writer = self.writer.as_ref().unwrap().lock().unwrap();
+        chunks.push((
+            last_chunk_start,
+            index.chunks.insert_with(hash, move || {
+                writer.write_chunk(&hash, &truncated_chunk).unwrap()
+            }),
+        ));
 
         let new_entry = Entry {
-            size: len,
-            chunks: Vec::new(),
-            file_type: entry.file_type.clone(),
-            name: entry.name.clone(),
+            chunks,
+            size,
             ..entry.as_ref().clone()
         };
 
-        index_buf(
-            open_file.into_inner(),
-            new_entry,
-            hasher,
-            &index,
-            &balancer,
-            path_string.to_string(),
-        );
+        index.tree.update_file(path_string, new_entry).unwrap();
 
         Ok(())
     }

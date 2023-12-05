@@ -90,7 +90,7 @@ impl Rollsum for BupSplit {
         for (i, v) in buf.iter().enumerate() {
             self.roll(*v);
 
-            if (self.s2 & (BLOBSIZE - 1)) == (BLOBSIZE - 1) {
+            if (self.s2 & (BLOBSIZE - 1)) == (BLOBSIZE - 1) || i >= CHUNK_SIZE_LIMIT {
                 return i + 1;
             }
         }

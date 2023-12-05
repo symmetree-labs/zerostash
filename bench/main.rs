@@ -54,7 +54,7 @@ async fn main() {
         // i am really, truly sorry for this. there must be a better way,
         // but i can't be bothered to find it
         let (store_time, commit_time, ol, fl, cl, creuse_sum, creuse_cnt, ssize, tlen, tsize) = {
-            let mut repo = Infinitree::<Files>::empty(
+            let repo = Infinitree::<Files>::empty(
                 backends::Directory::with_open_file_limit(&output, MAX_OBJECT_LRU.unwrap())
                     .unwrap(),
                 (key)(),
