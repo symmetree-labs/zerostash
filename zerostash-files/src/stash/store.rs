@@ -301,7 +301,7 @@ pub fn index_buf(
     file: Vec<u8>,
     mut entry: files::Entry,
     hasher: infinitree::Hasher,
-    index: &mut crate::Files,
+    index: &crate::Files,
     writer: &Pool<impl Writer + Clone + 'static>,
     path: String,
 ) {
@@ -322,8 +322,7 @@ pub fn index_buf(
         chunks.into_iter().collect::<Result<Vec<_>, _>>().unwrap(),
     );
 
-    let index_tree = &mut index.tree;
-    index_tree.update_file(&path, entry.clone()).unwrap();
+    index.tree.update_file(&path, entry.clone()).unwrap();
 }
 
 struct MmappedFile {

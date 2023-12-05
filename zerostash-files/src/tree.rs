@@ -581,7 +581,7 @@ mod test {
         };
 
         {
-            let mut tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
+            let tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
 
             {
                 let tree_index = &tree.index().tree;
@@ -598,7 +598,7 @@ mod test {
             }
 
             tree.commit(None).unwrap();
-            tree.index().tree.clear();
+            tree.index().tree.clear().unwrap();
             tree.load_all().unwrap();
 
             {
@@ -690,7 +690,7 @@ mod test {
         };
 
         {
-            let mut tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
+            let tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
 
             {
                 let tree_index = &tree.index().tree;
@@ -707,7 +707,7 @@ mod test {
             }
 
             tree.commit(None).unwrap();
-            tree.index().tree.clear();
+            tree.index().tree.clear().unwrap();
             tree.load_all().unwrap();
 
             {
@@ -746,7 +746,7 @@ mod test {
         let file3 = "file3.rs".to_string();
 
         {
-            let mut tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
+            let tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
 
             {
                 let index = &tree.index().tree;
@@ -758,7 +758,7 @@ mod test {
             tree.commit(None).unwrap();
 
             // clear restores the root node, so total length will be 1
-            tree.index().tree.clear();
+            tree.index().tree.clear().unwrap();
             assert_eq!(tree.index().tree.0.len(), 1);
 
             // reload the existing files
@@ -809,7 +809,7 @@ mod test {
         let file3 = "test/file.rs".to_string();
 
         {
-            let mut tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
+            let tree = Infinitree::<Files>::empty(storage.clone(), key()).unwrap();
 
             {
                 tree.index()
@@ -824,7 +824,7 @@ mod test {
             }
 
             tree.commit(None).unwrap();
-            tree.index().tree.clear();
+            tree.index().tree.clear().unwrap();
             tree.load_all().unwrap();
 
             {

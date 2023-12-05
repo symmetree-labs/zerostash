@@ -7,7 +7,6 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use infinitree::object::AEADReader;
@@ -37,13 +36,10 @@ pub async fn mount(
     threads: usize,
     read_write: bool,
 ) -> anyhow::Result<()> {
-    let stash = Arc::new(Mutex::new(stash));
+    let stash = Arc::new(stash);
 
     if read_write {
-        {
-            let stash = stash.lock().unwrap();
-            stash.load(stash.index().chunks()).unwrap();
-        }
+        stash.load(stash.index().chunks()).unwrap();
         let stash_clone = Arc::clone(&stash);
         tokio::spawn(async move {
             auto_commit(stash_clone).await;
@@ -77,23 +73,21 @@ pub async fn mount(
     Ok(())
 }
 
-async fn auto_commit(stash: Arc<Mutex<Infinitree<Files>>>) {
+async fn auto_commit(stash: Arc<Infinitree<Files>>) {
     let mut interval = tokio::time::interval(Duration::from_secs(180));
 
-    interval.tick().await;
     loop {
         interval.tick().await;
 
-        let stash_guard = stash.lock().unwrap();
-        let _ = stash_guard.commit("Fuse commit");
-        let _ = stash_guard.backend().sync();
+        _ = stash.commit("Fuse commit");
+        _ = stash.backend().sync();
         debug!("Committed Changes!");
     }
 }
 
 pub struct ZerostashFS {
     pub commit_timestamp: SystemTime,
-    pub stash: Arc<Mutex<Infinitree<Files>>>,
+    pub stash: Arc<Infinitree<Files>>,
     pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
     pub threads: usize,
     pub read_write: bool,
@@ -101,14 +95,10 @@ pub struct ZerostashFS {
 }
 
 impl ZerostashFS {
-    pub fn open(
-        stash: Arc<Mutex<Infinitree<Files>>>,
-        threads: usize,
-        read_write: bool,
-    ) -> Result<Self> {
-        stash.lock().unwrap().load_all().unwrap();
+    pub fn open(stash: Arc<Infinitree<Files>>, threads: usize, read_write: bool) -> Result<Self> {
+        stash.load_all().unwrap();
 
-        let commit_timestamp = match stash.lock().unwrap().commit_list().last() {
+        let commit_timestamp = match stash.commit_list().last() {
             Some(last) => last.metadata.time,
             None => panic!("stash is empty"),
         };
@@ -130,9 +120,8 @@ impl FilesystemMT for ZerostashFS {
 
         if self.read_write {
             self.runtime.block_on(async {
-                let stash = self.stash.lock().unwrap();
-                let _ = stash.commit("Fuse commit");
-                let _ = stash.backend().sync();
+                _ = self.stash.commit("Fuse commit");
+                _ = self.stash.backend().sync();
             });
         }
     }
@@ -143,8 +132,7 @@ impl FilesystemMT for ZerostashFS {
         let path_str = path.to_str().unwrap();
 
         let node = {
-            let stash = self.stash.lock().unwrap();
-            let index = &stash.index();
+            let index = self.stash.index();
             let tree = &index.tree;
             tree.node_by_path(path_str)
         };
@@ -169,8 +157,7 @@ impl FilesystemMT for ZerostashFS {
 
         let path_str = path.to_str().unwrap();
         let node = {
-            let stash = self.stash.lock().unwrap();
-            let index = stash.index();
+            let index = self.stash.index();
             let tree = &index.tree;
             tree.node_by_path(path_str)
         };
@@ -183,8 +170,7 @@ impl FilesystemMT for ZerostashFS {
             return Err(libc::ENOENT);
         };
 
-        let stash = self.stash.lock().unwrap();
-        let index = stash.index();
+        let index = self.stash.index();
 
         let mut vec: Vec<DirectoryEntry> = vec![];
 
@@ -228,8 +214,7 @@ impl FilesystemMT for ZerostashFS {
         let path_string = real_path.to_str().unwrap();
 
         let entry = {
-            let stash = self.stash.lock().unwrap();
-            let index = &stash.index();
+            let index = &self.stash.index();
             let tree = &index.tree;
             let Ok(Some(entry)) = tree.file(path_string) else {
                 return callback(Err(libc::EINVAL));
@@ -250,7 +235,7 @@ impl FilesystemMT for ZerostashFS {
             chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
             chunks
         };
-        let mut obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
+        let mut obj_reader = self.stash.storage_reader().unwrap();
 
         self.runtime.block_on(async {
             {
@@ -313,8 +298,7 @@ impl FilesystemMT for ZerostashFS {
         let path_string = real_path.to_str().unwrap();
 
         let entry = {
-            let stash = self.stash.lock().unwrap();
-            let index = &stash.index();
+            let index = &self.stash.index();
             let tree = &index.tree;
             let Ok(Some(entry)) = tree.file(path_string) else {
                 return Err(libc::EINVAL);
@@ -322,7 +306,7 @@ impl FilesystemMT for ZerostashFS {
             entry
         };
 
-        let obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
+        let obj_reader = self.stash.storage_reader().unwrap();
         let mut buf: Vec<u8> = vec![0; entry.size as usize];
         read_chunks_into_buf(&mut buf, obj_reader, &entry);
 
@@ -341,12 +325,11 @@ impl FilesystemMT for ZerostashFS {
             ..entry.as_ref().clone()
         };
 
-        let stash = self.stash.lock().unwrap();
-        let mut index = stash.index().clone();
-        let hasher = stash.hasher().unwrap();
+        let index = self.stash.index();
+        let hasher = self.stash.hasher().unwrap();
         let balancer = Pool::new(
             NonZeroUsize::new(self.threads).unwrap(),
-            stash.storage_writer().unwrap(),
+            self.stash.storage_writer().unwrap(),
         )
         .unwrap();
 
@@ -354,7 +337,7 @@ impl FilesystemMT for ZerostashFS {
             open_file.open_file.into_inner(),
             new_entry,
             hasher,
-            &mut index,
+            &index,
             &balancer,
             path_string.to_string(),
         );
@@ -369,8 +352,7 @@ impl FilesystemMT for ZerostashFS {
         let path_string = real_path.to_str().unwrap();
 
         let entry = {
-            let stash = self.stash.lock().unwrap();
-            let index = &stash.index();
+            let index = &self.stash.index();
             let tree = &index.tree;
             let Ok(Some(entry)) = tree.file(path_string) else {
                 return Err(libc::EINVAL);
@@ -378,7 +360,7 @@ impl FilesystemMT for ZerostashFS {
             entry
         };
 
-        let obj_reader = self.stash.lock().unwrap().storage_reader().unwrap();
+        let obj_reader = self.stash.storage_reader().unwrap();
         let mut buf: Vec<u8> = vec![0; entry.size as usize];
         read_chunks_into_buf(&mut buf, obj_reader, &entry);
 
@@ -386,12 +368,11 @@ impl FilesystemMT for ZerostashFS {
         let len = buf.len() as u64;
         let open_file = Cursor::new(buf);
 
-        let stash = self.stash.lock().unwrap();
-        let mut index = stash.index().clone();
-        let hasher = stash.hasher().unwrap();
+        let index = self.stash.index();
+        let hasher = self.stash.hasher().unwrap();
         let balancer = Pool::new(
             NonZeroUsize::new(self.threads).unwrap(),
-            stash.storage_writer().unwrap(),
+            self.stash.storage_writer().unwrap(),
         )
         .unwrap();
 
@@ -407,7 +388,7 @@ impl FilesystemMT for ZerostashFS {
             open_file.into_inner(),
             new_entry,
             hasher,
-            &mut index,
+            &index,
             &balancer,
             path_string.to_string(),
         );
@@ -432,8 +413,7 @@ impl FilesystemMT for ZerostashFS {
         let path_str = strip_path(&path).to_str().unwrap().to_string();
         let new_path = newparent.join(newname);
         let new_path_str = strip_path(&new_path).to_str().unwrap().to_string();
-        let stash = self.stash.lock().unwrap();
-        let index = stash.index();
+        let index = self.stash.index();
         let tree = &index.tree;
 
         if tree.move_node(&path_str, &new_path_str).is_err() {
@@ -447,8 +427,7 @@ impl FilesystemMT for ZerostashFS {
         debug!("mkdir: {:?}/{:?}", parent, name);
 
         let path = parent.join(name);
-        let stash = self.stash.lock().unwrap();
-        let index = stash.index();
+        let index = self.stash.index();
         let tree = &index.tree;
 
         if tree.insert_directory(path.to_str().unwrap()).is_err() {
@@ -464,8 +443,7 @@ impl FilesystemMT for ZerostashFS {
         let path = parent.join(name);
         let path_str = strip_path(&path).to_str().unwrap().to_string();
 
-        let stash = self.stash.lock().unwrap();
-        let index = stash.index();
+        let index = self.stash.index();
         let tree = &index.tree;
 
         if tree.remove(&path_str).is_err() {
@@ -481,8 +459,7 @@ impl FilesystemMT for ZerostashFS {
         let path = parent.join(name);
         let path_str = strip_path(&path).to_str().unwrap().to_string();
 
-        let stash = self.stash.lock().unwrap();
-        let index = stash.index();
+        let index = self.stash.index();
         let tree = &index.tree;
 
         if tree.remove(&path_str).is_err() {
@@ -523,9 +500,7 @@ impl FilesystemMT for ZerostashFS {
 
         let attr = file_to_fuse(&entry, SystemTime::now());
 
-        let stash = self.stash.lock().unwrap();
-        let index = stash.index();
-
+        let index = self.stash.index();
         let tree = &index.tree;
         if tree
             .insert_file(path_string, entry.as_ref().clone())
@@ -546,8 +521,7 @@ impl FilesystemMT for ZerostashFS {
         debug!("chmod: {:?} {:#o}", path, mode);
         let path_string = strip_path(path).to_str().unwrap().to_string();
 
-        let stash = self.stash.lock().unwrap();
-        let mut index = stash.index().clone();
+        let mut index = self.stash.index().clone();
 
         let tree = &mut index.tree;
         let Ok(Some(entry)) = tree.file(&path_string) else {
@@ -580,10 +554,8 @@ impl FilesystemMT for ZerostashFS {
         debug!("chown {:?} to {:?}:{:?}", path, uid, gid);
         let path_string = strip_path(path).to_str().unwrap().to_string();
 
-        let stash = self.stash.lock().unwrap();
-        let mut index = stash.index().clone();
-
-        let tree = &mut index.tree;
+        let index = self.stash.index();
+        let tree = &index.tree;
         let Ok(Some(entry)) = tree.file(&path_string) else {
             return Err(libc::EINVAL);
         };
