@@ -58,7 +58,7 @@ impl AsyncRunnable for Change {
             .key(old_key, &stash_cfg.alias)
             .unwrap_or_else(|_| fatal_error("Invalid new key"));
 
-        let mut stash = stash_cfg.try_open(Some(key)).unwrap();
+        let stash = stash_cfg.try_open(Some(key)).unwrap();
         if stash.reseal().is_err() {
             fatal_error("Failed to change key");
         }

@@ -84,7 +84,7 @@ async fn auto_commit(stash: Arc<Mutex<Infinitree<Files>>>) {
     loop {
         interval.tick().await;
 
-        let mut stash_guard = stash.lock().unwrap();
+        let stash_guard = stash.lock().unwrap();
         let _ = stash_guard.commit("Fuse commit");
         let _ = stash_guard.backend().sync();
         debug!("Committed Changes!");
@@ -130,7 +130,7 @@ impl FilesystemMT for ZerostashFS {
 
         if self.read_write {
             self.runtime.block_on(async {
-                let mut stash = self.stash.lock().unwrap();
+                let stash = self.stash.lock().unwrap();
                 let _ = stash.commit("Fuse commit");
                 let _ = stash.backend().sync();
             });

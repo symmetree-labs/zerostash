@@ -16,7 +16,7 @@ pub struct ZfsDestroy {
 impl AsyncRunnable for ZfsDestroy {
     /// Start the application.
     async fn run(&self) {
-        let mut stash = self.stash.open();
+        let stash = self.stash.open();
         stash.load_all().unwrap();
 
         stash.index().zfs_snapshots.remove(self.name.clone());

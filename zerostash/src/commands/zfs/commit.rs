@@ -33,7 +33,7 @@ pub struct ZfsCommit {
 impl AsyncRunnable for ZfsCommit {
     /// Start the application.
     async fn run(&self) {
-        let mut stash = self.stash.open();
+        let stash = self.stash.open();
         stash.load(stash.index().zfs_snapshots()).unwrap();
 
         let args = {

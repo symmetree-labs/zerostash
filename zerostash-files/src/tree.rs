@@ -305,7 +305,7 @@ impl Tree {
 
         let (parent, current_ref) = current
             .zip(current_ref)
-            .ok_or_else(|| FsError::InvalidPath(consumed))?;
+            .ok_or(FsError::InvalidPath(consumed))?;
 
         Ok((current_ref, parent, last_part))
     }
@@ -353,7 +353,7 @@ impl Tree {
 
         let (parent, current_ref) = current
             .zip(current_ref)
-            .ok_or_else(|| FsError::InvalidPath(consumed))?;
+            .ok_or(FsError::InvalidPath(consumed))?;
 
         Ok((current_ref, parent, last_part))
     }
@@ -448,7 +448,7 @@ impl Tree {
         TreeIterator { stack, inner: self }
     }
 
-    pub fn clear<'a>(&'a self) -> Result<'a, ()> {
+    pub fn clear(&self) -> Result<'_, ()> {
         self.0.clear();
         self.insert_root()
     }

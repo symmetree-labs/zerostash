@@ -139,7 +139,7 @@ impl StashArgs {
     }
 
     pub(crate) fn open_with(&self, key: Option<Key>) -> Stash {
-        let mut stash = crate::config::Stash::from_str(&self.stash)
+        let stash = crate::config::Stash::from_str(&self.stash)
             .unwrap()
             .open_or_new(key)
             .unwrap();
