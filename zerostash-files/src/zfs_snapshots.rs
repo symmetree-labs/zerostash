@@ -27,7 +27,7 @@ pub enum SnapshotError {
     },
 }
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ZfsSnapshot {
     pub stream: infinitree::object::Stream,
     pub creation_time_secs: u64,

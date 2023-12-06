@@ -1,7 +1,4 @@
-#[macro_use]
-extern crate serde_derive;
-
-use infinitree::*;
+use infinitree::{fields, ChunkPointer, Digest, Index};
 pub mod tree;
 pub use tree::*;
 mod files;

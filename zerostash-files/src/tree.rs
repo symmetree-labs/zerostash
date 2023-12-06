@@ -41,7 +41,7 @@ impl Clone for Tree {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub enum Node {
     File {
         refs: Arc<AtomicUsize>,

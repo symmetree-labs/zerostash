@@ -1,13 +1,11 @@
-#![allow(unused)]
-
 use seahash::SeaHasher;
 use std::hash::Hasher;
 
 const ROLLSUM_CHAR_OFFSET: u32 = 31;
-const BLOBBITS: u32 = (16);
-const BLOBSIZE: u32 = (1 << BLOBBITS);
-const WINDOWBITS: u32 = (8);
-const WINDOWSIZE: u32 = (1 << WINDOWBITS);
+const BLOBBITS: u32 = 16;
+const BLOBSIZE: u32 = 1 << BLOBBITS;
+const WINDOWBITS: u32 = 8;
+const WINDOWSIZE: u32 = 1 << WINDOWBITS;
 const CHUNK_SIZE_LIMIT: usize = 256 * 1024;
 
 pub trait Rollsum {
