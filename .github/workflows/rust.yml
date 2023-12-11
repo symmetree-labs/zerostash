@@ -10,7 +10,7 @@ on:
 
 env:
   version: ${{ github.event.release.tag_name || github.sha }}
-  rust: 1.69.0 # same as nixos 23.05
+  rust: 1.73.0 # same as nixos 23.11
 
 jobs:
   security_audit:
