@@ -150,7 +150,7 @@ impl OpenFileHandle {
                         commit_queue,
                     };
 
-                    tokio::spawn(ingester.start())
+                    parent.runtime.spawn(ingester.start())
                 };
 
                 let commit_task = {
@@ -162,12 +162,12 @@ impl OpenFileHandle {
                         reader: parent.stash.storage_reader().unwrap(),
                         hasher: parent.stash.hasher().unwrap(),
                     };
-                    tokio::spawn(committer.start())
+                    parent.runtime.spawn(committer.start())
                 };
 
                 Some({
                     let entry = shared_entry.clone(Ordering::Relaxed, &Guard::new());
-                    tokio::spawn(async move {
+                    parent.runtime.spawn(async move {
                         _ = tokio::join!(merger_task, commit_task);
                         entry
                     })
