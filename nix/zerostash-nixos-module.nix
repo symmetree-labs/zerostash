@@ -3,8 +3,7 @@ let
   cfg = config.services.zerostash;
 
   inherit (utils.systemdUtils.unitOptions) unitOption;
-in
-with lib; {
+in with lib; {
   options.services.zerostash = {
     enable = mkEnableOption "Zerostash automated backups";
     configFile = mkOption {
@@ -23,9 +22,9 @@ with lib; {
       description = "zerostash package to use.";
     };
 
-    backups =
-      mkOption {
-        type = with types; attrsOf (submodule ({ ... }: {
+    backups = mkOption {
+      type = with types;
+        attrsOf (submodule ({ ... }: {
           options = {
             paths = mkOption {
               type = with types; listOf path;
@@ -48,9 +47,7 @@ with lib; {
 
             timerConfig = mkOption {
               type = types.attrsOf unitOption;
-              default = {
-                OnCalendar = "daily";
-              };
+              default = { OnCalendar = "daily"; };
               description = ''
                 Each attribute in this set specifies an option in the
                 <literal>[Timer]</literal> section of the unit.  See
@@ -110,71 +107,64 @@ with lib; {
           };
         }));
 
-        default = { };
-        example =
-          {
-            daily_root_backup = {
-              paths = [ "/" ];
-              options = [ "-x" ];
-              timerConfig = {
-                OnCalendar = "daily";
-              };
-              environmentFile = "/path/to/env/file";
-              stash = {
-                key = {
-                  source = "file";
-                  path = "/path/to/keyfile.toml";
-                };
-                backend = {
-                  type = "s3";
-                  bucket = "test_bucket";
-                  region = { name = "us-east-1"; };
-                };
-              };
+      default = { };
+      example = {
+        daily_root_backup = {
+          paths = [ "/" ];
+          options = [ "-x" ];
+          timerConfig = { OnCalendar = "daily"; };
+          environmentFile = "/path/to/env/file";
+          stash = {
+            key = {
+              source = "file";
+              path = "/path/to/keyfile.toml";
+            };
+            backend = {
+              type = "s3";
+              bucket = "test_bucket";
+              region = { name = "us-east-1"; };
             };
           };
-        description = "Declarative backup configuration.";
+        };
       };
+      description = "Declarative backup configuration.";
+    };
   };
   config = mkIf cfg.enable {
-    systemd.services =
-      mapAttrs'
-        (name: backup:
-          let
-            json = cfg: pkgs.writeText "config.json" (builtins.toJSON cfg);
-            toml = name: cfg: pkgs.runCommand name { } "${pkgs.remarshal}/bin/remarshal --of toml ${json cfg} > $out";
+    systemd.services = mapAttrs' (name: backup:
+      let
+        json = cfg: pkgs.writeText "config.json" (builtins.toJSON cfg);
+        toml = name: cfg:
+          pkgs.runCommand name { }
+          "${pkgs.remarshal}/bin/remarshal --of toml ${json cfg} > $out";
 
-            configFile =
-              if (backup.stashName != null && cfg.configFile != null) then cfg.configFile else
-              toml "${name}.toml" {
-                stash."${name}" = backup.stash;
-              };
-            options = concatStringsSep " " backup.options;
-            paths = concatStringsSep " " backup.paths;
-            command = "${cfg.package}/bin/0s --insecure-config -c ${configFile} commit ${options} ${name} ${paths}";
-          in
-          nameValuePair "zerostash-${name}" ({
-            restartIfChanged = false;
-            serviceConfig = {
-              Type = "oneshot";
-              ExecStart = command;
-              User = backup.user;
-              RuntimeDirectory = "zerostash-${name}";
-              CacheDirectory = "zerostash-${name}";
-              CacheDirectoryMode = "0700";
-            } // optionalAttrs (backup.environmentFile != null) {
-              EnvironmentFile = backup.environmentFile;
-            };
-          })
-        )
-        config.services.zerostash.backups;
+        configFile =
+          if (backup.stashName != null && cfg.configFile != null) then
+            cfg.configFile
+          else
+            toml "${name}.toml" { stash."${name}" = backup.stash; };
+        options = concatStringsSep " " backup.options;
+        paths = concatStringsSep " " backup.paths;
+        command =
+          "${cfg.package}/bin/0s --insecure-config -c ${configFile} commit ${options} ${name} ${paths}";
+      in nameValuePair "zerostash-${name}" ({
+        restartIfChanged = false;
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = command;
+          User = backup.user;
+          RuntimeDirectory = "zerostash-${name}";
+          CacheDirectory = "zerostash-${name}";
+          CacheDirectoryMode = "0700";
+        } // optionalAttrs (backup.environmentFile != null) {
+          EnvironmentFile = backup.environmentFile;
+        };
+      })) config.services.zerostash.backups;
 
-    systemd.timers =
-      mapAttrs'
-        (name: backup: nameValuePair "zerostash-${name}" {
-          wantedBy = [ "timers.target" ];
-          timerConfig = backup.timerConfig;
-        })
-        config.services.zerostash.backups;
+    systemd.timers = mapAttrs' (name: backup:
+      nameValuePair "zerostash-${name}" {
+        wantedBy = [ "timers.target" ];
+        timerConfig = backup.timerConfig;
+      }) config.services.zerostash.backups;
   };
 }

@@ -570,7 +570,7 @@ mod test {
             UsernamePassword::with_credentials("bare_index_map".to_string(), "password".to_string())
                 .unwrap()
         };
-        let storage = crate::backends::test::InMemoryBackend::shared();
+        let storage = infinitree::backends::test::InMemoryBackend::shared();
         let file_path = "test/path/file.rs".to_string();
         let random_file = "test/path/to/random.rs".to_string();
         let new_file_path = "test/path/to/file.rs".to_string();
@@ -678,7 +678,7 @@ mod test {
             UsernamePassword::with_credentials("bare_index_map".to_string(), "password".to_string())
                 .unwrap()
         };
-        let storage = crate::backends::test::InMemoryBackend::shared();
+        let storage = infinitree::backends::test::InMemoryBackend::shared();
         let file_path = "test/path/file.rs".to_string();
         let entry = Entry {
             name: String::from("file.rs"),
@@ -739,7 +739,7 @@ mod test {
             UsernamePassword::with_credentials("bare_index_map".to_string(), "password".to_string())
                 .unwrap()
         };
-        let storage = crate::backends::test::InMemoryBackend::shared();
+        let storage = infinitree::backends::test::InMemoryBackend::shared();
 
         let file1 = "file1.rs".to_string();
         let file2 = "file2.rs".to_string();
@@ -803,7 +803,7 @@ mod test {
             UsernamePassword::with_credentials("bare_index_map".to_string(), "password".to_string())
                 .unwrap()
         };
-        let storage = crate::backends::test::InMemoryBackend::shared();
+        let storage = infinitree::backends::test::InMemoryBackend::shared();
         let file1 = "test/path/to/file.rs".to_string();
         let file2 = "test/path/file.rs".to_string();
         let file3 = "test/file.rs".to_string();

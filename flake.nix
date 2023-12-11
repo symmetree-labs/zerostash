@@ -46,10 +46,14 @@
               src = pkgs.lib.sources.cleanSource ./.;
               filter = name: type:
                 let baseName = baseNameOf (toString name);
-                in !(".github" == baseName || ("nix" == baseName && type == "directory"));
+                in !(".github" == baseName
+                  || ("nix" == baseName && type == "directory"));
             };
 
-            cargoLock = { lockFile = ./Cargo.lock; };
+            cargoLock = {
+              lockFile = ./Cargo.lock;
+              outputHashes = { "infinitree-0.10.4" = "sha256-3mAU4aQgC9RK9aQR9oGfBpycF4dOJogiAKr+6IpHiKM="; };
+            };
 
             buildFeatures = features;
             cargoCheckFeatures = features;
@@ -62,7 +66,8 @@
               ++ pkgs.lib.optionals pkgs.stdenv.isDarwin (macDeps pkgs);
             buildInputs = with pkgs;
               [ libusb ]
-              ++ pkgs.lib.optionals pkgs.stdenv.isLinux (linuxDeps pkgs);
+              ++ pkgs.lib.optionals pkgs.stdenv.isLinux (linuxDeps pkgs)
+              ++ pkgs.lib.optionals pkgs.stdenv.isDarwin (macDeps pkgs);
           } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
             RUSTFLAGS =
               "-L${pkgs.stdenv.cc.cc}/lib/gcc/${pkgs.stdenv.targetPlatform.config}/${pkgs.stdenv.cc.cc.version} -lc";

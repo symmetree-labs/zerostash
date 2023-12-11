@@ -2,14 +2,10 @@
 pkgs.nixosTest ({ ... }: {
   name = "zerostash";
   nodes = {
-    zerostash = { ... }:
-      {
-        imports = [
-          nixosModule
-          ./test-nixos-configuration.nix
-        ];
-	virtualisation.graphics = false;
-      };
+    zerostash = { ... }: {
+      imports = [ nixosModule ./test-nixos-configuration.nix ];
+      virtualisation.graphics = false;
+    };
   };
 
   testScript = ''

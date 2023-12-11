@@ -1,5 +1,4 @@
-{ lib, pkgs, ... }:
-{
+{ lib, pkgs, ... }: {
   # Easy debugging via console and ssh
   # WARNING: root access with empty password
   networking.firewall.enable = false;
