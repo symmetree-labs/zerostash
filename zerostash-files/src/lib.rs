@@ -1,4 +1,4 @@
-use infinitree::{fields, ChunkPointer, Digest, Index};
+use infinitree::{fields, ChunkPointer, Digest};
 pub mod tree;
 pub use tree::*;
 mod files;
@@ -17,7 +17,7 @@ type ChunkIndex = fields::VersionedMap<Digest, ChunkPointer>;
 type FileIndex = fields::VersionedMap<String, Entry>;
 type ZfsIndex = fields::VersionedMap<String, ZfsSnapshot>;
 
-#[derive(Clone, Default, Index)]
+#[derive(Clone, Default, infinitree::Index)]
 pub struct Files {
     pub chunks: ChunkIndex,
     pub files: FileIndex,

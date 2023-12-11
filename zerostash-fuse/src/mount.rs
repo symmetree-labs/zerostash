@@ -1,27 +1,31 @@
 //! `mount` subcommand
 
 use std::{
+    collections::{BTreeMap, VecDeque},
     ffi::OsStr,
     io::Result,
     num::NonZeroUsize,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{atomic::Ordering, Arc},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use fuse_mt::*;
 use infinitree::{
     object::{AEADReader, AEADWriter, Pool, PoolRef, Reader, Writer},
-    Infinitree,
+    Infinitree, BLOCK_SIZE,
 };
 use nix::libc;
-use tokio::runtime::Handle;
+use scc::ebr::{AtomicShared, Guard, Shared, Tag};
+use tokio::{runtime::Handle, task::JoinHandle};
 use tracing::debug;
-use zerostash_files::{store::index_buf, Entry, FileType, Files, Node};
+use zerostash_files::{Entry, FileType, Files, Node};
 
 use crate::chunks::ChunkStack;
 use crate::chunks::ChunkStackCache;
-use crate::openfile::OpenFile;
+
+const MAX_BUFFER_SIZE: usize = infinitree::BLOCK_SIZE;
+use zerostash_files::rollsum::CHUNK_SIZE_LIMIT;
 
 pub async fn mount(
     stash: Infinitree<Files>,
@@ -41,7 +45,7 @@ pub async fn mount(
 
     let mount_type = if read_write { "rw" } else { "ro" };
 
-    let filesystem = ZerostashFS::open(stash, threads, read_write).unwrap();
+    let filesystem = ZerostashFs::open(stash, threads, read_write).unwrap();
     let fs = fuse_mt::FuseMT::new(filesystem, 1);
 
     // Mount the filesystem.
@@ -78,18 +82,285 @@ async fn auto_commit(stash: Arc<Infinitree<Files>>) {
     }
 }
 
-pub struct ZerostashFS {
-    pub commit_timestamp: SystemTime,
-    pub stash: Arc<Infinitree<Files>>,
-    pub writer: Option<Mutex<Pool<AEADWriter>>>,
-    pub chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
-    pub threads: usize,
-    pub runtime: Handle,
+pub struct ZerostashFs {
+    commit_timestamp: SystemTime,
+    stash: Arc<Infinitree<Files>>,
+    writer: Option<Pool<AEADWriter>>,
+    chunks_cache: scc::HashMap<PathBuf, ChunkStackCache>,
+    open_handles: scc::HashMap<u64, OpenFileHandle>,
+    runtime: Handle,
 }
 
-impl ZerostashFS {
+struct OpenFileHandle {
+    // temporary, need to rewrite read() impl
+    #[allow(unused)]
+    entry: AtomicShared<Entry>,
+    writer: Option<JoinHandle<AtomicShared<Entry>>>,
+    write_queue: flume::Sender<WriteOp>,
+}
+
+enum OpenMode {
+    Read,
+    Write,
+    ReadWrite,
+}
+
+enum WriteOp {
+    Write(WriteData),
+    Flush,
+    Close,
+}
+
+struct WriteData {
+    offset: u64,
+    buf: VecDeque<u8>,
+}
+
+impl From<u32> for OpenMode {
+    fn from(value: u32) -> Self {
+        let flags = value as i32;
+
+        if flags & libc::O_RDWR > 0 {
+            return OpenMode::ReadWrite;
+        }
+
+        if flags & libc::O_WRONLY > 0 {
+            return OpenMode::Write;
+        }
+
+        // TODO: not sure if this is sound. let's revisit later.
+        OpenMode::Read
+    }
+}
+
+impl OpenFileHandle {
+    fn new(parent: &ZerostashFs, entry: Arc<Entry>, mode: OpenMode) -> Self {
+        let (write_queue, write_queue_r) = flume::bounded::<WriteOp>(128);
+        let (commit_queue, commit_queue_r) = flume::bounded::<WriteOp>(128);
+
+        let shared_entry = AtomicShared::new((*entry).clone());
+
+        let writer = match (mode, parent.writer.as_ref()) {
+            (OpenMode::Read, _) => None,
+            (_, None) => None,
+            (OpenMode::Write | OpenMode::ReadWrite, Some(pool)) => {
+                let merger_task = {
+                    let ingester = IngestChanges {
+                        write_queue_r,
+                        commit_queue,
+                    };
+
+                    tokio::spawn(ingester.start())
+                };
+
+                let commit_task = {
+                    let committer = CommitChanges {
+                        commit_queue_r,
+                        shared_entry: shared_entry.clone(Ordering::Relaxed, &Guard::new()),
+                        pool: pool.clone(),
+                        entry: (*entry).clone(),
+                        reader: parent.stash.storage_reader().unwrap(),
+                        hasher: parent.stash.hasher().unwrap(),
+                    };
+                    tokio::spawn(committer.start())
+                };
+
+                Some({
+                    let entry = shared_entry.clone(Ordering::Relaxed, &Guard::new());
+                    tokio::spawn(async move {
+                        _ = tokio::join!(merger_task, commit_task);
+                        entry
+                    })
+                })
+            }
+        };
+
+        Self {
+            writer,
+            write_queue,
+            entry: shared_entry,
+        }
+    }
+}
+
+struct CommitChanges {
+    commit_queue_r: flume::Receiver<WriteOp>,
+    reader: PoolRef<AEADReader>,
+    hasher: infinitree::Hasher,
+    pool: Pool<AEADWriter>,
+
+    entry: Entry,
+    shared_entry: AtomicShared<Entry>,
+}
+
+impl CommitChanges {
+    async fn start(mut self) {
+        let mut basebuf = Vec::with_capacity(BLOCK_SIZE);
+
+        loop {
+            let (offset, mut buf) = match self.commit_queue_r.recv_async().await {
+                Ok(WriteOp::Write(WriteData { offset, buf })) => (offset, buf),
+                Ok(WriteOp::Flush) => {
+                    self.shared_entry.swap(
+                        (Some(Shared::new(self.entry.clone())), Tag::None),
+                        Ordering::SeqCst,
+                    );
+                    continue;
+                }
+                _ => {
+                    self.shared_entry.swap(
+                        (Some(Shared::new(self.entry.clone())), Tag::None),
+                        Ordering::SeqCst,
+                    );
+                    break;
+                }
+            };
+
+            let chunk = self.find_base_chunk(offset);
+            let Some((mut base_offset, mut ptr)) = chunk else {
+                self.write_new_chunk_for_offset(buf.make_contiguous(), offset);
+                self.entry.size += buf.len() as u64;
+                continue;
+            };
+
+            let mut write_start = (offset - base_offset) as usize;
+            let mut write_end = write_start + buf.len();
+            loop {
+                let chunk_end = self.reader.read_chunk(&ptr, &mut basebuf).unwrap().len();
+
+                if write_end <= chunk_end {
+                    basebuf[write_start..write_end].copy_from_slice(buf.make_contiguous());
+
+                    self.write_new_chunk_for_offset(&basebuf[..chunk_end], base_offset);
+                } else {
+                    let rest = buf.split_off(chunk_end - write_start);
+
+                    basebuf[write_start..chunk_end].copy_from_slice(buf.make_contiguous());
+
+                    self.write_new_chunk_for_offset(&basebuf[..chunk_end], base_offset);
+
+                    buf = rest;
+
+                    let next = self.entry.chunks.range(base_offset + 1..).next();
+                    if let Some((offs, p)) = next {
+                        write_start = 0;
+                        write_end -= chunk_end;
+                        base_offset = *offs;
+                        ptr = Arc::clone(p);
+                    } else {
+                        self.write_new_chunk_for_offset(buf.make_contiguous(), chunk_end as u64);
+
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    fn write_new_chunk_for_offset(&mut self, slice: &[u8], offset: u64) {
+        let digest = self.hasher.reset().update(slice).finalize();
+        let pointer = self.pool.write_chunk(digest.as_bytes(), slice).unwrap();
+        self.entry.chunks.insert(offset, pointer.into());
+    }
+
+    fn find_base_chunk(&self, offset: u64) -> Option<(u64, Arc<infinitree::ChunkPointer>)> {
+        let mut iter = self.entry.chunks.iter().peekable();
+        loop {
+            match (iter.next(), iter.peek()) {
+                (Some((offs_a, chunk)), Some((offs_b, _)))
+                    if *offs_a < offset && offset < **offs_b =>
+                {
+                    break Some((offs_a, chunk));
+                }
+                (Some(_), Some(_)) => continue,
+                (Some((offs, chunk)), None) => break Some((offs, chunk)),
+                _ => break None,
+            }
+        }
+        .map(|(o, c)| (*o, Arc::clone(c)))
+    }
+}
+
+struct IngestChanges {
+    write_queue_r: flume::Receiver<WriteOp>,
+    commit_queue: flume::Sender<WriteOp>,
+}
+
+impl IngestChanges {
+    async fn start(self) {
+        let mut write_cache: BTreeMap<u64, VecDeque<u8>> = BTreeMap::new();
+
+        loop {
+            // while let Ok((offset, new_buf)) = write_queue_r.recv_async().await {
+            match self.write_queue_r.recv_async().await {
+                Ok(WriteOp::Write(WriteData {
+                    offset,
+                    buf: mut new_buf,
+                })) => {
+                    let patch_into = write_cache
+                        .iter()
+                        .find(|(k, v)| **k < offset && offset < (v.len() as u64))
+                        .map(|(k, _)| *k);
+
+                    if let Some((file_offset, buf)) =
+                        patch_into.zip(patch_into.and_then(|k| write_cache.get_mut(&k)))
+                    {
+                        // start byte of `new_buf` within the existing buffer
+                        let offs = (offset - file_offset) as usize;
+
+                        let end = offs + new_buf.len();
+                        if end < buf.len() {
+                            // replace the fully contained segment
+                            buf.make_contiguous()[offs..end]
+                                .copy_from_slice(new_buf.make_contiguous());
+                        } else {
+                            buf.truncate(offs);
+                            buf.append(&mut new_buf);
+                        }
+                    } else {
+                        write_cache.insert(offset, new_buf);
+                    }
+
+                    self.flush_write_cache(false, &mut write_cache);
+                }
+                Ok(WriteOp::Flush) => {
+                    self.flush_write_cache(true, &mut write_cache);
+                }
+                Ok(WriteOp::Close) => {
+                    self.flush_write_cache(true, &mut write_cache);
+                    break;
+                }
+                Err(_) => todo!(),
+            }
+        }
+    }
+
+    fn flush_write_cache(&self, remove_all: bool, write_cache: &mut BTreeMap<u64, VecDeque<u8>>) {
+        let mut sized_list = write_cache
+            .iter()
+            .map(|(k, v)| (v.len(), *k))
+            .collect::<Vec<_>>();
+
+        let remove_all =
+            remove_all || sized_list.iter().map(|(size, _)| *size).sum::<usize>() > MAX_BUFFER_SIZE;
+
+        sized_list.retain(|(size, offset)| {
+            if remove_all || size > &CHUNK_SIZE_LIMIT {
+                let (offset, buf) = write_cache.remove_entry(offset).unwrap();
+                self.commit_queue
+                    .send(WriteOp::Write(WriteData { offset, buf }))
+                    .unwrap();
+                false
+            } else {
+                true
+            }
+        });
+    }
+}
+
+impl ZerostashFs {
     pub fn open(stash: Arc<Infinitree<Files>>, threads: usize, read_write: bool) -> Result<Self> {
-        stash.load_all().unwrap();
+        stash.load(stash.index().tree()).unwrap();
 
         let commit_timestamp = match stash.commit_list().last() {
             Some(last) => last.metadata.time,
@@ -102,25 +373,36 @@ impl ZerostashFS {
                     NonZeroUsize::new(threads).unwrap(),
                     stash.storage_writer().unwrap(),
                 )
-                .expect("Failed to open stash for writing")
-                .into(),
+                .expect("Failed to open stash for writing"),
             )
         } else {
             None
         };
 
-        Ok(ZerostashFS {
+        Ok(ZerostashFs {
             commit_timestamp,
             stash,
-            chunks_cache: scc::HashMap::new(),
-            threads,
             writer,
+            open_handles: scc::HashMap::new(),
+            chunks_cache: scc::HashMap::new(),
             runtime: Handle::current(),
         })
     }
+
+    fn new_handle(&self, entry: Arc<Entry>, flags: OpenMode) -> u64 {
+        let mut val = rand::random();
+        while self.open_handles.contains(&val) {
+            val = rand::random();
+        }
+
+        _ = self
+            .open_handles
+            .insert(val, OpenFileHandle::new(self, entry, flags));
+        val
+    }
 }
 
-impl FilesystemMT for ZerostashFS {
+impl FilesystemMT for ZerostashFs {
     fn destroy(&self) {
         debug!("destroy and commit");
 
@@ -148,14 +430,82 @@ impl FilesystemMT for ZerostashFS {
         };
 
         match node.as_ref() {
-            Node::File { refs: _, entry } => Ok((TTL, file_to_fuse(entry, self.commit_timestamp))),
+            Node::File { refs: _, entry } => {
+                Ok((TTL, file_to_fuse(entry.as_ref(), self.commit_timestamp)))
+            }
             Node::Directory { entries: _ } => Ok((TTL, DIR_ATTR)),
         }
     }
 
-    fn opendir(&self, _req: RequestInfo, _path: &Path, _flags: u32) -> ResultOpen {
+    fn opendir(&self, _req: RequestInfo, _path: &Path, flags: u32) -> ResultOpen {
         debug!("opendir");
-        Ok((0, 0))
+        Ok((0, flags))
+    }
+
+    fn open(&self, _req: RequestInfo, path: &Path, flags: u32) -> ResultOpen {
+        debug!("open: {:?}", path);
+
+        if self.writer.is_none() && flags & (libc::O_RDWR | libc::O_WRONLY) as u32 > 0 {
+            return Err(libc::EROFS);
+        }
+
+        let path_str = path.to_str().unwrap();
+        let node = {
+            let index = self.stash.index();
+            let tree = &index.tree;
+            tree.file(path_str)
+        };
+
+        let Ok(Some(node)) = node else {
+            return Err(libc::ENOENT);
+        };
+
+        Ok((self.new_handle(node, flags.into()), flags))
+    }
+
+    fn release(
+        &self,
+        _req: RequestInfo,
+        path: &Path,
+        fh: u64,
+        _flags: u32,
+        _lock_owner: u64,
+        _flush: bool,
+    ) -> ResultEmpty {
+        debug!("release {:?}", path);
+
+        let Some((_, handle)) = self.open_handles.remove(&fh) else {
+            return Err(libc::EINVAL);
+        };
+
+        if let Some(background) = handle.writer {
+            handle.write_queue.send(WriteOp::Close).unwrap();
+            let path_str = path.to_str().unwrap();
+            let new_entry = self.runtime.block_on(background).unwrap();
+            let guard = Guard::new();
+            let new_entry_deref = new_entry.load(Ordering::Relaxed, &guard).as_ref().unwrap();
+
+            self.stash
+                .index()
+                .tree
+                .update_file(path_str, new_entry_deref.clone())
+                .unwrap();
+        }
+
+        Ok(())
+    }
+
+    fn fsync(&self, _req: RequestInfo, _path: &Path, fh: u64, _datasync: bool) -> ResultEmpty {
+        let Some(entry) = self.open_handles.get(&fh) else {
+            return Err(libc::EINVAL);
+        };
+
+        let handle = entry.get();
+        if handle.writer.is_some() {
+            handle.write_queue.send(WriteOp::Flush).unwrap();
+        }
+
+        Ok(())
     }
 
     fn readdir(&self, _req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
@@ -200,11 +550,6 @@ impl FilesystemMT for ZerostashFS {
         Ok(vec)
     }
 
-    fn open(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
-        debug!("open: {:?}", path);
-        Ok((0, 0))
-    }
-
     fn read(
         &self,
         _req: RequestInfo,
@@ -236,11 +581,7 @@ impl FilesystemMT for ZerostashFS {
         }
 
         let size = size as usize;
-        let sort_chunks = || {
-            let mut chunks = entry.chunks.clone();
-            chunks.sort_by(|(a, _), (b, _)| a.cmp(b));
-            chunks
-        };
+        let sort_chunks = || entry.chunks.clone().into_iter().collect::<Vec<_>>();
         let mut obj_reader = self.stash.storage_reader().unwrap();
 
         self.runtime.block_on(async {
@@ -293,58 +634,35 @@ impl FilesystemMT for ZerostashFS {
         &self,
         _req: RequestInfo,
         path: &Path,
-        _fh: u64,
+        fh: u64,
         offset: u64,
         data: Vec<u8>,
         _flags: u32,
     ) -> ResultWrite {
         debug!("write: {:?} {:#x} @ {:#x}", path, data.len(), offset);
 
-        let real_path = strip_path(path);
-        let path_string = real_path.to_str().unwrap();
-
-        let entry = {
-            let index = &self.stash.index();
-            let tree = &index.tree;
-            let Ok(Some(entry)) = tree.file(path_string) else {
-                return Err(libc::EINVAL);
-            };
-            entry
+        let Some(handle) = self.open_handles.get(&fh) else {
+            return Err(libc::EINVAL);
         };
 
-        let obj_reader = self.stash.storage_reader().unwrap();
-        let mut buf: Vec<u8> = vec![0; entry.size as usize];
-        read_chunks_into_buf(&mut buf, obj_reader, &entry);
-
-        let mut open_file = OpenFile::from_vec(buf);
-        let nwritten = match open_file.write_at(offset, data) {
-            Ok(nwritten) => nwritten,
-            Err(e) => return Err(e),
-        };
-        let entry_len = open_file.get_len();
-
-        let new_entry = Entry {
-            size: entry_len,
-            chunks: Vec::new(),
-            file_type: entry.file_type.clone(),
-            name: entry.name.clone(),
-            ..entry.as_ref().clone()
+        let Ok(size) = data.len().try_into() else {
+            return Err(libc::EINVAL);
         };
 
-        let index = self.stash.index();
-        let hasher = self.stash.hasher().unwrap();
-        let balancer = self.writer.as_ref().unwrap();
+        if handle.get().writer.is_none() {
+            return Err(libc::EINVAL);
+        }
 
-        index_buf(
-            open_file.open_file.into_inner(),
-            new_entry,
-            hasher,
-            &index,
-            &balancer.lock().unwrap(),
-            path_string.to_string(),
-        );
+        handle
+            .get()
+            .write_queue
+            .send(WriteOp::Write(WriteData {
+                offset,
+                buf: data.into(),
+            }))
+            .unwrap();
 
-        Ok(nwritten)
+        Ok(size)
     }
 
     fn truncate(&self, _req: RequestInfo, path: &Path, _fh: Option<u64>, size: u64) -> ResultEmpty {
@@ -361,27 +679,47 @@ impl FilesystemMT for ZerostashFS {
             entry
         };
 
+        if entry.size == size {
+            return Ok(());
+        }
+
         if entry.size < size {
+            self.stash
+                .index()
+                .tree
+                .update_file(
+                    path_string,
+                    Entry {
+                        size,
+                        ..entry.as_ref().clone()
+                    },
+                )
+                .unwrap();
+
             return Ok(());
         }
 
         let mut chunks = entry.chunks.clone();
-        chunks.sort_by_key(|e| e.0);
-        let last_chunk_idx = chunks
-            .iter()
-            .position(|(start, _cp)| start > &size)
-            .unwrap_or_else(|| entry.chunks.len())
-            - 1;
+        let Some(last_chunk_start) = chunks
+            .range(size..)
+            .next()
+            .or(entry.chunks.last_key_value())
+            .map(|(offs, _)| *offs)
+        else {
+            unreachable!();
+        };
 
-        let (last_chunk_start, last_chunk) = chunks.swap_remove(last_chunk_idx);
-        chunks.truncate(last_chunk_idx);
+        let rest = chunks.split_off(&last_chunk_start);
+        let Some((_, last_chunk)) = rest.first_key_value() else {
+            unreachable!();
+        };
 
         let truncated_chunk = {
             let mut reader = self.stash.storage_reader().unwrap();
             // i'm assuming we're not so good at compression that this
             // isn't enough?
             let mut buf: Vec<u8> = vec![0; last_chunk.size() * 16];
-            reader.read_chunk(&last_chunk, &mut buf).unwrap();
+            reader.read_chunk(last_chunk, &mut buf).unwrap();
 
             buf.truncate((size - last_chunk_start) as usize);
             buf
@@ -396,13 +734,13 @@ impl FilesystemMT for ZerostashFS {
             .as_bytes();
 
         let index = self.stash.index();
-        let mut writer = self.writer.as_ref().unwrap().lock().unwrap();
-        chunks.push((
+        let mut writer = self.writer.as_ref().unwrap().clone();
+        chunks.insert(
             last_chunk_start,
             index.chunks.insert_with(hash, move || {
                 writer.write_chunk(&hash, &truncated_chunk).unwrap()
             }),
-        ));
+        );
 
         let new_entry = Entry {
             chunks,
@@ -490,7 +828,7 @@ impl FilesystemMT for ZerostashFS {
 
     fn create(
         &self,
-        _req: RequestInfo,
+        req: RequestInfo,
         parent: &Path,
         name: &OsStr,
         mode: u32,
@@ -508,13 +846,13 @@ impl FilesystemMT for ZerostashFS {
             unix_secs: unix.as_secs() as i64,
             unix_nanos: unix.as_nanos() as u32,
             unix_perm: Some(mode),
-            unix_uid: Some(nix::unistd::getuid().into()),
-            unix_gid: Some(nix::unistd::getgid().into()),
+            unix_uid: Some(req.uid),
+            unix_gid: Some(req.gid),
             readonly: None,
             file_type: FileType::File,
             size: 0,
             name,
-            chunks: Vec::new(),
+            chunks: Default::default(),
         });
 
         let attr = file_to_fuse(&entry, SystemTime::now());
@@ -528,10 +866,12 @@ impl FilesystemMT for ZerostashFS {
             return Err(libc::EIO);
         }
 
+        let fh = self.new_handle(entry, flags.into());
+
         Ok(CreatedEntry {
             ttl: TTL,
             attr,
-            fh: 0,
+            fh,
             flags,
         })
     }
@@ -602,23 +942,6 @@ impl FilesystemMT for ZerostashFS {
 
         Ok(())
     }
-
-    fn release(
-        &self,
-        _req: RequestInfo,
-        path: &Path,
-        _fh: u64,
-        _flags: u32,
-        _lock_owner: u64,
-        _flush: bool,
-    ) -> ResultEmpty {
-        debug!("release {:?}", path);
-
-        let real_path = strip_path(path);
-        self.chunks_cache.remove(real_path);
-
-        Ok(())
-    }
 }
 
 const TTL: Duration = Duration::from_secs(1);
@@ -638,13 +961,6 @@ const DIR_ATTR: FileAttr = FileAttr {
     rdev: 0,
     flags: 0,
 };
-
-fn read_chunks_into_buf(buf: &mut [u8], mut reader: PoolRef<AEADReader>, entry: &Entry) {
-    for (start, cp) in entry.chunks.iter() {
-        let start = *start as usize;
-        reader.read_chunk(cp, &mut buf[start..]).unwrap();
-    }
-}
 
 fn file_to_fuse(file: &Entry, atime: SystemTime) -> FileAttr {
     let mtime = UNIX_EPOCH

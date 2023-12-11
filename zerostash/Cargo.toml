@@ -13,9 +13,9 @@ categories = ["cryptography", "filesystem", "command-line-utilities"]
 [dependencies]
 anyhow = "1.0.75"
 thiserror = "1.0.50"
-clap = "4.4.10"
-infinitree = { version = "0.10.4", features = ["cryptobox", "yubikey"] }
-infinitree-backends = { version = "0.10.5", default-features = false, features = ["rustls"] }
+clap = "4.4.11"
+infinitree = { git = "https://github.com/symmetree-labs/infinitree", features = ["cryptobox", "yubikey"] }
+infinitree-backends = { git = "https://github.com/symmetree-labs/infinitree", default-features = false, features = ["rustls"] }
 zerostash-files = { version = "0.7.0", path = "../zerostash-files" }
 zerostash-fuse = { version = "0.7.0", path = "../zerostash-fuse", optional = true}
 rpassword = "7.3.1"
@@ -48,7 +48,7 @@ security-framework = "2.9.2"
 abscissa_core = { version = "0.7.0", features = ["testing"] }
 abscissa_tokio = "0.7.0"
 walkdir = "2.4.0"
-tokio = { version = "1.34.0", features = ["rt", "macros", "rt-multi-thread"] }
+tokio = { version = "1.35.0", features = ["rt", "macros", "rt-multi-thread"] }
 tracing-subscriber = "0.3.18"
 tracing = "0.1.40"
 

@@ -3,6 +3,7 @@ use infinitree::ChunkPointer;
 #[cfg(not(target_os = "windows"))]
 use std::time::UNIX_EPOCH;
 use std::{
+    collections::BTreeMap,
     fs, io,
     path::{Component, Path, PathBuf},
     sync::Arc,
@@ -115,7 +116,7 @@ pub struct Entry {
     pub size: u64,
     pub name: String,
 
-    pub chunks: Vec<(u64, Arc<ChunkPointer>)>,
+    pub chunks: BTreeMap<u64, Arc<ChunkPointer>>,
 }
 
 impl From<&Entry> for PathBuf {
@@ -231,7 +232,7 @@ impl Entry {
             size: metadata.len(),
             name,
 
-            chunks: Vec::new(),
+            chunks: Default::default(),
         })
     }
 

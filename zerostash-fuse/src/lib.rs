@@ -1,7 +1,6 @@
 #![deny(unused_crate_dependencies)]
-pub mod mount;
 pub mod chunks;
-pub mod openfile;
+pub mod mount;
 
 #[cfg(test)]
 use criterion as _;

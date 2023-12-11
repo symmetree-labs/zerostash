@@ -3,6 +3,12 @@ panic = "abort"
 lto = true
 strip = "symbols"
 
+[profile.profiler]
+inherits = "release"
+strip = "none"
+debug = true
+split-debuginfo = "packed"
+
 [workspace]
 resolver = "2"
 members = [

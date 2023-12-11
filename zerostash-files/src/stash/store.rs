@@ -13,7 +13,7 @@ use infinitree::{
     Digest, Infinitree,
 };
 use memmap2::{Mmap, MmapOptions};
-use std::{fs, io::Read, num::NonZeroUsize, path::PathBuf};
+use std::{collections::BTreeMap, fs, io::Read, num::NonZeroUsize, path::PathBuf};
 use tokio::task;
 use tracing::{debug, debug_span, error, trace, warn, Instrument};
 
@@ -288,41 +288,16 @@ async fn index_file(
 
     _ = std::mem::replace(
         &mut entry.chunks,
-        chunks.into_iter().collect::<Result<Vec<_>, _>>().unwrap(),
+        chunks
+            .into_iter()
+            .collect::<Result<BTreeMap<_, _>, _>>()
+            .unwrap(),
     );
 
     debug!(?path, chunks = entry.chunks.len(), "indexed");
 
     let path_str = path.to_str().unwrap();
     index.tree.insert_file(path_str, entry).unwrap();
-}
-
-pub fn index_buf(
-    file: Vec<u8>,
-    mut entry: files::Entry,
-    hasher: infinitree::Hasher,
-    index: &crate::Files,
-    writer: &Pool<impl Writer + Clone + 'static>,
-    path: String,
-) {
-    let splitter = FileSplitter::<BupSplit>::new(&file, hasher);
-    let mut chunks: Vec<Result<(u64, std::sync::Arc<infinitree::ChunkPointer>), anyhow::Error>> =
-        Vec::default();
-
-    for (start, hash, data) in splitter {
-        let mut writer = writer.clone();
-
-        let store = || writer.write_chunk(&hash, data).unwrap();
-        let ptr = index.chunks.insert_with(hash, store);
-        chunks.push(Ok((start, ptr)))
-    }
-
-    _ = std::mem::replace(
-        &mut entry.chunks,
-        chunks.into_iter().collect::<Result<Vec<_>, _>>().unwrap(),
-    );
-
-    index.tree.update_file(&path, entry.clone()).unwrap();
 }
 
 struct MmappedFile {
