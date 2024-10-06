@@ -1,5 +1,5 @@
 use super::*;
-use bech32::{FromBase32, ToBase32};
+use bech32::{Bech32m, Hrp};
 use infinitree::crypto::{cryptobox::*, RawKey};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -61,31 +61,28 @@ impl Default for SplitKeys {
 }
 
 fn bech32_pk(k: &RawKey) -> String {
-    bech32::encode(
-        "p0s-",
-        k.expose_secret().to_base32(),
-        bech32::Variant::Bech32m,
+    bech32::encode::<Bech32m>(
+        Hrp::parse("p0s-").unwrap(),
+        k.expose_secret(),
     )
     .unwrap()
 }
 
 fn bech32_sk(k: &RawKey) -> String {
-    bech32::encode(
-        "s0s-",
-        k.expose_secret().to_base32(),
-        bech32::Variant::Bech32m,
+    bech32::encode::<Bech32m>(
+        Hrp::parse("s0s-").unwrap(),
+        k.expose_secret(),
     )
     .unwrap()
 }
 
 fn decode_bech32(check_hrp: &str, ser: &str) -> Result<RawKey> {
-    let (hrp, data, _) = bech32::decode(ser)?;
-    let bytes = Vec::from_base32(&data)?;
+    let (hrp, bytes) = bech32::decode(ser)?;
     if bytes.len() != 32 {
         anyhow::bail!("invalid key length");
     }
 
-    if check_hrp != hrp {
+    if check_hrp != hrp.as_str() {
         anyhow::bail!("invalid key type");
     }
 

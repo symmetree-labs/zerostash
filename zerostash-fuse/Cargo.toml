@@ -13,12 +13,12 @@ categories = ["cryptography", "filesystem"]
 [dependencies]
 infinitree = {git = "https://github.com/symmetree-labs/infinitree"}
 zerostash-files = { version = "0.7.0", path = "../zerostash-files" }
-scc = "2.0.5"
+scc = "2.2.0"
 fuse_mt = "0.6.1"
 tracing = "0.1.40"
-nix = { version = "0.27.1", default-features = false, features = ["user"] }
-anyhow = "1.0.75"
-tokio = { version = "1.35.0", features = ["rt", "time", "signal", "rt-multi-thread"] }
+nix = { version = "0.29.0", default-features = false, features = ["user"] }
+anyhow = "1.0.89"
+tokio = { version = "1.40.0", features = ["rt", "time", "signal", "rt-multi-thread"] }
 rand = "0.8.5"
 flume = "0.11.0"
 

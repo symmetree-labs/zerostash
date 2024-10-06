@@ -1,6 +1,6 @@
 {
   inputs = rec {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-23.11";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.05";
     utils = { url = "github:numtide/flake-utils"; };
   };
 
@@ -52,7 +52,10 @@
 
             cargoLock = {
               lockFile = ./Cargo.lock;
-              outputHashes = { "infinitree-0.10.4" = "sha256-3mAU4aQgC9RK9aQR9oGfBpycF4dOJogiAKr+6IpHiKM="; };
+              outputHashes = {
+                "infinitree-0.10.4" =
+                  "sha256-3mAU4aQgC9RK9aQR9oGfBpycF4dOJogiAKr+6IpHiKM=";
+              };
             };
 
             buildFeatures = features;
@@ -104,8 +107,20 @@
           };
         });
 
-        devShells.default =
-          pkgs.mkShell { inputsFrom = [ self.packages.${system}.default ]; };
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs;
+            [iconv
+cargo-edit
+clippy
+cargo
+rustc
+rust-analyzer
+rustfmt
+cargo-workspaces
+]
+            ++ self.packages.${system}.default.buildInputs;
+          RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
+        };
 
         formatter = pkgs.nixfmt;
 

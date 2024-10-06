@@ -141,7 +141,7 @@ fn get_keychain_pw(stash: &str, user: &str) -> Result<SecretString> {
     let account_name = format!("{stash}#:0s:#{user}");
 
     Ok(get_generic_password(SERVICE_NAME, &account_name)
-        .map(|pass| SecretString::new(String::from_utf8_lossy(&pass).to_string()))?)
+        .map(|pass| SecretString::new(String::from_utf8_lossy(&pass).into()))?)
 }
 
 #[cfg(target_os = "macos")]
