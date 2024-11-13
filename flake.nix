@@ -116,8 +116,8 @@
               rust-analyzer
               rustfmt
               cargo-workspaces
-rustc
-cargo
+              rustc
+              cargo
             ] ++ self.packages.${system}.default.buildInputs;
           RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
         };
