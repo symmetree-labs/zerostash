@@ -53,8 +53,8 @@
             cargoLock = {
               lockFile = ./Cargo.lock;
               outputHashes = {
-                "infinitree-0.10.4" =
-                  "sha256-3mAU4aQgC9RK9aQR9oGfBpycF4dOJogiAKr+6IpHiKM=";
+                "infinitree-0.11.0" =
+                  "sha256-0iZwmRYAr2NAMjmN9I2ysD/ayoIQh8mNq3lV9eVXFX4=";
               };
             };
 
@@ -109,16 +109,16 @@
 
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs;
-            [iconv
-cargo-edit
-clippy
-cargo
+            [
+              iconv
+              cargo-edit
+              clippy
+              rust-analyzer
+              rustfmt
+              cargo-workspaces
 rustc
-rust-analyzer
-rustfmt
-cargo-workspaces
-]
-            ++ self.packages.${system}.default.buildInputs;
+cargo
+            ] ++ self.packages.${system}.default.buildInputs;
           RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
         };
 

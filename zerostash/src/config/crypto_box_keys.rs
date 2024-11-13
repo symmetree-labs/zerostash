@@ -121,16 +121,16 @@ fn deser_public_key<'de, D>(deser: D) -> Result<RawKey, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s: &str = serde::de::Deserialize::deserialize(deser)?;
-    decode_bech32("p0s-", s).map_err(serde::de::Error::custom)
+    let s: String = serde::de::Deserialize::deserialize(deser)?;
+    decode_bech32("p0s-", &s).map_err(serde::de::Error::custom)
 }
 
 fn deser_option_secret_key<'de, D>(deser: D) -> Result<Option<RawKey>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s: Option<&str> = serde::de::Deserialize::deserialize(deser)?;
-    s.map(|k| decode_bech32("s0s-", k))
+    let s: Option<String> = serde::de::Deserialize::deserialize(deser)?;
+    s.map(|k| decode_bech32("s0s-", &k))
         .transpose()
         .map_err(serde::de::Error::custom)
 }
