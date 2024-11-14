@@ -11,7 +11,7 @@ pkgs.nixosTest ({ ... }: {
   testScript = ''
     start_all()
     zerostash.wait_for_unit("default.target")
-    print(zerostash.succeed("ls /zerostash-destination/005d19bf*497a0be1"))
+    print(zerostash.succeed("ls /zerostash-destination/2eea7df2ee11eed72e8597827645fe44c4f45857dbf90575b12eed09721fee74"))
 
     zerostash.succeed("screen -dm 0s mount --keyfile /key.toml --target /mount_target /zerostash-destination")
 
