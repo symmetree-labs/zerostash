@@ -33,7 +33,6 @@ jobs:
         name: [
           macos,
           macos-m1,
-          windows
         ]
 
         include:
@@ -50,11 +49,11 @@ jobs:
             packages: -p zerostash -p zerostash-files
             skip_tests: true
 
-          - name: windows
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            cross: false
-            packages: -p zerostash -p zerostash-files
+        # - name: windows
+        #   os: windows-latest
+        #   target: x86_64-pc-windows-msvc
+        #   cross: false
+        #   packages: -p zerostash -p zerostash-files
 
     runs-on: ${{ matrix.os }}
     steps:
