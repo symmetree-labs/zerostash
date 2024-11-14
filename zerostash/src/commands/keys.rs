@@ -85,7 +85,7 @@ impl ChangeCmd {
 
                 let keys = g.clone().cmd.generate(&g)?;
                 let effective = keys
-                    .get(0)
+                    .first()
                     .ok_or_else(|| anyhow!("Could not generate key!"))
                     .map(|w| w.obj.clone())?;
 

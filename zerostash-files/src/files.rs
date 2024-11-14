@@ -396,6 +396,7 @@ fn open_symlink(
 fn open_file(path: impl AsRef<Path> + Copy) -> Result<fs::File, io::Error> {
     match fs::OpenOptions::new()
         .create(true)
+        .truncate(true)
         .write(true)
         .read(true)
         .open(path)
