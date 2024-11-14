@@ -3648,7 +3648,7 @@ dependencies = [
 
 [[package]]
 name = "zerostash"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "abscissa_core",
  "abscissa_tokio",
@@ -3682,7 +3682,7 @@ dependencies = [
 
 [[package]]
 name = "zerostash-files"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-scoped",
@@ -3710,7 +3710,7 @@ dependencies = [
 
 [[package]]
 name = "zerostash-fuse"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "criterion",

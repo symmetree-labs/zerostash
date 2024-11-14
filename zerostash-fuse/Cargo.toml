@@ -3,7 +3,7 @@ name = "zerostash-fuse"
 description = "Safe and secure backup library -- FUSE integration"
 authors = ["Peter Parkanyi <p@symmetree.dev>", "Muiz Pieper <Muiz-Erem@gmx.de>"]
 license = "MIT/Apache-2.0"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 keywords = ["crypto", "api", "security", "filesystem", "backup"]
 categories = ["cryptography", "filesystem"]
@@ -12,7 +12,7 @@ categories = ["cryptography", "filesystem"]
 
 [dependencies]
 infinitree = {git = "https://github.com/symmetree-labs/infinitree"}
-zerostash-files = { version = "0.7.0", path = "../zerostash-files" }
+zerostash-files = { version = "0.8.0", path = "../zerostash-files" }
 scc = "2.2.4"
 fuse_mt = "0.6.1"
 tracing = "0.1.40"
